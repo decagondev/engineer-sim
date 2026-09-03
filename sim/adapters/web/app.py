@@ -25,6 +25,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.instructor_password = instructor_password
     app.state.settings = manager.settings
     app.state.repo = manager.repo
+    app.state.submissions = manager.submissions
 
     def b(session_id):
         return manager.for_session(session_id)
@@ -93,6 +94,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         from sim.core.levels import profile
         bundle = b(session_id)
         build_record = (payload or {}).get("build_record", "")
+        if not build_record and app.state.submissions is not None:
+            sub = app.state.submissions.latest(session_id)
+            if sub:
+                build_record = f"SUBMITTED PATCH ({sub.filename}):\n{sub.content}"
         if not build_record and bundle.environment and app.state.build_observer:
             h = bundle.environment.handle(session_id)
             if h:
@@ -110,6 +115,49 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             body["caveat"] = ("Grader is not yet calibrated against human scores — "
                               "treat this as directional, not a grade.")
         return JSONResponse(body)
+
+    # ---- learner submission (Version A: code lives on the learner's machine) ----
+    @app.get("/api/session/{session_id}/starter.zip")
+    def starter_zip(session_id: str):
+        import io, zipfile
+        from pathlib import Path as _P
+        from fastapi.responses import Response
+        sc = b(session_id).scenario
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            base = _P(sc.starter_template) if sc.starter_template else None
+            if base and base.exists():
+                for f in base.rglob("*"):
+                    if f.is_file():
+                        z.write(f, f.relative_to(base).as_posix())
+            else:
+                z.writestr("README.md", f"# {sc.title}\n\nNo starter files for this scenario — begin from scratch.\n")
+        return Response(content=buf.getvalue(), media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{session_id}-starter.zip"'})
+
+    @app.post("/api/session/{session_id}/submit")
+    def submit_work(session_id: str, payload: dict):
+        from datetime import datetime, timezone
+        from sim.core.ports.repository import StoredMessage
+        content = (payload or {}).get("content", "")
+        filename = (payload or {}).get("filename", "work.patch")
+        if not content.strip():
+            return JSONResponse({"error": "nothing submitted"}, status_code=400)
+        ts = datetime.now(timezone.utc).isoformat()
+        sub = app.state.submissions.save(session_id, filename, content, ts)
+        # a short marker in the transcript so the instructor replay shows the moment
+        app.state.repo.append(StoredMessage(
+            session_id=session_id, sender="tester", channel="general",
+            content=f"[reveal] Submitted work: {filename} ({sub.lines} lines).",
+            ts=ts, kind="event"))
+        return {"ok": True, "seq": sub.seq, "filename": filename, "lines": sub.lines}
+
+    @app.get("/api/session/{session_id}/submissions")
+    def list_submissions(session_id: str):
+        subs = app.state.submissions.list(session_id)
+        return {"submissions": [
+            {"seq": s.seq, "filename": s.filename, "lines": s.lines, "ts": s.ts}
+            for s in subs]}
 
     # ---- environment (sandbox) -----------------------------------------
     from sim.core.ports.environment import SandboxError, SandboxUnavailable
@@ -316,6 +364,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                          for p in bundle.scenario.personas],
             "transcript": bundle.session_service.export(sid),
             "mail": mail_meta,
+            "submissions": [
+                {"seq": s.seq, "filename": s.filename, "lines": s.lines,
+                 "ts": s.ts, "content": s.content}
+                for s in app.state.submissions.list(sid)
+            ],
         }
 
     # ---- websocket ------------------------------------------------------

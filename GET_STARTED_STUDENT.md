@@ -98,6 +98,11 @@ The client and stakeholders are AI. You choose what runs them:
 - **Best quality — Anthropic API key (paid).** Get a key at
   https://console.anthropic.com and set `ANTHROPIC_API_KEY`.
 
+- **Fast & cheap open models — Groq (paid, inexpensive).** Runs Llama and other
+  open models very fast. `pip install groq`, get a key at
+  https://console.groq.com/keys, set `GROQ_API_KEY`, and start with
+  `LLM_PROVIDER=groq`.
+
 - **Just looking around — "fake" mode (no setup).** The people reply with one
   canned line. Fine to see the interface; useless for real practice.
 
@@ -144,6 +149,14 @@ To stop the server: press **Ctrl+C** in the terminal.
 
 ---
 
+## 7b. If your instructor gave you a server link
+
+If you're in a class, you may not run the server yourself at all — your
+instructor runs it and gives you a link like `http://192.168.1.20:8000/#s-abc123`.
+Just open that link. You still do steps 5–6 (a coding tool) on your own
+machine, and you hand your work back with the **Submit** app (see §8). Full
+details: **[docs/CLASSROOM.md](docs/CLASSROOM.md)**.
+
 ## 8. Your first session
 
 1. You land on a **desktop** with a dock of apps.
@@ -159,7 +172,10 @@ To stop the server: press **Ctrl+C** in the terminal.
    reviewed.
 6. Use **Tickets** to scope the work, **Files** to browse the project, and
    **Mail** for the more formal stakeholder threads.
-7. When you're done, hit **Grade run** in Team Chat for feedback.
+7. If you're on your own machine (or a classroom server), use the **Submit**
+   app: download the starter code, build locally, then submit a git patch of
+   your changes.
+8. When you're done, hit **Grade run** in Team Chat for feedback.
 
 There's no single right answer — work it like a real client.
 

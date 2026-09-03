@@ -141,6 +141,9 @@ def build_llm(config: Config) -> LLMClient:
     if provider == "anthropic":
         from sim.adapters.llm.anthropic_client import AnthropicClient
         return AnthropicClient(model=config.anthropic_model)
+    if provider == "groq":
+        from sim.adapters.llm.groq_client import GroqClient
+        return GroqClient(model=config.groq_model)
     raise ValueError(f"unknown LLM_PROVIDER: {config.llm_provider!r}")
 
 

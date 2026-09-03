@@ -3,6 +3,7 @@ Real-model behavior lives in tests/evals (non-gating).
 """
 from sim.adapters.llm.anthropic_client import AnthropicClient
 from sim.adapters.llm.fake_client import FakeLLMClient
+from sim.adapters.llm.groq_client import GroqClient
 from sim.adapters.llm.ollama_client import OllamaClient
 from sim.adapters.persistence.memory_repo import InMemoryMessageRepository
 from sim.adapters.persistence.memory_state import InMemoryUnlockStore
@@ -56,7 +57,7 @@ def _service(reply="ok", judge="NO", clock=None):
 
 # REG-01: Liskov / provider contract
 def test_reg01_providers_satisfy_llm_port():
-    for c in (FakeLLMClient(), OllamaClient(), AnthropicClient()):
+    for c in (FakeLLMClient(), OllamaClient(), AnthropicClient(), GroqClient()):
         assert isinstance(c, LLMClient)
 
 

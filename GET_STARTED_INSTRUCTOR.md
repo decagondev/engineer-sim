@@ -12,11 +12,18 @@ Follow **[GET_STARTED_STUDENT.md](GET_STARTED_STUDENT.md)** §2–§5 to get the
 run `./setup.sh` (or `setup.ps1` on Windows), install Docker, and pick a model.
 
 For real teaching you'll want **good persona quality**, so prefer either a
-strong Ollama model or an **Anthropic API key** over the default. A weak local
+strong Ollama model, an **Anthropic API key**, or **Groq** (`LLM_PROVIDER=groq`, fast/cheap open models) over the default. A weak local
 model can break character and give learners a misleading experience — see the
 note in §6.
 
 ---
+
+## 1b. Running for a whole class (one server, many learners)
+
+To have learners connect to one machine instead of each running their own,
+use the classroom server: `python serve.py` binds to your network and prints
+the URLs to share; learners code locally and submit a patch. Full guide:
+**[docs/CLASSROOM.md](docs/CLASSROOM.md)**.
 
 ## 2. Start the server
 

@@ -575,3 +575,27 @@ Tests LIB-01..03, SMK-17. Full suite: 84 passed, 3 deselected.
 The adaptive-difficulty initiative (Waves 9-13) is now feature-complete. What
 remains is validation, not construction: real playtests per level and per-level
 grader calibration (the grader still, correctly, flies `calibrated:false`).
+
+---
+
+## 19. Version A — classroom / LAN server + learner submission
+
+One server hosts chat/mail/tickets/scenarios/grading; learners connect over the
+LAN and code on their own machines. New pieces: a `SubmissionStore` (sqlite/memory)
+keyed by session; a **Submit** desktop app; endpoints to download the scenario
+starter as a zip (`/starter.zip`), submit a patch (`/submit`), and list/review
+submissions; grading now prefers a submitted patch as the build record (payload >
+submission > server sandbox); a submission drops a marker into the transcript so it
+shows in replay, and the instructor detail carries the full patch for review. A
+`serve.py` launcher binds 0.0.0.0, prints the LAN URLs, and warns about the
+cleartext instructor password. Tests SUB-01, SMK-18. Full suite: 87 passed.
+
+Deliberately NOT built (Version B, deferred): server-run containers / code-server,
+or a local Docker registry learners pull from. The `Environment` port is the seam
+for that when a class on Version A shows it's needed.
+
+---
+
+## 20. Groq provider (open models via a fast API)
+
+Added a `GroqClient` LLM adapter (OpenAI-compatible chat completions, lazy SDK import) so `LLM_PROVIDER=groq` runs open models (Llama/Mixtral/Gemma) fast and cheap. Config `GROQ_MODEL` (default `llama-3.3-70b-versatile`), key via `GROQ_API_KEY`. Four providers now sit behind the same `LLMClient` port: fake / ollama / anthropic / groq — the provider contract test (REG-01) covers all four. Surfaced in `doctor.py` and every setup guide. Full suite: 87 passed.

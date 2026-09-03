@@ -14,6 +14,7 @@ class Config:
     llm_provider: str = "fake"            # fake | ollama | anthropic
     ollama_model: str = "llama3.1"
     anthropic_model: str = "claude-sonnet-4-5"  # override via ANTHROPIC_MODEL
+    groq_model: str = "llama-3.3-70b-versatile"  # override via GROQ_MODEL
     db_path: str = "sim.db"
     scenario_path: str = ""               # empty => built-in demo scenario
     grader_calibrated: bool = False       # flip only after calibration passes
@@ -31,6 +32,7 @@ class Config:
             llm_provider=os.environ.get("LLM_PROVIDER", "fake"),
             ollama_model=os.environ.get("OLLAMA_MODEL", "llama3.1"),
             anthropic_model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5"),
+            groq_model=os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
             db_path=os.environ.get("SIM_DB_PATH", "sim.db"),
             scenario_path=os.environ.get("SIM_SCENARIO", ""),
             grader_calibrated=os.environ.get("GRADER_CALIBRATED", "").lower()

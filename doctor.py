@@ -115,6 +115,7 @@ else:
 print(f"\n{BOLD}How the AI people are powered (pick one){END}")
 ollama_up, tags = http_ok("http://localhost:11434/api/tags")
 anthropic_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+groq_key = bool(os.environ.get("GROQ_API_KEY"))
 
 if have("ollama") or ollama_up:
     if ollama_up:
@@ -147,6 +148,13 @@ else:
          "Optional. Set ANTHROPIC_API_KEY for the best persona quality.",
          "https://console.anthropic.com")
 
+if groq_key:
+    ok("Groq API key — set (fast, cheap open models)")
+else:
+    warn("No Groq API key set (fast open models like Llama, cheap)",
+         "Optional. Set GROQ_API_KEY to run open models fast via Groq.",
+         "https://console.groq.com/keys")
+
 # --- Node.js (optional; some coding tools need it) -----------------------
 print(f"\n{BOLD}Optional{END}")
 if have("node"):
@@ -169,6 +177,8 @@ if ollama_up:
     provider = ("ollama", "LLM_PROVIDER=ollama OLLAMA_MODEL=llama3.1:8b")
 elif anthropic_key:
     provider = ("anthropic", "LLM_PROVIDER=anthropic ANTHROPIC_MODEL=<current-model>")
+elif groq_key:
+    provider = ("groq", "LLM_PROVIDER=groq GROQ_MODEL=llama-3.3-70b-versatile")
 else:
     provider = ("fake", "LLM_PROVIDER=fake  (canned replies — set up Ollama for real practice)")
 

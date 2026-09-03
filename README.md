@@ -9,6 +9,7 @@ and get graded on how you did it.
 - **Learners:** read **[GET_STARTED_STUDENT.md](GET_STARTED_STUDENT.md)** — a
   from-nothing, 15-minute setup for macOS / Windows / Linux.
 - **Instructors:** read **[GET_STARTED_INSTRUCTOR.md](GET_STARTED_INSTRUCTOR.md)**.
+- **Classroom / lab server (one server, learners connect + submit):** **[docs/CLASSROOM.md](docs/CLASSROOM.md)** — run `python serve.py`.
 - **Coding tools & prerequisites (Cursor, Claude Code, Codex, OpenCode, git, Docker, Ollama):** **[docs/TOOLS.md](docs/TOOLS.md)**.
 
 ### One-command setup

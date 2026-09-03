@@ -33,6 +33,7 @@ class SessionManager:
         from sim.adapters.persistence.sqlite_mail import SqliteMailStore
         from sim.adapters.persistence.sqlite_tickets import SqliteTicketStore
         from sim.adapters.persistence.sqlite_settings import SqliteSettingsStore
+        from sim.adapters.persistence.sqlite_submissions import SqliteSubmissionStore
 
         self._config = config
         self._registry = registry
@@ -44,6 +45,7 @@ class SessionManager:
         self.mailstore = SqliteMailStore(config.db_path)
         self.ticketstore = SqliteTicketStore(config.db_path)
         self.settings = SqliteSettingsStore(config.db_path)
+        self.submissions = SqliteSubmissionStore(config.db_path)
         self._responder = PersonaResponder(llm)
         self._judge = judge_llm
         self._cache: dict[str, Bundle] = {}

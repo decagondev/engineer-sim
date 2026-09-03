@@ -311,3 +311,30 @@ def test_smk17_new_scenario_runs(tmp_path):
         ws.send_json({"content": "what does 'too slow' actually cost you?", "target": "ravi"})
         msg = ws.receive_json()
     assert msg["sender"] == "ravi" and msg["content"]
+
+
+# SMK-18  (Version A: starter download + submit + grade-from-submission)
+def test_smk18_submission_flow(tmp_path):
+    import io, zipfile
+    c = TestClient(build_app(Config(llm_provider="fake", db_path=str(tmp_path / "s.db"),
+                                    sandbox_root=str(tmp_path / "b"))))
+    sid = "s-sub"
+    c.post(f"/api/session/{sid}/start")
+    # starter zip streams real files
+    z = c.get(f"/api/session/{sid}/starter.zip")
+    assert z.status_code == 200
+    names = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+    assert "README.md" in names
+    # empty submission rejected; real one accepted + recorded
+    assert c.post(f"/api/session/{sid}/submit", json={"content": "  "}).status_code == 400
+    r = c.post(f"/api/session/{sid}/submit",
+               json={"filename": "work.patch", "content": "diff\n+x\n"}).json()
+    assert r["ok"] and r["lines"] == 3
+    assert c.get(f"/api/session/{sid}/submissions").json()["submissions"][0]["filename"] == "work.patch"
+    # instructor detail carries the submission for review + a transcript marker
+    h = {"X-Instructor-Token": "$T0mV13w"}
+    det = c.get(f"/api/instructor/session/{sid}", headers=h).json()
+    assert det["submissions"][0]["content"].startswith("diff")
+    assert any("Submitted work" in m["content"] for m in det["transcript"])
+    # the submit app module is served
+    assert c.get("/static/apps/submit.js").status_code == 200

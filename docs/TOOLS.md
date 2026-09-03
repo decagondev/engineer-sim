@@ -38,6 +38,9 @@ current as of writing — if one has moved, search the tool's name.
   After installing: `ollama pull llama3.1:8b`
 - **Anthropic API** — highest persona quality (paid). Get a key:
   https://console.anthropic.com
+- **Groq API** — fast, cheap inference for **open models** (Llama, Mixtral, Gemma).
+  Get a key: https://console.groq.com/keys · Models: https://console.groq.com/docs/models ·
+  Install the SDK: `pip install groq`
 
 ## The environment
 
