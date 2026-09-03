@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q -m 'not eval'"
+markers = ["eval: real-model, non-gating eval (skipped unless LLM_PROVIDER is real)"]
+

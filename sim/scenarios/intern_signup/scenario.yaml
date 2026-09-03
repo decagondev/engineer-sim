@@ -1,0 +1,69 @@
+key: intern_signup
+title: The signup form that loses people
+difficulty: intern
+definition_of_done: >-
+  The engineer discovers that new users abandon at the email-verification step
+  (the form itself works), proposes a small, targeted fix, and communicates it
+  simply. A full rewrite is the wrong answer.
+starter_template: starter
+world:
+  facts:
+    deadline: take a week, no rush
+    budget: you, with a mentor to help
+    team: a friendly 10-person startup
+personas:
+  - key: maya
+    name: Maya
+    role: Product Manager
+    voice: warm, patient, non-technical, happy to explain
+    public_brief: >-
+      Our signup form seems broken — people aren't signing up. Can you take a
+      look and fix it?
+    hidden_need: >-
+      The form works fine. New users abandon at the "check your email"
+      verification step because the confirmation email is slow and often lands
+      in spam. That's the real problem.
+    hidden_constraints: >-
+      It's a small team; a big rewrite isn't wanted. A targeted fix is ideal.
+    reveal_ladder:
+      - unlock_when: asks who is affected, or when it started
+        content: It's specifically brand-new users on the free plan; existing users are fine.
+      - unlock_when: asks what "broken" means or what the user actually sees
+        content: They fill the form in fine, but a lot never come back after the "check your email" screen.
+      - unlock_when: asks about the verification email or that step specifically
+        content: People have said the verification email takes ages to arrive, or ends up in spam.
+  - key: sam
+    name: Sam
+    role: Senior Engineer (your mentor)
+    voice: encouraging, supportive, offers hints not answers
+    public_brief: >-
+      You check in to see how the new engineer is doing and offer help if they're stuck.
+    reveal_ladder: []
+triggers:
+  - event_id: sam_checkin
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: sam
+    channel: dm:sam
+    content: >-
+      Hey! Sam here — just checking in. How's it going with the signup thing?
+      Shout if you get stuck, no pressure.
+rubric:
+  - key: discovery
+    weight: 2.0
+    description: Found that the problem is the email-verification step, not the form itself.
+  - key: scoping
+    weight: 1.0
+    description: Proposed a small, targeted fix rather than a rewrite.
+  - key: stakeholders
+    weight: 1.0
+    description: Engaged Maya (and Sam) well; asked for help appropriately.
+  - key: communication
+    weight: 1.0
+    description: Explained the finding and plan in simple, non-technical terms.
+tickets:
+  - title: Fix the broken signup form
+    description: "Maya's request: people aren't signing up, the form seems broken."
+    created_by: maya
+    status: todo

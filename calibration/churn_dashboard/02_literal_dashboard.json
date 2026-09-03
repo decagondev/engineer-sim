@@ -1,0 +1,13 @@
+{
+  "id": "literal_dashboard",
+  "build_record": "COMMITS: React dashboard with 6 chart widgets. DIFFSTAT: 14 files, +900.",
+  "transcript": [
+    {"sender":"tester","channel":"dm:priya","content":"Sure, I can build a dashboard. What charts do you want?","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"Maybe active users, revenue, that kind of thing?","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"Great, I'll do a nice charts page with filters and a weekly email.","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"Sounds good I guess.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"Done — shipped the dashboard with six widgets.","kind":"message"}
+  ],
+  "human": {"summary":"Built exactly what was asked; never found the churn need. Nice UI, wrong problem.",
+    "scores": {"discovery": 0.1, "scoping": 0.4, "stakeholders": 0.2, "communication": 0.6}}
+}

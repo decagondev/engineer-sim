@@ -1,0 +1,70 @@
+key: junior_helpsearch
+title: Add search to the help center
+difficulty: junior
+definition_of_done: >-
+  The engineer discovers that most searches are the same handful of questions,
+  and proposes surfacing the top FAQs (and better titles) rather than building
+  full-text search. Scoped to two weeks, one engineer.
+starter_template: starter
+world:
+  facts:
+    deadline: about two weeks
+    budget: one engineer
+    team: a 30-person SaaS with a small support team
+personas:
+  - key: omar
+    name: Omar
+    role: Support Lead
+    voice: friendly, a bit harried, talks in customer pain
+    public_brief: >-
+      We need search on our help center so customers stop emailing us the same
+      things. Can you add a search box?
+    hidden_need: >-
+      80% of searches would be the same five or six questions. You don't need a
+      full search engine — you need the top FAQs surfaced prominently with
+      clearer titles. That would kill most of the repetitive email.
+    hidden_constraints: >-
+      Two weeks, one engineer. Standing up and maintaining a search cluster is
+      overkill and won't get maintained.
+    reveal_ladder:
+      - unlock_when: asks what customers actually search for, or what questions come in
+        content: Honestly it's the same handful — reset password, change plan, cancel, where's my invoice.
+      - unlock_when: asks what happens today when someone can't find an answer
+        content: They email us, and we copy-paste the same answers all day long.
+      - unlock_when: asks how you'd know it worked, or what success looks like
+        content: Fewer of those repetitive emails. That's the whole point — deflect the easy ones.
+  - key: jess
+    name: Jess
+    role: Designer
+    voice: enthusiastic about polish, tends to expand scope
+    public_brief: >-
+      You drop in with ideas for a slick search experience — filters, autocomplete, the works.
+    reveal_ladder: []
+triggers:
+  - event_id: jess_ideas
+    kind: turn_count
+    at: 4
+    min_level: junior
+    persona_key: jess
+    channel: dm:jess
+    content: >-
+      Hi! Jess from design — I've been sketching a lovely search UI with filters
+      and autocomplete and recent searches. Want to see the Figma?
+rubric:
+  - key: discovery
+    weight: 2.0
+    description: Found that most searches are a few repeated questions — FAQs, not full-text search.
+  - key: scoping
+    weight: 1.5
+    description: Scoped a simple, maintainable solution within two weeks; resisted over-building.
+  - key: stakeholders
+    weight: 1.0
+    description: Handled Omar and Jess's scope expansion sensibly.
+  - key: communication
+    weight: 1.0
+    description: Explained the reasoning clearly.
+tickets:
+  - title: Add search to the help center
+    description: "Omar's request: a search box so customers stop emailing the same questions."
+    created_by: omar
+    status: todo

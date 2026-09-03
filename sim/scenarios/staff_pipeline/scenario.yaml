@@ -1,0 +1,103 @@
+key: staff_pipeline
+title: The deploy pipeline everyone hates
+difficulty: staff
+definition_of_done: >-
+  The engineer discovers the real problem is flakiness eroding trust (people
+  batch huge PRs, nobody owns the pipeline) — not raw speed — and proposes a
+  plan that tackles reliability and ownership within the constraints, while
+  handling scope-creep and budget pressure.
+starter_template: starter
+world:
+  facts:
+    deadline: one quarter
+    budget: you plus part of one other engineer
+    team: a 60-engineer company
+personas:
+  - key: ravi
+    name: Ravi
+    role: Engineering Director
+    voice: results-oriented, talks in outcomes, initially fixated on speed
+    public_brief: >-
+      Our CI/CD is too slow — deploys take forever. Make them faster.
+    hidden_need: >-
+      Speed is a symptom. The real problem is flakiness: half of failures are
+      unrelated flaky tests, so people distrust the pipeline, batch huge PRs, and
+      deploy rarely — a vicious cycle. And nobody owns the pipeline.
+    hidden_constraints: >-
+      No dedicated platform team. Anything that needs a standing owner won't get
+      one. A Kubernetes migration is not on the table.
+    reveal_ladder:
+      - unlock_when: asks what "too slow" costs, or how people behave because of it
+        content: People batch enormous PRs because deploying is scary, which makes everything slower and riskier.
+      - unlock_when: asks about failures, flakiness, or reliability
+        content: Honestly half the red builds are flaky tests unrelated to the change. People just hit re-run.
+      - unlock_when: asks who owns or maintains the pipeline
+        content: Nobody really. It's everyone's and no one's — that's part of the problem.
+  - key: marcus2
+    name: Marcus
+    role: VP of Engineering (the uninvited stakeholder)
+    voice: blunt, worried about scope and maintenance burden
+    public_brief: >-
+      You push on whether this becomes another thing that needs constant babysitting.
+    reveal_ladder: []
+  - key: dana2
+    name: Dana
+    role: Finance Business Partner
+    voice: polite, precise, cost-conscious; writes in email
+    public_brief: >-
+      You want confirmation there's no new tooling spend or headcount.
+    reveal_ladder: []
+triggers:
+  - event_id: marcus_pushback
+    kind: turn_count
+    at: 3
+    min_level: mid
+    persona_key: marcus2
+    channel: dm:marcus2
+    content: >-
+      Marcus here. Before you go big — who maintains whatever you build? We are
+      not standing up a platform team, and we're not migrating to Kubernetes.
+  - event_id: k8s_scope_ticket
+    kind: turn_count
+    at: 4
+    action: ticket
+    min_level: staff
+    persona_key: ravi
+    channel: dm:ravi
+    subject: While you're in there, migrate us to Kubernetes?
+    content: >-
+      A few folks have asked — could this also move us onto Kubernetes? Feels
+      like the moment to do it.
+  - event_id: dana_budget
+    kind: turn_count
+    at: 5
+    action: email
+    min_level: senior
+    persona_key: dana2
+    channel: general
+    subject: Spend on the pipeline work
+    content: >-
+      Hi — Finance here. Please confirm this needs no new tooling licences and no
+      additional headcount. We're holding the line on both this quarter. Thanks, Dana
+rubric:
+  - key: discovery
+    weight: 1.6
+    description: Found that reliability/trust and ownership are the real problem, not raw speed.
+  - key: scoping
+    weight: 1.6
+    description: Scoped a reliability-first plan within constraints; declined the K8s scope-creep.
+  - key: stakeholders
+    weight: 1.4
+    description: Handled Marcus (maintenance), Ravi (scope) and Dana (budget) credibly.
+  - key: communication
+    weight: 1.2
+    description: Reframed the problem clearly for a non-technical and technical audience.
+tickets:
+  - title: Make deploys faster
+    description: "Ravi's request: CI/CD is too slow."
+    created_by: ravi
+    status: todo
+  - title: Reduce flaky test failures
+    description: Placeholder — how big is the flakiness problem, really?
+    created_by: system
+    status: todo

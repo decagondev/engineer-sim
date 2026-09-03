@@ -1,0 +1,3 @@
+# Article 12
+
+To reset, go to settings...

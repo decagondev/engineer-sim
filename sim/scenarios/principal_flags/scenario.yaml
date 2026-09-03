@@ -1,0 +1,110 @@
+key: principal_flags
+title: Build or buy — the feature-flag decision
+difficulty: principal
+definition_of_done: >-
+  The engineer discovers that three teams already run half-baked flag systems and
+  that the ask is really about consolidation, migration, and leadership buy-in —
+  not a greenfield build. Produces a build/buy/migrate recommendation that aligns
+  the stakeholders and de-risks migration.
+starter_template: starter
+world:
+  facts:
+    deadline: a recommendation in three weeks
+    budget: modest; buying is possible if not eye-watering
+    team: a 200-person scaleup, several product teams
+personas:
+  - key: elena
+    name: Elena
+    role: VP of Product
+    voice: strategic, impatient with technical detail, wants a decision
+    public_brief: >-
+      We keep hearing about feature flags. Should we build a proper system? I want
+      a recommendation.
+    hidden_need: >-
+      At least three teams already rolled their own flag systems that don't
+      interoperate. The real need is consolidation with a credible migration path
+      and leadership buy-in — decided because an experiment took six weeks and the
+      board asked why. A greenfield build ignores the hard part (migration + politics).
+    hidden_constraints: >-
+      Buying is acceptable if cost is reasonable. Migrating off the homegrown
+      systems — and the team that built them — is the scary, political part.
+    reveal_ladder:
+      - unlock_when: asks what teams do today, or whether anything exists already
+        content: At least three teams already built their own flag systems. They don't talk to each other.
+      - unlock_when: asks what's driving this now, or what decision is actually needed
+        content: The board asked why an experiment took six weeks. Leadership wants a plan and a decision — not more code.
+      - unlock_when: asks about build vs buy, cost, or migration risk
+        content: Buying's fine if it's not eye-watering. The scary bit is migrating off the homegrown ones without a war.
+  - key: marcus3
+    name: Marcus
+    role: VP of Engineering
+    voice: pragmatic, skeptical of building yet another platform
+    public_brief: >-
+      You push back on building in-house and worry about long-term maintenance.
+    reveal_ladder: []
+  - key: theo
+    name: Theo
+    role: Staff Engineer (built one of the homegrown systems)
+    voice: defensive about his system, proud, politically invested
+    public_brief: >-
+      You argue your existing flag system is fine and others should just adopt it.
+    reveal_ladder: []
+  - key: dana3
+    name: Dana
+    role: Finance Business Partner
+    voice: cost-conscious; writes in email
+    public_brief: >-
+      You want the cost envelope for any buy option in writing.
+    reveal_ladder: []
+triggers:
+  - event_id: marcus_skeptic
+    kind: turn_count
+    at: 3
+    min_level: senior
+    persona_key: marcus3
+    channel: dm:marcus3
+    content: >-
+      Marcus here. Please tell me the recommendation isn't "build our own platform."
+      We can barely maintain what we have.
+  - event_id: theo_defends
+    kind: turn_count
+    at: 4
+    min_level: principal
+    persona_key: theo
+    channel: dm:theo
+    content: >-
+      Hey — I built our flags system and it works great. Honestly everyone should
+      just move onto mine rather than reinventing it. Have you looked at it?
+  - event_id: dana_cost
+    kind: turn_count
+    at: 5
+    action: email
+    min_level: senior
+    persona_key: dana3
+    channel: general
+    subject: Cost envelope for the flags decision
+    content: >-
+      Hi — if you're leaning toward buying, I need a rough annual cost and the
+      migration effort in writing before this goes to leadership. Thanks, Dana
+rubric:
+  - key: discovery
+    weight: 1.4
+    description: Uncovered the existing homegrown systems and that the real ask is a decision + migration, not a build.
+  - key: scoping
+    weight: 1.6
+    description: Produced a credible build/buy/migrate recommendation that de-risks migration.
+  - key: stakeholders
+    weight: 1.8
+    description: Aligned Elena, Marcus, Theo (politically) and Finance.
+  - key: communication
+    weight: 1.4
+    description: Framed a clear, leadership-ready decision.
+tickets:
+  - title: Recommend a feature-flag approach
+    description: "Elena's ask: build or buy? Deliver a recommendation."
+    created_by: elena
+    status: todo
+  - title: Inventory the existing homegrown flag systems
+    description: Placeholder — how many are there, who owns them?
+    created_by: system
+    status: todo

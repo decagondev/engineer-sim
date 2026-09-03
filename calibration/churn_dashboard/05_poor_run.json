@@ -1,0 +1,12 @@
+{
+  "id": "poor_run",
+  "build_record": "COMMITS: (none). DIFFSTAT: empty.",
+  "transcript": [
+    {"sender":"tester","channel":"dm:priya","content":"ok what do you want","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"A dashboard for customer health?","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"cool i'll figure something out","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"kind of busy, will get to it","kind":"message"}
+  ],
+  "human": {"summary":"No discovery, no scope, no plan, nothing shipped.",
+    "scores": {"discovery": 0.05, "scoping": 0.1, "stakeholders": 0.1, "communication": 0.15}}
+}

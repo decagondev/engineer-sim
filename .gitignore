@@ -1,0 +1,4 @@
+-e .sandboxes/
+sim.db
+__pycache__/
+*.pyc

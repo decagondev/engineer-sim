@@ -1,0 +1,15 @@
+{
+  "id": "great_run",
+  "build_record": "COMMITS: churn-score query over Postgres+Stripe join; weekly digest email. DIFFSTAT: 4 files, +180.",
+  "transcript": [
+    {"sender":"tester","channel":"dm:priya","content":"Before we talk charts — who acts on this and what would they do differently?","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"My CSMs. Right now they only find out an account is unhappy once it's cancelling.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"So the real win is catching at-risk accounts early. What signals count as at-risk, and where does that data live?","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"Usage dropping, downgrades, ticket spikes. Usage is in our Postgres, billing's in Stripe.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"Given one part-time eng, I'd skip the fancy dashboard and ship a weekly at-risk list to your CSMs first. Prove it drives saves, then invest.","kind":"message"},
+    {"sender":"marcus","channel":"dm:priya","content":"How big is this? We can't babysit another service.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"One scheduled query + an email. No new infra, no daily ops. If it earns its keep we harden it.","kind":"message"}
+  ],
+  "human": {"summary":"Excellent discovery, right-sized scope, handled Marcus well.",
+    "scores": {"discovery": 0.95, "scoping": 0.85, "stakeholders": 0.85, "communication": 0.9}}
+}

@@ -1,0 +1,4 @@
+steps:
+  - test: run-all           # ~22 min, retried up to 3x on failure
+  - build
+  - deploy: manual-approval

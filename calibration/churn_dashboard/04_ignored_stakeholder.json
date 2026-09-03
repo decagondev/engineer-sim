@@ -1,0 +1,13 @@
+{
+  "id": "ignored_stakeholder",
+  "build_record": "COMMITS: weekly at-risk query + email. DIFFSTAT: 3 files, +120.",
+  "transcript": [
+    {"sender":"tester","channel":"dm:priya","content":"What action should this drive, and what makes an account at-risk?","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"CSMs intervening early — usage drops, downgrades, ticket spikes.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"I'll ship a weekly at-risk email. Simple and effective.","kind":"message"},
+    {"sender":"marcus","channel":"dm:priya","content":"How much ongoing maintenance is this?","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"Not worried about it, it's fine.","kind":"message"}
+  ],
+  "human": {"summary":"Good discovery and scope, but brushed off Marcus's real maintenance concern.",
+    "scores": {"discovery": 0.85, "scoping": 0.8, "stakeholders": 0.25, "communication": 0.6}}
+}

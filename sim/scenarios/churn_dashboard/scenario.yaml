@@ -1,0 +1,114 @@
+key: churn_dashboard
+title: The dashboard that isn't really about dashboards
+difficulty: mid
+starter_template: starter
+definition_of_done: >-
+  The engineer uncovers that Priya needs proactive churn early-warning (not just
+  charts), scopes something shippable within the constraints, and communicates a
+  plan back to the stakeholders.
+world:
+  facts:
+    deadline: end of the quarter (about 6 weeks)
+    budget: one engineer, part-time
+    team: a 40-person B2B SaaS company
+personas:
+  - key: priya
+    name: Priya
+    role: Head of Customer Success
+    voice: warm but busy; talks in outcomes, not tech; slightly vague
+    public_brief: >-
+      You want 'a dashboard' showing how customers are doing. You mention charts
+      and maybe a weekly email.
+    hidden_need: >-
+      Early warning of which accounts are about to churn so your team can
+      intervene in time. A dashboard nobody checks won't help.
+    hidden_constraints: >-
+      Data is messy, split across Stripe and a Postgres DB. No new headcount.
+      Anything needing daily manual work will die.
+    reveal_ladder:
+      - unlock_when: asks what decision or action the tool should drive, or who uses it and when
+        content: >-
+          Your team is reactive — you only hear about unhappy accounts once
+          they've already given notice.
+      - unlock_when: asks about data sources or where the numbers live
+        content: >-
+          Usage data is in the product's Postgres DB; billing and plan changes
+          are in Stripe; they don't join up.
+      - unlock_when: asks what 'doing well' or 'at risk' actually means in measurable terms
+        content: >-
+          At-risk really means usage dropping week over week, or a downgrade, or
+          support tickets spiking.
+  - key: dana
+    name: Dana
+    role: Finance Business Partner
+    voice: polite, precise, cost-conscious; writes in email
+    public_brief: >-
+      You care that whatever gets built has no new licence or tooling cost and
+      needs no extra headcount. You ask for confirmation in writing.
+    reveal_ladder: []
+  - key: marcus
+    name: Marcus
+    role: VP of Engineering (the uninvited stakeholder)
+    voice: blunt, time-pressed, worried about scope and maintenance
+    public_brief: >-
+      You drop in to check the plan is realistic for one part-time engineer and
+      won't become a maintenance burden. You push on scope.
+    reveal_ladder: []
+triggers:
+  - event_id: priya_scope_ticket
+    kind: turn_count
+    at: 4
+    action: ticket
+    min_level: mid
+    persona_key: priya
+    channel: dm:priya
+    subject: Can it also show a revenue chart?
+    content: >-
+      Oh — while you are at it, could the tool also show a revenue-over-time
+      chart on the same screen? The exec team would love that.
+  - event_id: dana_email
+    kind: turn_count
+    at: 5
+    action: email
+    min_level: senior
+    persona_key: dana
+    channel: general
+    subject: Budget for the CS tooling work
+    content: >-
+      Hi — Finance here. We are trimming Q3 discretionary spend, so whatever you
+      build needs to run on existing infrastructure with no new licences or tooling
+      cost, and no extra headcount. Could you confirm in a reply that the approach
+      fits within that? Thanks, Dana
+  - event_id: marcus_appears
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: marcus
+    channel: dm:marcus
+    content: >-
+      Marcus here — saw this thread. Before you build anything, how big is this?
+      We can't take on another thing that needs babysitting every day.
+tickets:
+  - title: Build a customer health dashboard
+    description: >-
+      Priya's original request: charts of how customers are doing, plus maybe a
+      weekly email.
+    created_by: priya
+    status: todo
+  - title: Figure out what 'at risk' actually means
+    description: Placeholder — the real definition needs to come out of discovery.
+    created_by: system
+    status: todo
+rubric:
+  - key: discovery
+    weight: 2.0
+    description: Uncovered the real need (churn early-warning) rather than building the literal dashboard asked for.
+  - key: scoping
+    weight: 1.5
+    description: Scoped something shippable within the deadline, budget, and data constraints.
+  - key: stakeholders
+    weight: 1.0
+    description: Handled Marcus's scope/maintenance concerns credibly.
+  - key: communication
+    weight: 1.0
+    description: Explained the plan clearly back to non-technical stakeholders.

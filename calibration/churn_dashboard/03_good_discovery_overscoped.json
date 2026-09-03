@@ -1,0 +1,13 @@
+{
+  "id": "good_discovery_overscoped",
+  "build_record": "COMMITS: ML churn model scaffolding, feature store, airflow DAGs. DIFFSTAT: 28 files, +2400.",
+  "transcript": [
+    {"sender":"tester","channel":"dm:priya","content":"Who uses this and what decision does it drive?","kind":"message"},
+    {"sender":"priya","channel":"dm:priya","content":"CSMs, to catch churn before it happens.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"Got it — churn prediction. I'll build a proper ML pipeline with a feature store and daily retraining.","kind":"message"},
+    {"sender":"marcus","channel":"dm:priya","content":"For one part-time engineer? That'll rot in a month.","kind":"message"},
+    {"sender":"tester","channel":"dm:priya","content":"It'll be state of the art though.","kind":"message"}
+  ],
+  "human": {"summary":"Found the real need but massively over-scoped and dismissed the maintenance risk.",
+    "scores": {"discovery": 0.85, "scoping": 0.25, "stakeholders": 0.2, "communication": 0.5}}
+}

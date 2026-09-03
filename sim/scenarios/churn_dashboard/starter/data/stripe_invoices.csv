@@ -1,0 +1,5 @@
+customer_id,company_name,plan,mrr,status,last_change
+cus_JX92,Northwind Inc,Growth,900,active,2024-05-21
+cus_KP17,Umbrella Corp,Starter,120,active,2024-04-02
+cus_MM54,Stark Industries,Enterprise,4200,active,2024-03-15
+cus_Q<null>,Wayne Co,Growth,900,past_due,2024-05-19

@@ -1,0 +1,11 @@
+account_id,company,week,active_users,events,tickets
+acct_1042,Northwind,2024-05-06,48,5120,1
+acct_1042,Northwind,2024-05-13,44,4800,2
+acct_1042,Northwind,2024-05-20,31,2600,5
+acct_1042,Northwind,2024-05-27,22,1400,7
+acct_2091,Umbrella,2024-05-06,12,980,0
+acct_2091,Umbrella,2024-05-13,14,1100,0
+acct_2091,Umbrella,2024-05-20,15,1150,1
+acct_3310,Stark,2024-05-06,120,20400,3
+acct_3310,Stark,2024-05-13,119,20100,2
+acct_3310,Stark,2024-05-20,121,20550,4

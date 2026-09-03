@@ -1,0 +1,72 @@
+# Second scenario — same environment, different client & problem.
+# Proves "change the client, keep the environment" (Open/Closed): NO code changes.
+key: support_copilot
+title: The chatbot that's really about trustworthy answers
+difficulty: senior
+definition_of_done: >-
+  The engineer uncovers that Dev doesn't need "a chatbot" but reliable, cited
+  answers over the company's own docs, scopes a RAG approach with an evaluation
+  plan, and addresses hallucination risk with the compliance stakeholder.
+world:
+  facts:
+    deadline: a demo in 4 weeks
+    budget: one engineer plus occasional design help
+    team: a fintech with strict compliance requirements
+personas:
+  - key: dev
+    name: Dev
+    role: Head of Support
+    voice: enthusiastic, buzzword-y, wants "an AI chatbot" like everyone else
+    public_brief: >-
+      You want an AI chatbot on the help site so customers stop emailing support.
+      You mention ChatGPT a lot.
+    hidden_need: >-
+      What you actually need is accurate, up-to-date answers grounded in your own
+      help docs and policies — wrong answers in fintech are worse than no answer.
+    hidden_constraints: >-
+      Docs are scattered across Notion, a help centre, and PDFs. Answers must be
+      traceable to a source. Legal will block anything that can confidently make
+      things up.
+    reveal_ladder:
+      - unlock_when: asks what happens when the bot is wrong, or how answers get trusted
+        content: >-
+          A confidently wrong answer about fees or eligibility is a compliance
+          incident — worse than sending the customer to a human.
+      - unlock_when: asks where the source knowledge lives or how fresh it must be
+        content: >-
+          Knowledge is spread across Notion, the help centre, and policy PDFs, and
+          it changes when policies change.
+      - unlock_when: asks how you'd know it's actually good before launch
+        content: >-
+          You have no way today to tell if answers are right — you'd need a way to
+          measure answer quality before you'd ever ship it.
+  - key: robin
+    name: Robin
+    role: Compliance Officer (the uninvited stakeholder)
+    voice: cautious, precise, allergic to unbounded risk
+    public_brief: >-
+      You appear to ask how the system avoids giving wrong regulated advice and
+      whether every answer can be traced to an approved source.
+    reveal_ladder: []
+triggers:
+  - event_id: robin_appears
+    kind: turn_count
+    at: 3
+    persona_key: robin
+    channel: dm:dev
+    content: >-
+      Robin from Compliance — before this goes anywhere, how do we stop it giving
+      customers wrong answers about regulated products? Every answer needs a source.
+rubric:
+  - key: discovery
+    weight: 2.0
+    description: Uncovered that the real need is grounded, trustworthy answers — not "a chatbot".
+  - key: scoping
+    weight: 1.5
+    description: Scoped a retrieval-grounded approach with an evaluation plan, within the constraints.
+  - key: stakeholders
+    weight: 1.0
+    description: Addressed Robin's hallucination/traceability concerns credibly.
+  - key: communication
+    weight: 1.0
+    description: Explained the approach and its limits clearly to non-technical stakeholders.

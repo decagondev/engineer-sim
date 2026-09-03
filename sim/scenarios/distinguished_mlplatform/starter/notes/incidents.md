@@ -1,0 +1,3 @@
+- Incident 214: a product team shipped a model without load testing; platform paged at 3am
+- Change request #892: product waited 19 days for a platform change; no ETA given
+- Platform roadmap: not shared outside the team
