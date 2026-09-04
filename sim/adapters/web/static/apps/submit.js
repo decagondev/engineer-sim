@@ -23,25 +23,41 @@ SimApps.register({
     const sid = ctx.sid;
     root.innerHTML = `<div class="sub">
       <h2>Submit your work</h2>
-      <p>You're working on your own machine. Here's how to get the starter code,
-         and how to hand your work back for review.</p>
+      <p>Preferred: do the real git workflow — fork the starter, work, push, and
+         submit your repo's link. No account or offline? Use the patch fallback below.</p>
+
+      <div class="step" id="gh-step">
+        <h3>A · GitHub workflow (recommended)</h3>
+        <div id="starter-link"></div>
+        <div class="cmd" style="margin-top:10px"># fork the starter on GitHub, then:
+git clone https://github.com/&lt;you&gt;/&lt;your-fork&gt;.git
+cd &lt;your-fork&gt;
+# ...do the work...
+git add -A && git commit -m "my work" && git push</div>
+        <p style="margin-top:10px">Then paste your <b>public</b> repo URL and submit:</p>
+        <div class="row">
+          <input id="repo" placeholder="https://github.com/you/your-repo" style="flex:1;min-width:260px;background:var(--ink);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px 12px;font:inherit"/>
+          <button class="primary" id="submit-repo">Submit repo</button>
+          <span id="repo-status"></span>
+        </div>
+      </div>
 
       <div class="step">
-        <h3>1 · Get the starter code</h3>
-        <p>Download it, unzip somewhere, and start a git repo so your history is captured.</p>
-        <div class="row"><button class="primary" id="dl">Download starter code (.zip)</button></div>
+        <h3>B · Patch fallback (offline / no GitHub account)</h3>
+        <p>Get the starter, work locally, and submit a patch instead.</p>
+        <div class="row"><button id="dl">Download starter code (.zip)</button></div>
         <div class="cmd" style="margin-top:10px">unzip ${sid}-starter.zip -d my-project
 cd my-project
 git init && git add -A && git commit -m "starting point"</div>
       </div>
 
       <div class="step">
-        <h3>2 · Build it (in your own editor / coding tool)</h3>
+        <h3>C · (patch path) Build it in your own editor</h3>
         <p>Do the work. Commit as you go — commits are part of how it's reviewed.</p>
       </div>
 
       <div class="step">
-        <h3>3 · Make a patch of your changes</h3>
+        <h3>D · (patch path) Make a patch of your changes</h3>
         <p>From your project folder, create a patch of everything you did since the start:</p>
         <div class="cmd">git add -A
 git commit -m "my work"
@@ -49,7 +65,7 @@ git format-patch --stdout HEAD~999..HEAD > work.patch     # or:  git diff > work
       </div>
 
       <div class="step">
-        <h3>4 · Submit it</h3>
+        <h3>E · (patch path) Submit the patch</h3>
         <p>Open <code>work.patch</code>, paste its contents here (or choose the file), then submit.</p>
         <textarea id="patch" placeholder="Paste your git patch / diff here…"></textarea>
         <div class="row">
@@ -67,6 +83,31 @@ git format-patch --stdout HEAD~999..HEAD > work.patch     # or:  git diff > work
     const q = s => root.querySelector(s);
 
     q("#dl").onclick = () => { window.location = `/api/session/${sid}/starter.zip`; };
+
+    // show the teacher-provided starter repo link (fork target), if set
+    (async () => {
+      try {
+        const sc = ctx.scenario || (await (await fetch(`/api/session/${sid}/scenario`)).json());
+        const box = q("#starter-link");
+        if (sc && sc.starter_url) {
+          box.innerHTML = `Fork this starter repo: <a href="${sc.starter_url}" target="_blank" rel="noopener" style="color:var(--me)">${sc.starter_url}</a>`;
+        } else {
+          box.innerHTML = `<span style="color:var(--muted)">No starter repo set for this scenario yet — ask your instructor, or use the patch fallback below.</span>`;
+        }
+      } catch (e) {}
+    })();
+
+    q("#submit-repo").onclick = async () => {
+      const url = q("#repo").value.trim();
+      if (!url) { q("#repo-status").innerHTML = '<span style="color:var(--warn)">Paste your repo URL.</span>'; return; }
+      q("#repo-status").textContent = "Checking…";
+      const r = await (await fetch(`/api/session/${sid}/submit-repo`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }) })).json();
+      if (r.error) { q("#repo-status").innerHTML = `<span style="color:var(--bad)">${r.error}</span>`; return; }
+      q("#repo-status").innerHTML = `<span class="ok">✓ ${r.message}. Grade the run in Team Chat.</span>`;
+      loadHist();
+    };
 
     q("#file").onchange = e => {
       const f = e.target.files[0]; if (!f) return;

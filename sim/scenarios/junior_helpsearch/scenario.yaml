@@ -65,6 +65,24 @@ rubric:
     description: Explained the reasoning clearly.
 tickets:
   - title: Add search to the help center
-    description: "Omar's request: a search box so customers stop emailing the same questions."
+    issue_type: story
+    priority: high
+    labels: [support, search]
     created_by: omar
     status: todo
+    description: |-
+      ## Context
+      Omar wants a search box on the help centre so customers stop emailing
+      the same questions.
+
+      ## Problem
+      A search box is the ask. The outcome is fewer repeat contacts — which
+      may need better articles, not just a box.
+
+      ## Acceptance criteria
+      - [ ] A user can search help content from the help centre
+      - [ ] Top repeat questions are actually findable
+      - [ ] Scope fits one junior engineer (no new search platform)
+
+      ## Notes
+      Ask which questions generate the emails before picking an index.

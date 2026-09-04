@@ -17,22 +17,42 @@ class SqliteTicketStore:
                 id TEXT NOT NULL, session_id TEXT NOT NULL,
                 title TEXT NOT NULL, description TEXT NOT NULL,
                 status TEXT NOT NULL, created_by TEXT NOT NULL, ts TEXT NOT NULL,
-                seq INTEGER, PRIMARY KEY (session_id, id)
+                seq INTEGER,
+                issue_type TEXT NOT NULL DEFAULT 'task',
+                priority TEXT NOT NULL DEFAULT 'medium',
+                labels TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (session_id, id)
             )
             """)
+        self._migrate()
         self._conn.commit()
 
-    def create(self, session_id, title, description, status, created_by, ts) -> Ticket:
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(tickets)")}
+        for name, decl in (
+            ("issue_type", "TEXT NOT NULL DEFAULT 'task'"),
+            ("priority", "TEXT NOT NULL DEFAULT 'medium'"),
+            ("labels", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if name not in cols:
+                self._conn.execute(f"ALTER TABLE tickets ADD COLUMN {name} {decl}")
+
+    def create(self, session_id, title, description, status, created_by, ts, *,
+               issue_type: str = "task", priority: str = "medium",
+               labels: str = "") -> Ticket:
         tid = uuid.uuid4().hex[:8]
         row = self._conn.execute(
             "SELECT COALESCE(MAX(seq),0)+1 FROM tickets WHERE session_id=?",
             (session_id,)).fetchone()
+        seq = row[0]
         self._conn.execute(
-            "INSERT INTO tickets (id,session_id,title,description,status,created_by,ts,seq)"
-            " VALUES (?,?,?,?,?,?,?,?)",
-            (tid, session_id, title, description, status, created_by, ts, row[0]))
+            "INSERT INTO tickets (id,session_id,title,description,status,"
+            "created_by,ts,seq,issue_type,priority,labels) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (tid, session_id, title, description, status, created_by, ts, seq,
+             issue_type, priority, labels))
         self._conn.commit()
-        return Ticket(tid, session_id, title, description, status, created_by, ts)
+        return Ticket(tid, session_id, title, description, status, created_by, ts,
+                      seq, issue_type, priority, labels)
 
     def get(self, session_id, ticket_id) -> Optional[Ticket]:
         r = self._conn.execute(
@@ -54,9 +74,17 @@ class SqliteTicketStore:
             (status, ts, session_id, ticket_id))
         self._conn.commit()
         return Ticket(cur.id, cur.session_id, cur.title, cur.description,
-                      status, cur.created_by, ts)
+                      status, cur.created_by, ts, cur.seq, cur.issue_type,
+                      cur.priority, cur.labels)
 
     @staticmethod
     def _row(r) -> Ticket:
-        return Ticket(r["id"], r["session_id"], r["title"], r["description"],
-                      r["status"], r["created_by"], r["ts"])
+        keys = r.keys()
+        return Ticket(
+            r["id"], r["session_id"], r["title"], r["description"],
+            r["status"], r["created_by"], r["ts"],
+            seq=r["seq"] or 1,
+            issue_type=r["issue_type"] if "issue_type" in keys else "task",
+            priority=r["priority"] if "priority" in keys else "medium",
+            labels=r["labels"] if "labels" in keys else "",
+        )

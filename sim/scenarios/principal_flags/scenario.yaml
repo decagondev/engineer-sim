@@ -101,10 +101,44 @@ rubric:
     description: Framed a clear, leadership-ready decision.
 tickets:
   - title: Recommend a feature-flag approach
-    description: "Elena's ask: build or buy? Deliver a recommendation."
+    issue_type: story
+    priority: high
+    labels: [flags, decision]
     created_by: elena
     status: todo
+    description: |-
+      ## Context
+      Elena wants a build-vs-buy recommendation for feature flags. Several
+      homegrown systems already exist.
+
+      ## Problem
+      "Recommend an approach" is not the same as "pick a vendor this week."
+      Politics and existing owners will matter as much as the product.
+
+      ## Acceptance criteria
+      - [ ] A written recommendation: buy, consolidate, or keep (with why)
+      - [ ] Cost/risk called out for Finance
+      - [ ] A path that existing team owners can live with
+
+      ## Notes
+      Inventory the homegrown systems before the recommendation. Theo will
+      have opinions.
   - title: Inventory the existing homegrown flag systems
-    description: Placeholder — how many are there, who owns them?
+    issue_type: spike
+    priority: high
+    labels: [discovery]
     created_by: system
     status: todo
+    description: |-
+      ## Why
+      We cannot recommend build vs buy until we know how many flag systems
+      exist, who owns them, and what they actually do.
+
+      ## Outcome
+      A short inventory: system, owner, what it gates, what would break if
+      we replaced it.
+
+      ## Acceptance criteria
+      - [ ] Count of systems (even "at least N")
+      - [ ] Named owner per system
+      - [ ] One line on blast radius if we consolidate

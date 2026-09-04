@@ -599,3 +599,11 @@ for that when a class on Version A shows it's needed.
 ## 20. Groq provider (open models via a fast API)
 
 Added a `GroqClient` LLM adapter (OpenAI-compatible chat completions, lazy SDK import) so `LLM_PROVIDER=groq` runs open models (Llama/Mixtral/Gemma) fast and cheap. Config `GROQ_MODEL` (default `llama-3.3-70b-versatile`), key via `GROQ_API_KEY`. Four providers now sit behind the same `LLMClient` port: fake / ollama / anthropic / groq — the provider contract test (REG-01) covers all four. Surfaced in `doctor.py` and every setup guide. Full suite: 87 passed.
+
+---
+
+## 21. GitHub submission (fork → push → submit URL)
+
+Built the real-git-workflow submission path (trust-based, public repos). `GitHostBuildObserver` reads a public repo's commits/diff via the GitHub API (behind `BuildRecordSource`; optional `GITHUB_TOKEN` raises the rate limit; if the repo is a fork it also reads the net diff vs the starter). Instructors set a per-scenario **starter repo URL** in the dashboard (stored in `SettingsStore`); learners see that link in **Submit** to fork, then submit their own public repo URL, which is validated (`/submit-repo`) and stored as a `kind=repo` submission. Grading prefers: explicit build_record > repo submission (read via the observer) > patch submission > server sandbox. Patch flow stays as the offline/no-account fallback. Tests GH-01..03, SMK-19. Full suite: 96 passed.
+
+Instructors publish starters by hand via `docs/PUBLISH-SCENARIOS.md` (no scripts, no app write-access to GitHub — a deliberate choice).

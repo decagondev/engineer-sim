@@ -22,6 +22,10 @@ class SqliteSettingsStore:
                 level TEXT,
                 scenario TEXT
             );
+            CREATE TABLE IF NOT EXISTS scenario_config (
+                scenario_key TEXT PRIMARY KEY,
+                starter_url TEXT
+            );
             """)
         self._conn.commit()
 
@@ -65,4 +69,17 @@ class SqliteSettingsStore:
             "INSERT INTO session_settings (session_id, scenario) VALUES (?, ?) "
             "ON CONFLICT(session_id) DO UPDATE SET scenario=excluded.scenario",
             (session_id, scenario_key))
+        self._conn.commit()
+
+    def get_scenario_starter_url(self, scenario_key: str):
+        r = self._conn.execute(
+            "SELECT starter_url FROM scenario_config WHERE scenario_key=?",
+            (scenario_key,)).fetchone()
+        return r["starter_url"] if r and r["starter_url"] else None
+
+    def set_scenario_starter_url(self, scenario_key: str, url: str) -> None:
+        self._conn.execute(
+            "INSERT INTO scenario_config (scenario_key, starter_url) VALUES (?, ?) "
+            "ON CONFLICT(scenario_key) DO UPDATE SET starter_url=excluded.starter_url",
+            (scenario_key, url))
         self._conn.commit()

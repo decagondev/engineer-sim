@@ -5,5 +5,5 @@ pyyaml>=6
 pytest>=8
 # Optional — only needed for LLM_PROVIDER=anthropic:
 # anthropic>=0.39
-# Optional — only needed for LLM_PROVIDER=groq:
-# groq>=0.11
+# Groq (LLM_PROVIDER=groq) uses httpx against the OpenAI-compatible API —
+# no extra package. Set GROQ_API_KEY.

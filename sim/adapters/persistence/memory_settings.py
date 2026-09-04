@@ -10,6 +10,7 @@ class InMemorySettingsStore:
         self._instr = InstructorSettings()
         self._levels: dict[str, str] = {}
         self._scenarios: dict[str, str] = {}
+        self._starter_urls: dict[str, str] = {}
 
     def get_instructor(self) -> InstructorSettings:
         return self._instr
@@ -28,3 +29,9 @@ class InMemorySettingsStore:
 
     def set_session_scenario(self, session_id: str, scenario_key: str) -> None:
         self._scenarios[session_id] = scenario_key
+
+    def get_scenario_starter_url(self, scenario_key: str):
+        return self._starter_urls.get(scenario_key)
+
+    def set_scenario_starter_url(self, scenario_key: str, url: str) -> None:
+        self._starter_urls[scenario_key] = url

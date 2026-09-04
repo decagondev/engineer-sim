@@ -10,6 +10,14 @@ class ScenarioError(ValueError):
     """Raised when a scenario definition is invalid."""
 
 
+def _labels(raw) -> str:
+    if raw is None:
+        return ""
+    if isinstance(raw, (list, tuple)):
+        return ",".join(str(x).strip() for x in raw if str(x).strip())
+    return ",".join(p.strip() for p in str(raw).split(",") if p.strip())
+
+
 @dataclass(frozen=True)
 class TriggerSpec:
     """Declarative trigger + event (parsed by the director in Wave 2)."""
@@ -23,6 +31,9 @@ class TriggerSpec:
     action: str = "chat"         # "chat" | "email" | "ticket"
     subject: str = ""
     min_level: str = "intern"    # beat only fires at/above this engineer level
+    issue_type: str = ""         # ticket metadata
+    priority: str = ""
+    labels: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +99,9 @@ class Scenario:
                 channel=t.get("channel", "general"), content=t["content"],
                 action=t.get("action", "chat"), subject=t.get("subject", ""),
                 min_level=t.get("min_level", "intern"),
+                issue_type=t.get("issue_type", ""),
+                priority=t.get("priority", ""),
+                labels=_labels(t.get("labels", "")),
             )
             for t in data.get("triggers", [])
         )

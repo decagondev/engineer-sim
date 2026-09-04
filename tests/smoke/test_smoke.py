@@ -80,6 +80,41 @@ def test_smk03_ws_round_trip(tmp_path):
     assert msg["sender"] == "priya" and msg["content"]
 
 
+def test_smk03_ws_groq_missing_key_stays_connected(tmp_path, monkeypatch):
+    """The old groq SDK import crashed the ASGI websocket on the first chat turn."""
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    cfg = Config(llm_provider="groq", db_path=str(tmp_path / "g.db"),
+                 sandbox_root=str(tmp_path / "b"))
+    with TestClient(build_app(cfg)).websocket_connect("/ws/s-groq") as ws:
+        ws.send_json({"content": "hello", "target": "priya"})
+        err = ws.receive_json()
+        assert err.get("kind") == "error" and "GROQ_API_KEY" in err["error"]
+        ws.send_json({"content": "again", "target": "priya"})
+        assert ws.receive_json().get("kind") == "error"
+
+
+def test_smk03_ws_llm_error_stays_connected(tmp_path):
+    from sim.app.composition_root import build_manager
+    from sim.adapters.web.app import create_web_app
+    from sim.core.grading.grader import LLMGrader
+
+    class BoomLLM:
+        def complete(self, *, system, messages):
+            raise RuntimeError("GROQ_API_KEY is not set")
+
+    cfg = _cfg(tmp_path)
+    boom = BoomLLM()
+    mgr = build_manager(cfg, llm=boom, judge_llm=boom)
+    app = create_web_app(mgr, LLMGrader(boom), instructor_password="$T0mV13w")
+    with TestClient(app).websocket_connect("/ws/s-err") as ws:
+        ws.send_json({"content": "hello", "target": "priya"})
+        err = ws.receive_json()
+        assert err.get("kind") == "error" and "GROQ_API_KEY" in err["error"]
+        ws.send_json({"content": "again", "target": "priya"})
+        err2 = ws.receive_json()
+        assert err2.get("kind") == "error"
+
+
 # SMK-04  (persistence round trip)
 def test_smk04_persistence_round_trip(tmp_path):
     repo = SqliteMessageRepository(str(tmp_path / "p.db"))
@@ -193,14 +228,38 @@ def test_smk11_desktop_assets_served(tmp_path):
     client = TestClient(build_app(Config(llm_provider="fake",
                                          db_path=str(tmp_path / "d.db"),
                                          sandbox_root=str(tmp_path / "b"))))
-    for path in ["/", "/static/shell.js", "/static/apps/chat.js",
+    for path in ["/", "/static/shell.js", "/static/md.js", "/static/apps/chat.js",
                  "/static/apps/workspace.js", "/static/apps/email.js",
                  "/static/apps/files.js"]:
         assert client.get(path).status_code == 200, path
     idx = client.get("/").text
     assert "SimApps.boot()" in idx
+    assert "/static/md.js" in idx
     for a in ("chat", "workspace", "email", "files"):
         assert f"/static/apps/{a}.js" in idx
+
+
+def test_smk11_markdown_render():
+    import json, shutil, subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not required for the suite")
+    js = ROOT / "sim" / "adapters" / "web" / "static" / "md.js"
+    script = f"""
+const fs = require('fs');
+const vm = require('vm');
+const g = {{ window: {{}}, globalThis: {{}} }};
+vm.runInNewContext(fs.readFileSync({json.dumps(str(js))}, 'utf8'), g);
+const md = g.window.SimMD;
+const html = md.render('**Budget:** x\\n\\n- **A:** one\\n- **B:** two\\n\\n```python\\nprint("hi")\\n```');
+if (!html.includes('<strong>Budget:</strong>')) process.exit(2);
+if (!html.includes('<ul>') || !html.includes('<li>')) process.exit(3);
+if (!html.includes('md-code') || !html.includes('tok-str')) process.exit(4);
+if (md.render('<script>alert(1)</script>').includes('<script>')) process.exit(5);
+if (md.render('<img src=x onerror=alert(1)>').includes('<img')) process.exit(6);
+"""
+    r = subprocess.run([node, "-e", script], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr + r.stdout
 
 
 # SMK-12  (mail endpoints + app asset)
@@ -222,6 +281,13 @@ def test_smk13_files_tickets(tmp_path):
     # tickets seed
     board = client.get("/api/session/s/tickets").json()
     assert board["columns"][0]["tickets"], "expected seeded tickets"
+    seed = board["columns"][0]["tickets"][0]
+    assert seed["key"] and seed["issue_type"] and seed["priority"]
+    tid = seed["id"]
+    moved = client.post(f"/api/session/s/tickets/{tid}/move",
+                        json={"status": "doing"}).json()
+    cols = {c["status"]: c["tickets"] for c in moved["columns"]}
+    assert any(t["id"] == tid for t in cols["doing"])
     # files needs a workspace
     assert client.get("/api/session/s/files/list").status_code == 409
     client.post("/api/session/s/environment/provision")
@@ -338,3 +404,37 @@ def test_smk18_submission_flow(tmp_path):
     assert any("Submitted work" in m["content"] for m in det["transcript"])
     # the submit app module is served
     assert c.get("/static/apps/submit.js").status_code == 200
+
+
+# SMK-19  (GitHub submission: starter URL + repo submit + grade-from-repo)
+def test_smk19_github_submission(tmp_path):
+    from sim.app.composition_root import build_manager
+    from sim.adapters.web.app import create_web_app
+    from sim.core.grading.grader import LLMGrader
+
+    class FakeGH:
+        def validate(self, url):
+            return (True, "owner/good ok") if "/good" in url else (False, "make it public")
+        def summary(self, url):
+            return f"REPO: {url}\nCOMMITS (2):\n  a work\n  b more"
+
+    cfg = Config(llm_provider="fake", db_path=str(tmp_path / "g.db"),
+                 sandbox_root=str(tmp_path / "b"))
+    mgr = build_manager(cfg, llm=FakeLLMClient(default="hi"),
+                        judge_llm=FakeLLMClient(default="NO"))
+    app = create_web_app(mgr, LLMGrader(FakeLLMClient()),
+                         instructor_password="$T0mV13w", github_observer=FakeGH())
+    c = TestClient(app)
+    h = {"X-Instructor-Token": "$T0mV13w"}
+    # teacher sets a starter URL; learner sees it
+    assert c.post("/api/instructor/scenario/churn_dashboard/starter-url",
+                  json={"url": "https://github.com/t/starter"}, headers=h).json()["ok"]
+    assert c.get("/api/session/s1/scenario").json()["starter_url"] == "https://github.com/t/starter"
+    # unauthorized set is rejected
+    assert c.post("/api/instructor/scenario/churn_dashboard/starter-url",
+                  json={"url": "x"}).status_code == 401
+    # learner submits a bad repo -> validation error; good repo -> stored as kind=repo
+    assert c.post("/api/session/s1/submit-repo", json={"url": "https://github.com/x/private"}).status_code == 400
+    assert c.post("/api/session/s1/submit-repo", json={"url": "https://github.com/owner/good"}).json()["ok"]
+    subs = c.get("/api/session/s1/submissions").json()["submissions"]
+    assert subs[-1]["kind"] == "repo"

@@ -74,7 +74,8 @@
   .ev .rail .surface{display:block;font-weight:700}
   .ev.chat .surface{color:var(--chat)} .ev.mail .surface{color:var(--mail)} .ev.ticket .surface{color:var(--ticket)} .ev.sig .surface{color:var(--sig)}
   .ev .who{font-size:13px;font-weight:600}.ev .subj{font-size:12px;color:var(--muted)}
-  .ev .txt{font-size:14px;white-space:pre-wrap;word-wrap:break-word;margin-top:2px}
+  .ev .txt{font-size:14px;word-wrap:break-word;margin-top:2px}
+  .ev .txt.md{white-space:normal}
   .ev.sig .txt{font:12.5px/1.5 var(--mono);color:var(--sig)}
   .replay-side{width:330px;flex:none;overflow-y:auto}
   .replay-side .head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center}
@@ -130,6 +131,7 @@
     <div class="content" id="content"></div>
   </div>
 
+<script src="/static/md.js"></script>
 <script>
 let token = "", settings = null;
 let rows = [], filtered = [], meta = {personas:[], mail:{}}, idx = 0, playTimer = null, curSid = null;
@@ -286,11 +288,12 @@ function renderEv(m){
   else if(s==="mail"){ who=nameOf(m.sender); const mm=meta.mail[m.channel]; subj=mm?("Re: "+mm.subject):""; }
   else if(s==="ticket") who="Tickets";
   d.innerHTML = `<div class="rail"><span class="surface">${label}</span>${fmt(m.ts)}</div>`+
-    `<div><div class="who">${esc(who)}</div>${subj?`<div class="subj">${esc(subj)}</div>`:""}<div class="txt">${esc(m.content)}</div></div>`;
+    `<div><div class="who">${esc(who)}</div>${subj?`<div class="subj">${esc(subj)}</div>`:""}<div class="txt md">${window.SimMD?SimMD.render(m.content):esc(m.content)}</div></div>`;
   return d;
 }
 function syncScrub(){ const sc=el("scrub"); sc.max=filtered.length; sc.value=idx; el("pos").textContent=`${idx} / ${filtered.length}`; }
 function wireReplay(){
+  if (window.SimMD) SimMD.hydrate(el("timeline"));
   el("scrub").addEventListener("input", e=>{ idx=+e.target.value; renderTimeline(); });
   el("play").onclick = ()=>{
     if(playTimer){ stopPlay(); return; }
@@ -315,10 +318,25 @@ async function doGrade(){
   el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%</div><div class="muted">graded at ${levelLabel(g.level)} expectations</div>${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}</div>`;
 }
 
+function wireStarterSaves(){
+  document.querySelectorAll('.savestarter').forEach(b=> b.onclick = async ()=>{
+    const key=b.dataset.key;
+    const url=document.querySelector('.starter[data-key="'+key+'"]').value.trim();
+    await fetch('/api/instructor/scenario/'+key+'/starter-url',{method:'POST',headers:{...hdr(),'Content-Type':'application/json'},body:JSON.stringify({url})});
+    b.textContent='Saved'; setTimeout(()=>b.textContent='Save',1200);
+    const sc=settings.scenarios.find(s=>s.key===key); if(sc) sc.starter_url=url;
+  });
+}
+
 // ---- settings ----
 function renderSettings(){
   const lvOpts = settings.levels.map(l=>`<option value="${l.key}">${l.label}</option>`).join("");
-  const scList = settings.scenarios.map(s=>`<div class="srow" style="cursor:default"><span class="id">${s.title}</span><span class="tags"><span class="badge">${s.difficulty}</span></span></div>`).join("");
+  const scList = settings.scenarios.map(s=>`<div class="srow" style="cursor:default;flex-wrap:wrap">
+      <span class="id">${s.title}</span><span class="tags"><span class="badge">${s.difficulty}</span></span>
+      <div style="flex-basis:100%;display:flex;gap:8px;margin-top:8px">
+        <input class="starter" data-key="${s.key}" placeholder="public GitHub starter repo URL (optional)" value="${s.starter_url||''}" style="flex:1;font-size:12px"/>
+        <button class="savestarter" data-key="${s.key}">Save</button>
+      </div></div>`).join("");
   el("content").innerHTML = `
     <h1>Settings</h1><p class="sub">Defaults and library.</p>
     <div class="card">
@@ -337,6 +355,7 @@ function renderSettings(){
     await fetch("/api/instructor/settings",{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({onboarded:true,default_level:settings.default_level})});
     el("st-saved").textContent = "Saved.";
   };
+  wireStarterSaves();
   el("st-reset").onclick = async ()=>{
     await fetch("/api/instructor/settings",{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({onboarded:false,default_level:settings.default_level})});
     settings.onboarded = false; el("shell").classList.add("hidden"); showOnboarding();

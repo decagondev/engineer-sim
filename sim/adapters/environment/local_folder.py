@@ -36,6 +36,13 @@ class LocalFolderEnvironment:
         d.mkdir(parents=True, exist_ok=True)
         if self._starter and self._starter.exists():
             shutil.copytree(self._starter, d, dirs_exist_ok=True)
+        else:
+            # no starter for this scenario — seed a README so the workspace is
+            # never empty and matches what the starter-download provides
+            (d / "README.md").write_text(
+                "# Workspace\n\nThis scenario has no starter files — begin from "
+                "scratch. Talk to the client first to work out what to build.\n",
+                encoding="utf-8")
         if self._git_baseline:
             self._baseline(d)
         return SandboxHandle(session_id, str(d.resolve()), created=True)

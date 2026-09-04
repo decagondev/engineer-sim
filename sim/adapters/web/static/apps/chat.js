@@ -28,13 +28,20 @@ SimApps.register({
   .chat-app .grade{padding:0 16px 6px;white-space:pre-wrap;font:12.5px/1.6 var(--mono);color:var(--muted)}
   .chat-app .log{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:2px}
   .chat-app .row{display:flex;flex-direction:column;max-width:74%}
+  .chat-app .row:has(.md-code){max-width:88%}
   .chat-app .row.me{align-self:flex-end;align-items:flex-end}
   .chat-app .row.them{align-self:flex-start;align-items:flex-start}
   .chat-app .metline{font-size:11px;color:var(--muted);margin:8px 6px 3px;display:flex;gap:8px;align-items:baseline}
   .chat-app .metline .t{font-family:var(--mono);color:var(--faint)}
-  .chat-app .bubble{padding:9px 13px;border-radius:15px;white-space:pre-wrap;word-wrap:break-word}
+  .chat-app .bubble{padding:9px 13px;border-radius:15px;word-wrap:break-word;overflow-wrap:anywhere}
   .chat-app .me .bubble{background:var(--me);color:var(--me-ink);border-bottom-right-radius:5px}
   .chat-app .them .bubble{background:var(--them);border:1px solid var(--line);border-bottom-left-radius:5px}
+  .chat-app .me .bubble.md a{color:#fff}
+  .chat-app .me .bubble.md li::marker{color:rgba(255,255,255,.72)}
+  .chat-app .me .bubble.md blockquote{border-color:rgba(255,255,255,.35);color:rgba(255,255,255,.88)}
+  .chat-app .me .bubble.md hr{border-color:rgba(255,255,255,.25)}
+  .chat-app .me .bubble.md code{background:rgba(0,0,0,.22);border-color:rgba(255,255,255,.18)}
+  .chat-app .me .bubble.md th{background:rgba(255,255,255,.12)}
   .chat-app .signal{align-self:center;max-width:82%;text-align:center;margin:10px 0;font:12px/1.5 var(--mono);color:var(--sig);background:var(--sig-bg);border:1px solid var(--sig-line);border-radius:8px;padding:5px 12px}
   .chat-app .empty{margin:auto;color:var(--muted);text-align:center;font-size:14px}
   .chat-app .typing{align-self:flex-start;display:flex;gap:4px;padding:11px 14px;background:var(--them);border:1px solid var(--line);border-radius:15px;border-bottom-left-radius:5px;margin-top:8px}
@@ -67,6 +74,7 @@ SimApps.register({
     const app = root.querySelector(".chat-app"), q = s => app.querySelector(s);
     const log = q(".log"), input = q(".input"), sendBtn = q(".send"),
           peopleEl = q(".people"), peerEl = q(".peer"), gradeOut = q(".grade");
+    if (window.SimMD) SimMD.hydrate(log);
     const sid = ctx.sid;
     let meta = {}, primaryKey = null, active = null, awaiting = null, watchdog = null, ws = null, closed = false;
     const channels = {};
@@ -113,7 +121,9 @@ SimApps.register({
       const met = document.createElement("div"); met.className = "metline";
       const who = mine ? "You" : ((meta[msg.sender] || {}).name || msg.sender);
       met.innerHTML = `<span>${who}</span><span class="t">${fmt(msg.ts)}</span>`;
-      const b = document.createElement("div"); b.className = "bubble"; b.textContent = msg.content;
+      const b = document.createElement("div"); b.className = "bubble md";
+      if (window.SimMD) b.innerHTML = SimMD.render(msg.content);
+      else b.textContent = msg.content;
       row.appendChild(met); row.appendChild(b); return row;
     }
     function typingEl() { const t = document.createElement("div"); t.className = "typing"; t.innerHTML = "<span></span><span></span><span></span>"; return t; }
@@ -143,7 +153,16 @@ SimApps.register({
 
     function connect() {
       ws = new WebSocket(`ws://${location.host}/ws/${sid}`);
-      ws.onmessage = e => incoming(JSON.parse(e.data));
+      ws.onmessage = e => {
+        const m = JSON.parse(e.data);
+        if (m.error || m.kind === "error") {
+          const key = active || primaryKey;
+          if (key) signal(key, m.error || "the model failed to reply");
+          clearAwaiting();
+          return;
+        }
+        incoming(m);
+      };
       ws.onclose = () => { if (!closed && primaryKey) signal(primaryKey, "disconnected — reopen Team Chat to reconnect"); sendBtn.disabled = true; };
     }
 

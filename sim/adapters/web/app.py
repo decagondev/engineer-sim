@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect
@@ -7,12 +8,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
+log = logging.getLogger(__name__)
+
 _STATIC = Path(__file__).parent / "static"
 
 
 def create_web_app(manager, grader, grader_calibrated: bool = False,
                    build_observer=None, workspace_reader=None,
-                   instructor_password: str = "") -> FastAPI:
+                   instructor_password: str = "", github_observer=None) -> FastAPI:
     """Web adapter. Resolves each session to a per-scenario bundle via the manager;
     grader / build observer / file reader / settings are app-global.
     """
@@ -26,6 +29,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.settings = manager.settings
     app.state.repo = manager.repo
     app.state.submissions = manager.submissions
+    app.state.github_observer = github_observer
 
     def b(session_id):
         return manager.for_session(session_id)
@@ -48,11 +52,19 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     @app.get("/api/scenarios")
     def scenarios():
-        return {"scenarios": manager.scenarios_meta(),
-                "default": manager.default_scenario_key()}
+        out = []
+        for m in manager.scenarios_meta():
+            m = dict(m)
+            m["starter_url"] = (app.state.settings.get_scenario_starter_url(m["key"])
+                                if app.state.settings else None)
+            out.append(m)
+        return {"scenarios": out, "default": manager.default_scenario_key()}
 
     def _scenario_info(sc):
+        starter_url = (app.state.settings.get_scenario_starter_url(sc.key)
+                       if app.state.settings else None)
         return {"key": sc.key, "title": sc.title, "difficulty": sc.difficulty,
+                "starter_url": starter_url,
                 "personas": [{"key": p.key, "name": p.name, "role": p.role}
                              for p in sc.personas]}
 
@@ -96,7 +108,13 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         build_record = (payload or {}).get("build_record", "")
         if not build_record and app.state.submissions is not None:
             sub = app.state.submissions.latest(session_id)
-            if sub:
+            if sub and sub.kind == "repo" and app.state.github_observer is not None:
+                try:
+                    build_record = await run_in_threadpool(
+                        app.state.github_observer.summary, sub.content)
+                except Exception as e:
+                    build_record = f"(could not read submitted repo {sub.content}: {e})"
+            elif sub:
                 build_record = f"SUBMITTED PATCH ({sub.filename}):\n{sub.content}"
         if not build_record and bundle.environment and app.state.build_observer:
             h = bundle.environment.handle(session_id)
@@ -152,11 +170,29 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             ts=ts, kind="event"))
         return {"ok": True, "seq": sub.seq, "filename": filename, "lines": sub.lines}
 
+    @app.post("/api/session/{session_id}/submit-repo")
+    def submit_repo(session_id: str, payload: dict):
+        from datetime import datetime, timezone
+        from sim.core.ports.repository import StoredMessage
+        url = (payload or {}).get("url", "").strip()
+        if app.state.github_observer is None:
+            return JSONResponse({"error": "github submission not configured"}, status_code=501)
+        ok, msg = app.state.github_observer.validate(url)
+        if not ok:
+            return JSONResponse({"error": msg}, status_code=400)
+        ts = datetime.now(timezone.utc).isoformat()
+        app.state.submissions.save(session_id, "github-repo", url, ts, kind="repo")
+        app.state.repo.append(StoredMessage(
+            session_id=session_id, sender="tester", channel="general",
+            content=f"[reveal] Submitted repo: {url}", ts=ts, kind="event"))
+        return {"ok": True, "message": msg}
+
     @app.get("/api/session/{session_id}/submissions")
     def list_submissions(session_id: str):
         subs = app.state.submissions.list(session_id)
         return {"submissions": [
-            {"seq": s.seq, "filename": s.filename, "lines": s.lines, "ts": s.ts}
+            {"seq": s.seq, "filename": s.filename, "lines": s.lines,
+             "ts": s.ts, "kind": s.kind, "content": s.content}
             for s in subs]}
 
     # ---- environment (sandbox) -----------------------------------------
@@ -237,7 +273,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def tickets_create(session_id: str, payload: dict):
         ts = b(session_id).ticket_service
         ts.create(session_id, payload.get("title", "").strip() or "(untitled)",
-                  payload.get("description", ""))
+                  payload.get("description", ""),
+                  issue_type=payload.get("issue_type", "task"),
+                  priority=payload.get("priority", "medium"),
+                  labels=payload.get("labels", ""))
         return ts.board(session_id)
 
     @app.post("/api/session/{session_id}/tickets/{ticket_id}/move")
@@ -299,8 +338,12 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         from sim.core.levels import levels_meta
         s = app.state.settings.get_instructor()
+        scs = []
+        for m in manager.scenarios_meta():
+            m = dict(m); m["starter_url"] = app.state.settings.get_scenario_starter_url(m["key"])
+            scs.append(m)
         return {"onboarded": s.onboarded, "default_level": s.default_level,
-                "levels": levels_meta(), "scenarios": manager.scenarios_meta()}
+                "levels": levels_meta(), "scenarios": scs}
 
     @app.post("/api/instructor/settings")
     def instructor_set_settings(payload: dict, x_instructor_token: str = Header(default="")):
@@ -323,6 +366,17 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             return JSONResponse({"error": "bad level"}, status_code=400)
         app.state.settings.set_session_level(session_id, lvl)
         return {"ok": True, "level": lvl}
+
+    @app.post("/api/instructor/scenario/{scenario_key}/starter-url")
+    def instructor_set_starter_url(scenario_key: str, payload: dict,
+                                   x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if scenario_key not in manager.registry:
+            return JSONResponse({"error": "no such scenario"}, status_code=400)
+        app.state.settings.set_scenario_starter_url(scenario_key,
+                                                    payload.get("url", "").strip())
+        return {"ok": True}
 
     @app.post("/api/instructor/session/{session_id}/scenario")
     def instructor_set_scenario(session_id: str, payload: dict,
@@ -383,8 +437,16 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 target = (data or {}).get("target")
                 if not content:
                     continue
-                msgs = await run_in_threadpool(
-                    svc.post_tester_message, session_id, content, target)
+                try:
+                    msgs = await run_in_threadpool(
+                        svc.post_tester_message, session_id, content, target)
+                except Exception as exc:
+                    log.exception("chat turn failed for session %s", session_id)
+                    await websocket.send_json({
+                        "kind": "error",
+                        "error": str(exc) or exc.__class__.__name__,
+                    })
+                    continue
                 for m in msgs:
                     await websocket.send_json(
                         {"sender": m.sender, "content": m.content,

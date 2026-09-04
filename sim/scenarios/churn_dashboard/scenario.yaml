@@ -62,10 +62,23 @@ triggers:
     min_level: mid
     persona_key: priya
     channel: dm:priya
+    issue_type: story
+    priority: high
+    labels: [scope-creep, exec]
     subject: Can it also show a revenue chart?
-    content: >-
-      Oh — while you are at it, could the tool also show a revenue-over-time
-      chart on the same screen? The exec team would love that.
+    content: |-
+      ## Request
+      Add a revenue-over-time chart on the same screen as account health.
+
+      ## Why now
+      The exec team asked Priya mid-thread. She's filing it so it doesn't get lost.
+
+      ## Acceptance criteria
+      - [ ] Revenue over time is visible alongside whatever health view we ship
+      - [ ] Uses existing Stripe billing data (no new warehouse)
+
+      ## Risk
+      This may be scope creep relative to the original CS ask. Confirm with Engineering before committing.
   - event_id: dana_email
     kind: turn_count
     at: 5
@@ -90,15 +103,46 @@ triggers:
       We can't take on another thing that needs babysitting every day.
 tickets:
   - title: Build a customer health dashboard
-    description: >-
-      Priya's original request: charts of how customers are doing, plus maybe a
-      weekly email.
+    issue_type: story
+    priority: high
+    labels: [cs, dashboard]
     created_by: priya
     status: todo
+    description: |-
+      ## Context
+      Customer Success wants visibility into how accounts are doing. Priya asked
+      for "a dashboard" and mentioned a weekly email.
+
+      ## Problem
+      CS is reactive — they only hear about unhappy accounts after notice is given.
+      Leadership wants charts. The real decision the tool should drive is still fuzzy.
+
+      ## Acceptance criteria
+      - [ ] CS can see current health for accounts they own
+      - [ ] A weekly digest can be sent from the same data
+      - [ ] Runs on existing Stripe + Postgres (no new vendors or headcount)
+
+      ## Notes
+      Definition of "healthy" / "at risk" is still TBD. Talk to Priya before building.
   - title: Figure out what 'at risk' actually means
-    description: Placeholder — the real definition needs to come out of discovery.
+    issue_type: spike
+    priority: high
+    labels: [discovery]
     created_by: system
     status: todo
+    description: |-
+      ## Why
+      We cannot ship a health view until "at risk" is a measurable definition
+      CS will actually act on.
+
+      ## Outcome
+      A short written definition Priya agrees on, plus the signals we can compute
+      from data we already have.
+
+      ## Acceptance criteria
+      - [ ] Definition agreed with CS (not guessed)
+      - [ ] Each signal has a named source (product DB, Stripe, support, …)
+      - [ ] Notes what we will explicitly not measure in v1
 rubric:
   - key: discovery
     weight: 2.0

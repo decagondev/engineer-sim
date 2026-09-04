@@ -3,6 +3,7 @@
 key: support_copilot
 title: The chatbot that's really about trustworthy answers
 difficulty: senior
+starter_template: starter
 definition_of_done: >-
   The engineer uncovers that Dev doesn't need "a chatbot" but reliable, cited
   answers over the company's own docs, scopes a RAG approach with an evaluation

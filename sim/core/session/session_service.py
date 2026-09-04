@@ -95,7 +95,10 @@ class SessionService:
                     self._event(session_id, "general", f"[fired:{ev.event_id}]")
                 elif getattr(ev, "kind", "chat") == "ticket" and self.ticket_service:
                     self.ticket_service.file_from(
-                        session_id, ev.subject, ev.content, ev.persona_key)
+                        session_id, ev.subject, ev.content, ev.persona_key,
+                        issue_type=getattr(ev, "issue_type", "") or "story",
+                        priority=getattr(ev, "priority", "") or "high",
+                        labels=getattr(ev, "labels", "") or "scope-creep")
                     self._event(session_id, ev.channel,
                                 f"[reveal] {self._name(ev.persona_key)} filed a ticket: {ev.subject}")
                     self._event(session_id, "general", f"[fired:{ev.event_id}]")

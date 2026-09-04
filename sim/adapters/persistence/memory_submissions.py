@@ -9,10 +9,10 @@ class InMemorySubmissionStore:
     def __init__(self) -> None:
         self._rows: list[Submission] = []
 
-    def save(self, session_id, filename, content, ts) -> Submission:
+    def save(self, session_id, filename, content, ts, kind="patch") -> Submission:
         seq = 1 + sum(1 for r in self._rows if r.session_id == session_id)
         s = Submission(session_id, seq, filename, content,
-                       content.count("\n") + 1, ts)
+                       content.count("\n") + 1, ts, kind)
         self._rows.append(s)
         return s
 

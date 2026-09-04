@@ -80,10 +80,24 @@ triggers:
     min_level: distinguished
     persona_key: noor
     channel: dm:noor
+    issue_type: story
+    priority: highest
+    labels: [scope-creep, legal, governance]
     subject: New model-governance requirement (just landed)
-    content: >-
-      Legal just told me every model in production needs documented governance by
-      end of quarter. Whatever you propose has to account for this now too.
+    content: |-
+      ## Request
+      Every model in production needs documented governance by end of quarter.
+
+      ## Why now
+      Legal just told Noor. She is adding it to this work so it is not a surprise later.
+
+      ## Acceptance criteria
+      - [ ] Each prod model has a named owner and a written governance note
+      - [ ] The plan we propose accounts for this — not a follow-up quarter
+
+      ## Risk
+      This landed mid-engagement. It may be a real constraint or a way to
+      widen the platform rewrite. Confirm with Legal what "documented" means.
 rubric:
   - key: discovery
     weight: 1.3
@@ -99,10 +113,43 @@ rubric:
     description: Produced clean, leadership-ready framing the CTO could use directly.
 tickets:
   - title: Fix the ML platform bottleneck
-    description: "Noor's ask: product teams are blocked. Fix the platform."
+    issue_type: story
+    priority: high
+    labels: [platform, ml]
     created_by: noor
     status: todo
+    description: |-
+      ## Context
+      Noor (CTO) asked you to "fix the platform" — product teams say they are blocked.
+
+      ## Problem
+      The ticket reads like a rewrite. The blockage may be incentives, a missing
+      shared roadmap, or SLAs — not a lack of platform code.
+
+      ## Acceptance criteria
+      - [ ] A diagnosis the CTO can repeat: what is actually blocking teams
+      - [ ] A plan that does not assume a greenfield platform
+      - [ ] Named owners for whatever we change
+
+      ## Notes
+      Two VPs already disagree about whose fault this is. Do not pick a side
+      until you have evidence.
   - title: Define platform SLAs and a shared roadmap?
-    description: Placeholder — is this actually the lever?
+    issue_type: spike
+    priority: medium
+    labels: [discovery, org]
     created_by: system
     status: todo
+    description: |-
+      ## Why
+      If product waits weeks on "trivial" changes, the lever may be a shared
+      roadmap and SLAs — not more platform engineers.
+
+      ## Outcome
+      A one-pager: current wait times, who sets priority, and whether an SLA
+      plus a visible roadmap would unblock teams.
+
+      ## Acceptance criteria
+      - [ ] Current request-to-done time (even a range)
+      - [ ] Who actually prioritises platform work today
+      - [ ] Recommendation: SLA/roadmap vs. a technical rewrite

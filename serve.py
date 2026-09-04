@@ -43,7 +43,7 @@ def main():
     print("  Engineering Flight Simulator — classroom server")
     print("=" * 60)
     print(f"  Model provider : {provider}"
-          + ("   (set LLM_PROVIDER=ollama|anthropic for real sessions)"
+          + ("   (set LLM_PROVIDER=ollama|anthropic|groq for real sessions)"
              if provider == "fake" else ""))
     print("  Learners open  :")
     for ip in ips:

@@ -29,7 +29,9 @@ current as of writing — if one has moved, search the tool's name.
 
 - **Git** — track changes and commit your work (your history is reviewed).
   Download: https://git-scm.com/downloads · Docs: https://git-scm.com/doc
-- **GitHub** — host repos, if your instructor uses it. https://github.com
+- **GitHub** — host repos (used by the fork-and-submit flow). https://github.com ·
+  a read-only token (https://github.com/settings/tokens) as `GITHUB_TOKEN` raises the
+  server's GitHub API rate limit for a class.
 
 ## Running the AI people
 
@@ -40,7 +42,7 @@ current as of writing — if one has moved, search the tool's name.
   https://console.anthropic.com
 - **Groq API** — fast, cheap inference for **open models** (Llama, Mixtral, Gemma).
   Get a key: https://console.groq.com/keys · Models: https://console.groq.com/docs/models ·
-  Install the SDK: `pip install groq`
+  Set `GROQ_API_KEY` and start with `LLM_PROVIDER=groq` (no extra package).
 
 ## The environment
 

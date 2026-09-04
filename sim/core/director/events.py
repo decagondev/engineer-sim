@@ -13,5 +13,8 @@ class Event:
     persona_key: str
     channel: str
     content: str
-    kind: str = "chat"        # "chat" | "email"
+    kind: str = "chat"        # "chat" | "email" | "ticket"
     subject: str = ""
+    issue_type: str = ""      # story | task | bug | spike (tickets)
+    priority: str = ""
+    labels: str = ""

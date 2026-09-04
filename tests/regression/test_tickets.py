@@ -2,7 +2,7 @@
 from sim.adapters.persistence.memory_repo import InMemoryMessageRepository
 from sim.adapters.persistence.memory_tickets import InMemoryTicketStore
 from sim.core.persona.persona import Persona
-from sim.core.tickets.ticket_service import TicketService
+from sim.core.tickets.ticket_service import TicketService, project_prefix
 
 
 def _svc(seed=()):
@@ -57,3 +57,32 @@ def test_tk05_seed_not_blocked_by_a_prior_ticket():
     svc.file_from("s", "Scope creep", "extra", "priya")   # arrives before board()
     todo = [t["title"] for t in svc.board("s")["columns"][0]["tickets"]]
     assert "Seeded A" in todo and "Seeded B" in todo and "Scope creep" in todo
+
+
+def test_tk06_board_exposes_jira_fields():
+    svc, _ = _svc([{
+        "title": "Dashboard", "created_by": "priya",
+        "issue_type": "story", "priority": "high",
+        "labels": ["cs", "discovery"],
+    }])
+    t = svc.board("s")["columns"][0]["tickets"][0]
+    assert t["key"] == "SIM-1"
+    assert t["issue_type"] == "story"
+    assert t["priority"] == "high"
+    assert t["labels"] == ["cs", "discovery"]
+    assert t["by_name"] == "Priya"
+
+
+def test_tk07_create_accepts_type_and_priority():
+    svc, _ = _svc()
+    svc.create("s", "Broken form", "Repro TBD", issue_type="bug",
+               priority="highest", labels="signup")
+    t = svc.board("s")["columns"][0]["tickets"][0]
+    assert t["issue_type"] == "bug" and t["priority"] == "highest"
+    assert t["labels"] == ["signup"]
+
+
+def test_tk08_project_prefix():
+    assert project_prefix("churn_dashboard") == "CD"
+    assert project_prefix("staff_pipeline") == "SP"
+    assert project_prefix("sim") == "SIM"

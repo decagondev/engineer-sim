@@ -11,7 +11,7 @@ class Config:
     quality passes and real sessions.
     """
 
-    llm_provider: str = "fake"            # fake | ollama | anthropic
+    llm_provider: str = "fake"            # fake | ollama | anthropic | groq
     ollama_model: str = "llama3.1"
     anthropic_model: str = "claude-sonnet-4-5"  # override via ANTHROPIC_MODEL
     groq_model: str = "llama-3.3-70b-versatile"  # override via GROQ_MODEL
@@ -25,6 +25,7 @@ class Config:
     sandbox_cpus: str = "2"
     sandbox_pids: str = "512"
     instructor_password: str = "$T0mV13w"   # light gate for the replay view
+    github_token: str = ""                  # optional; raises GitHub API rate limit
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -44,4 +45,5 @@ class Config:
             sandbox_cpus=os.environ.get("SANDBOX_CPUS", "2"),
             sandbox_pids=os.environ.get("SANDBOX_PIDS", "512"),
             instructor_password=os.environ.get("INSTRUCTOR_PASSWORD", "$T0mV13w"),
+            github_token=os.environ.get("GITHUB_TOKEN", ""),
         )

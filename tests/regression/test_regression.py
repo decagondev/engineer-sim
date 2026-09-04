@@ -1,6 +1,8 @@
 """Regression suite — guards specific behaviors. Deterministic (FakeLLMClient).
 Real-model behavior lives in tests/evals (non-gating).
 """
+import pytest
+
 from sim.adapters.llm.anthropic_client import AnthropicClient
 from sim.adapters.llm.fake_client import FakeLLMClient
 from sim.adapters.llm.groq_client import GroqClient
@@ -64,6 +66,12 @@ def test_reg01_providers_satisfy_llm_port():
 def test_reg01_fake_returns_str():
     assert FakeLLMClient(responses=["x"]).complete(
         system="s", messages=[LLMMessage("user", "hi")]) == "x"
+
+
+def test_reg01_groq_requires_api_key(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        GroqClient().complete(system="s", messages=[LLMMessage("user", "hi")])
 
 
 # REG-02: locked rungs are NEVER in the persona prompt (anti-leak by construction)

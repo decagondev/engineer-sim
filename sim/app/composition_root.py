@@ -89,10 +89,14 @@ _DEMO_SCENARIO = {
         {"event_id": "priya_scope_ticket", "kind": "turn_count", "at": 4,
          "action": "ticket", "persona_key": "priya", "channel": "dm:priya",
          "min_level": "mid",
+         "issue_type": "story", "priority": "high", "labels": ["scope-creep", "exec"],
          "subject": "Can it also show a revenue chart?",
-         "content": "Oh — while you are at it, could the tool also show a "
-                    "revenue-over-time chart on the same screen? The exec team "
-                    "would love that."},
+         "content": "## Request\nAdd a revenue-over-time chart on the same screen "
+                    "as account health.\n\n## Why now\nThe exec team asked Priya; "
+                    "she's passing it along mid-thread.\n\n## Acceptance criteria\n"
+                    "- [ ] Revenue over time visible alongside health\n"
+                    "- [ ] Uses existing Stripe billing data\n\n"
+                    "## Risk\nLikely scope creep. Confirm with Engineering before committing."},
         {"event_id": "dana_email", "kind": "turn_count", "at": 5,
          "action": "email", "persona_key": "dana", "channel": "general",
          "min_level": "senior",
@@ -110,9 +114,25 @@ _DEMO_SCENARIO = {
     ],
     "tickets": [
         {"title": "Build a customer health dashboard",
-         "description": "Priya's original request: charts of how customers are doing, plus maybe a weekly email.", "created_by": "priya", "status": "todo"},
+         "description": (
+             "## Context\nCustomer Success wants visibility into how accounts "
+             "are doing. Priya asked for a dashboard and possibly a weekly email.\n\n"
+             "## Acceptance criteria\n- [ ] CS can see current health for accounts they own\n"
+             "- [ ] A weekly digest can be sent from the same data\n"
+             "- [ ] Uses existing Stripe + Postgres (no new vendors)\n\n"
+             "## Notes\nDefinition of 'healthy' is still TBD — talk to Priya before building."
+         ),
+         "created_by": "priya", "status": "todo",
+         "issue_type": "story", "priority": "high", "labels": ["cs", "dashboard"]},
         {"title": "Figure out what 'at risk' actually means",
-         "description": "Placeholder — the real definition needs to come out of discovery.", "created_by": "system", "status": "todo"},
+         "description": (
+             "## Why\nWe cannot ship a health view until 'at risk' is measurable.\n\n"
+             "## Outcome\nA short written definition Priya agrees on, with signals we can compute.\n\n"
+             "## Acceptance criteria\n- [ ] Definition agreed with CS\n"
+             "- [ ] Each signal has a named data source"
+         ),
+         "created_by": "system", "status": "todo",
+         "issue_type": "spike", "priority": "high", "labels": ["discovery"]},
     ],
     "rubric": [
         {"key": "discovery", "weight": 2.0,
@@ -192,7 +212,9 @@ def build_director(scenario: Scenario) -> Director | None:
                 TurnCountTrigger(at=t.at, min_level=t.min_level),
                 Event(event_id=t.event_id, persona_key=t.persona_key,
                       channel=t.channel, content=t.content,
-                      kind=t.action, subject=t.subject),
+                      kind=t.action, subject=t.subject,
+                      issue_type=t.issue_type, priority=t.priority,
+                      labels=t.labels),
             ))
     return Director(rules) if rules else None
 
@@ -228,7 +250,7 @@ def build_session_service(
     from sim.adapters.persistence.sqlite_tickets import SqliteTicketStore
     from sim.adapters.persistence.sqlite_settings import SqliteSettingsStore
     from sim.core.mail.mail_service import MailService
-    from sim.core.tickets.ticket_service import TicketService
+    from sim.core.tickets.ticket_service import TicketService, project_prefix
 
     scenario = scenario or build_scenario(config)
     repo = SqliteMessageRepository(config.db_path)
@@ -241,7 +263,8 @@ def build_session_service(
         world=scenario.world, cast=scenario.cast, settings=settings)
     tickets = TicketService(
         store=SqliteTicketStore(config.db_path), writer=repo,
-        cast=scenario.cast, seed_tickets=scenario.tickets)
+        cast=scenario.cast, seed_tickets=scenario.tickets,
+        project_key=project_prefix(scenario.key))
     svc = SessionService(
         writer=repo, reader=repo, responder=responder,
         unlock_store=unlock,
@@ -263,6 +286,7 @@ def _build_workspace_reader():
 def build_app(config: Config | None = None):
     from sim.adapters.web.app import create_web_app
     from sim.adapters.build.git_observer import GitBuildObserver
+    from sim.adapters.build.github_observer import GitHostBuildObserver
     config = config or Config.from_env()
     manager = build_manager(config)
     return create_web_app(
@@ -272,4 +296,5 @@ def build_app(config: Config | None = None):
         build_observer=GitBuildObserver(),
         workspace_reader=_build_workspace_reader(),
         instructor_password=config.instructor_password,
+        github_observer=GitHostBuildObserver(token=config.github_token),
     )

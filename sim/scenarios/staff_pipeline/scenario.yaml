@@ -64,10 +64,24 @@ triggers:
     min_level: staff
     persona_key: ravi
     channel: dm:ravi
+    issue_type: story
+    priority: high
+    labels: [scope-creep, infra]
     subject: While you're in there, migrate us to Kubernetes?
-    content: >-
-      A few folks have asked — could this also move us onto Kubernetes? Feels
-      like the moment to do it.
+    content: |-
+      ## Request
+      Fold a Kubernetes migration into the same pipeline work.
+
+      ## Why now
+      A few teams asked Ravi. He thinks "we're already in the pipeline" is the moment.
+
+      ## Acceptance criteria
+      - [ ] Workloads run on k8s
+      - [ ] Existing CI still produces a deployable artifact
+
+      ## Risk
+      Marcus has already said we are not standing up a platform team and not
+      migrating to Kubernetes. Treat this as scope creep until leadership agrees.
   - event_id: dana_budget
     kind: turn_count
     at: 5
@@ -94,10 +108,43 @@ rubric:
     description: Reframed the problem clearly for a non-technical and technical audience.
 tickets:
   - title: Make deploys faster
-    description: "Ravi's request: CI/CD is too slow."
+    issue_type: story
+    priority: high
+    labels: [ci, delivery]
     created_by: ravi
     status: todo
+    description: |-
+      ## Context
+      Ravi wants CI/CD to "just be faster." Deploys feel slow and people have
+      stopped trusting the pipeline.
+
+      ## Problem
+      The ticket says speed. The real pain may be reliability, ownership, or
+      flaky tests — that still has to come out of discovery.
+
+      ## Acceptance criteria
+      - [ ] A stated target (e.g. time-to-green, fail rate) Ravi agrees on
+      - [ ] A v1 change that fits one engineer and no new platform team
+      - [ ] No Kubernetes migration unless leadership explicitly asks
+
+      ## Notes
+      Marcus will ask who maintains whatever we touch.
   - title: Reduce flaky test failures
-    description: Placeholder — how big is the flakiness problem, really?
+    issue_type: spike
+    priority: medium
+    labels: [discovery, quality]
     created_by: system
     status: todo
+    description: |-
+      ## Why
+      If the pipeline is "slow" because it is untrusted, flaky tests are the
+      first thing to measure — not rewrite.
+
+      ## Outcome
+      A short note: how often tests flake, which suites, and whether fixing
+      them is the highest-leverage v1.
+
+      ## Acceptance criteria
+      - [ ] A number (or a honest "we don't know yet") for flake rate
+      - [ ] Named suites / jobs that fail most
+      - [ ] Recommendation: fix flakes vs. something else first

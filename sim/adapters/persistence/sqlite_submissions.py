@@ -15,24 +15,24 @@ class SqliteSubmissionStore:
             CREATE TABLE IF NOT EXISTS submissions (
                 session_id TEXT NOT NULL, seq INTEGER NOT NULL,
                 filename TEXT NOT NULL, content TEXT NOT NULL,
-                lines INTEGER NOT NULL, ts TEXT NOT NULL,
+                lines INTEGER NOT NULL, ts TEXT NOT NULL, kind TEXT DEFAULT 'patch',
                 PRIMARY KEY (session_id, seq)
             )
             """)
         self._conn.commit()
 
-    def save(self, session_id, filename, content, ts) -> Submission:
+    def save(self, session_id, filename, content, ts, kind="patch") -> Submission:
         row = self._conn.execute(
             "SELECT COALESCE(MAX(seq),0)+1 FROM submissions WHERE session_id=?",
             (session_id,)).fetchone()
         seq = row[0]
         lines = content.count("\n") + 1
         self._conn.execute(
-            "INSERT INTO submissions (session_id, seq, filename, content, lines, ts)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (session_id, seq, filename, content, lines, ts))
+            "INSERT INTO submissions (session_id, seq, filename, content, lines, ts, kind)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (session_id, seq, filename, content, lines, ts, kind))
         self._conn.commit()
-        return Submission(session_id, seq, filename, content, lines, ts)
+        return Submission(session_id, seq, filename, content, lines, ts, kind)
 
     def latest(self, session_id) -> Optional[Submission]:
         r = self._conn.execute(
@@ -48,5 +48,7 @@ class SqliteSubmissionStore:
 
     @staticmethod
     def _row(r) -> Submission:
+        keys = r.keys()
+        kind = r["kind"] if "kind" in keys and r["kind"] else "patch"
         return Submission(r["session_id"], r["seq"], r["filename"],
-                          r["content"], r["lines"], r["ts"])
+                          r["content"], r["lines"], r["ts"], kind)

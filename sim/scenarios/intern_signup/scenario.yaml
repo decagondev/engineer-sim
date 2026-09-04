@@ -64,6 +64,24 @@ rubric:
     description: Explained the finding and plan in simple, non-technical terms.
 tickets:
   - title: Fix the broken signup form
-    description: "Maya's request: people aren't signing up, the form seems broken."
+    issue_type: bug
+    priority: high
+    labels: [signup, growth]
     created_by: maya
     status: todo
+    description: |-
+      ## Context
+      Maya filed this because people are not signing up. She thinks the form
+      is broken.
+
+      ## Problem
+      "Broken" might mean a real defect, a confusing field, or something
+      upstream (email, analytics, a campaign). Confirm before rewriting the form.
+
+      ## Acceptance criteria
+      - [ ] Repro: what a user sees when signup fails
+      - [ ] A specific cause (or a short list of remaining suspects)
+      - [ ] A smallest fix Maya can try, not a redesign
+
+      ## Notes
+      Sam may have already poked at this — ask.

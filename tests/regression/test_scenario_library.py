@@ -33,3 +33,17 @@ def test_lib03_trigger_gates_are_valid_levels():
         for t in sc.triggers:
             assert t.min_level in LEVEL_ORDER, f"{key}:{t.event_id} bad min_level"
             assert t.action in ("chat", "email", "ticket")
+
+
+def test_lib04_every_scenario_provisions_a_non_empty_workspace(tmp_path):
+    """No scenario should leave the Files/Workspace view empty — either it has a
+    starter, or provisioning seeds a fallback README.
+    """
+    from sim.adapters.environment.local_folder import LocalFolderEnvironment
+    for key, sc in _reg().items():
+        env = LocalFolderEnvironment(root=str(tmp_path / key),
+                                     starter_template=sc.starter_template)
+        h = env.provision("s")
+        from pathlib import Path
+        visible = [p.name for p in Path(h.workdir).iterdir() if p.name != ".git"]
+        assert visible, f"{key} provisions an empty workspace"

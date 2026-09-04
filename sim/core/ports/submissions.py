@@ -9,9 +9,10 @@ class Submission:
     session_id: str
     seq: int
     filename: str
-    content: str          # the patch / diff text the learner submitted
+    content: str          # patch text, or a repo URL (see kind)
     lines: int
     ts: str
+    kind: str = "patch"   # "patch" | "repo"
 
 
 class SubmissionStore(Protocol):
@@ -20,7 +21,7 @@ class SubmissionStore(Protocol):
     """
 
     def save(self, session_id: str, filename: str, content: str,
-             ts: str) -> Submission: ...
+             ts: str, kind: str = "patch") -> Submission: ...
 
     def latest(self, session_id: str) -> Optional[Submission]: ...
 

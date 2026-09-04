@@ -79,9 +79,10 @@ class SessionManager:
             writer=self.repo, reader=self.repo, mail_store=self.mailstore,
             responder=self._responder, unlock_store=self.unlock,
             world=sc.world, cast=sc.cast, settings=self.settings)
+        from sim.core.tickets.ticket_service import project_prefix
         tickets = TicketService(
             store=self.ticketstore, writer=self.repo, cast=sc.cast,
-            seed_tickets=sc.tickets)
+            seed_tickets=sc.tickets, project_key=project_prefix(sc.key))
         session = SessionService(
             writer=self.repo, reader=self.repo, responder=self._responder,
             unlock_store=self.unlock, unlock_evaluator=UnlockEvaluator(self._judge),

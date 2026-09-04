@@ -56,8 +56,10 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
 - **Mail** — real: threaded email with the client and stakeholders; the director
   can send inbound email (a scope change), which shows as a dock badge. Emails are
   recorded in the transcript and graded like chat.
-- **Submit** — real: download the scenario starter, build on your own machine,
-  and submit a git patch back for grading (the classroom/LAN path).
+- **Submit** — real: two paths. **GitHub (recommended):** fork the teacher's
+  starter repo, push, and submit your public repo URL (graded from its commits).
+  **Patch (fallback):** download the starter, work locally, submit a git patch —
+  no GitHub needed.
 - **Files** — real: read-only browser of the per-session sandbox (starter repo
   + your committed work), path-safe.
 - **Tickets** — real: a To Do / In Progress / Done board seeded with the client's

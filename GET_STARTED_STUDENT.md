@@ -99,7 +99,7 @@ The client and stakeholders are AI. You choose what runs them:
   https://console.anthropic.com and set `ANTHROPIC_API_KEY`.
 
 - **Fast & cheap open models — Groq (paid, inexpensive).** Runs Llama and other
-  open models very fast. `pip install groq`, get a key at
+  open models very fast. Get a key at
   https://console.groq.com/keys, set `GROQ_API_KEY`, and start with
   `LLM_PROVIDER=groq`.
 
