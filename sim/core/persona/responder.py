@@ -24,8 +24,11 @@ class PersonaResponder:
         unlocked: Sequence[RevealRung] = (),
         style: str = "chat",
         posture: str = "",
+        extra_context: str = "",
     ) -> str:
-        system = persona.system_prompt(world, unlocked, style=style, posture=posture)
+        system = persona.system_prompt(
+            world, unlocked, style=style, posture=posture,
+            extra_context=extra_context)
         messages = [
             LLMMessage(
                 role="assistant" if m.sender == persona.key else "user",

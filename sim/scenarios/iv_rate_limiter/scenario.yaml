@@ -1,0 +1,88 @@
+key: iv_rate_limiter
+title: 'Interview: rate limiter in front of the public API'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: omar
+  name: Omar
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Design a rate limiter for our public HTTP API. I want to hear how you would
+    approach it and what you would write down for the team. About twenty minutes.
+  hidden_need: Per-API-key limits, default 100 requests/minute, some keys need custom limits,
+    and we must not take the API down if the limiter is sick.
+  hidden_constraints: Several API boxes already; they do not share memory. A small Redis exists.
+    Limits should be eventually consistent enough that a brief overshoot is acceptable. No
+    new vendor.
+  reveal_ladder:
+  - unlock_when: asks whose traffic, per user / IP / key, or the unit of limiting
+    content: Per API key. IP is a nice-to-have, not v1.
+  - unlock_when: asks about the limit, window, or burst
+    content: Default is 100 requests per minute. A few partners will need a higher cap.
+  - unlock_when: asks what happens when the limiter is down, or about fail-open / fail-closed
+    content: If the limiter is sick we would rather serve traffic than go dark. A short overshoot
+      is fine.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: omar
+  channel: dm:omar
+  content: Design a rate limiter for our public HTTP API. I want to hear how you would approach
+    it and what you would write down for the team. About twenty minutes.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted per-key limits, the default window, custom caps, and fail-open.
+- key: scoping
+  weight: 2.0
+  description: Designed a limiter that works across multiple boxes and names the fail path.
+- key: stakeholders
+  weight: 1.0
+  description: Showed they know a limiter is a distributed decision, not a local counter.
+- key: communication
+  weight: 2.0
+  description: Defended window, store, and fail-open/closed from their write-up.
+tickets:
+- title: Write implementation tickets for the rate limiter
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

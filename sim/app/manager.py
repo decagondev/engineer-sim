@@ -46,6 +46,7 @@ class SessionManager:
         self.ticketstore = SqliteTicketStore(config.db_path)
         self.settings = SqliteSettingsStore(config.db_path)
         self.submissions = SqliteSubmissionStore(config.db_path)
+        self.llm = llm
         self._responder = PersonaResponder(llm)
         self._judge = judge_llm
         self._cache: dict[str, Bundle] = {}
@@ -56,7 +57,8 @@ class SessionManager:
         return self._registry
 
     def scenarios_meta(self) -> list[dict]:
-        return [{"key": s.key, "title": s.title, "difficulty": s.difficulty}
+        return [{"key": s.key, "title": s.title, "difficulty": s.difficulty,
+                 "track": s.track, "role_label": s.role_label}
                 for s in self._registry.values()]
 
     def default_scenario_key(self) -> str:
@@ -83,13 +85,31 @@ class SessionManager:
         tickets = TicketService(
             store=self.ticketstore, writer=self.repo, cast=sc.cast,
             seed_tickets=sc.tickets, project_key=project_prefix(sc.key))
+        environment = build_environment(self._config, sc)
         session = SessionService(
             writer=self.repo, reader=self.repo, responder=self._responder,
             unlock_store=self.unlock, unlock_evaluator=UnlockEvaluator(self._judge),
             world=sc.world, cast=sc.cast, director=build_director(sc),
             mail_service=mail, ticket_service=tickets, settings=self.settings,
-            primary_key=sc.primary_persona.key)
-        bundle = Bundle(sc, session, mail, tickets,
-                        build_environment(self._config, sc))
+            primary_key=sc.primary_persona.key,
+            track=sc.track, role_label=sc.role_label,
+            design_lookup=lambda sid, env=environment: _read_workspace_design(env, sid))
+        bundle = Bundle(sc, session, mail, tickets, environment)
         self._cache[scenario_key] = bundle
         return bundle
+
+
+def _read_workspace_design(environment, session_id: str) -> str:
+    from pathlib import Path
+    if environment is None:
+        return ""
+    h = environment.handle(session_id)
+    if h is None:
+        return ""
+    path = Path(h.workdir) / "DESIGN.md"
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""

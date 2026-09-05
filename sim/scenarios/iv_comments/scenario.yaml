@@ -1,0 +1,87 @@
+key: iv_comments
+title: 'Interview: nested comments'
+track: interview
+role_label: Candidate
+difficulty: junior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: yuki
+  name: Yuki
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design comments on a post: people reply to comments, we show a thread. Write
+    the design. About twenty minutes.'
+  hidden_need: A few popular posts will have thousands of comments, we need pagination, and
+    soft-delete (remove body, keep structure) is required.
+  hidden_constraints: Nesting deeper than a few levels can flatten. Edits are allowed for
+    a short window. No real-time typing in v1.
+  reveal_ladder:
+  - unlock_when: asks about volume per post or pagination
+    content: Most posts are quiet. A few will have thousands of comments. We need pages, not
+      one giant payload.
+  - unlock_when: asks about delete, edit, or moderation
+    content: 'Soft-delete: take the body down, keep the thread shape. Short edit window.'
+  - unlock_when: asks about nesting depth or real-time
+    content: Deep trees can flatten after a few levels. Live typing is out of v1.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: yuki
+  channel: dm:yuki
+  content: 'Design comments on a post: people reply to comments, we show a thread. Write the
+    design. About twenty minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got hot-post volume, pagination, soft-delete, and flatten-deep-threads.
+- key: scoping
+  weight: 2.0
+  description: Designed a thread model that can page and soft-delete.
+- key: stakeholders
+  weight: 1.0
+  description: Included moderation/delete, not only insert.
+- key: communication
+  weight: 2.0
+  description: Explained tree vs flat storage from their write-up.
+tickets:
+- title: Write implementation tickets for comments
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

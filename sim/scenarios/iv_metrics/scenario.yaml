@@ -1,0 +1,88 @@
+key: iv_metrics
+title: 'Interview: metrics ingest for product counters'
+track: interview
+role_label: Candidate
+difficulty: senior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: hana
+  name: Hana
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Design a service that accepts product counters (button clicks, errors) from
+    our apps and lets us read them back as time series. Twenty minutes to a design doc.
+  hidden_need: On the order of 50k points/sec ingest, query is 'last hour / last day' dashboards,
+    and we can lose a few seconds of data on a crash but not a whole day.
+  hidden_constraints: Cardinality will explode if every user-id becomes a label — push back.
+    One-second resolution is finer than we need. Existing object store for cold data is fine.
+  reveal_ladder:
+  - unlock_when: asks about ingest rate or how metrics arrive
+    content: On the order of fifty thousand points a second from our apps.
+  - unlock_when: asks about queries, dashboards, or retention
+    content: People look at the last hour and the last day. Older than a couple of weeks can
+      be coarse or gone.
+  - unlock_when: asks about loss, durability, or cardinality / labels
+    content: Losing a couple of seconds on a crash is OK. Losing a day is not. Please do not
+      make every user id a label.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: hana
+  channel: dm:hana
+  content: Design a service that accepts product counters (button clicks, errors) from our
+    apps and lets us read them back as time series. Twenty minutes to a design doc.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got ingest rate, query windows, acceptable loss, and cardinality warning.
+- key: scoping
+  weight: 2.0
+  description: Designed ingest → store → query with aggregation and a cardinality stance.
+- key: stakeholders
+  weight: 1.0
+  description: Knew metrics systems die on cardinality and write amplification.
+- key: communication
+  weight: 2.0
+  description: Defended resolution, retention, and label policy from the doc.
+tickets:
+- title: Write implementation tickets for metrics ingest
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

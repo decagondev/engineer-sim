@@ -1,0 +1,182 @@
+key: sys_notify
+title: One notifications service for email, push and SMS
+track: systems
+role_label: Systems Designer
+difficulty: senior
+starter_template: starter
+definition_of_done: >-
+  The engineer uncovers fan-out, idempotency, quiet hours and a deletion
+  obligation — not "call Sendgrid from the app" — then defends a v1 (queue,
+  workers, per-channel adapters, at-least-once with keys) and cuts a realtime
+  inbox.
+world:
+  facts:
+    deadline: product wants "notifications" in the next quarter
+    budget: you plus one backend engineer for implementation later
+    team: consumer app, ~4 million registered users, growing
+personas:
+  - key: evan
+    name: Evan
+    role: Engineering Manager
+    voice: product-fluent, impatient with "it depends", wants one service
+    public_brief: >-
+      Every team is sending their own email. We need one notifications service —
+      email, push, SMS — so product can just fire an event.
+    hidden_need: >-
+      The real pain is duplicate sends and no quiet hours. Support gets angry
+      users who were texted at 2am and emailed the same receipt three times.
+      Idempotency and preference/quiet-hours matter more than a third channel.
+    hidden_constraints: >-
+      SMS is expensive; legal wants a documented opt-out and a way to delete a
+      user. We already pay for Sendgrid. Push is FCM, half-configured. No new
+      "customer engagement platform" licence.
+    reveal_ladder:
+      - unlock_when: asks why one service, or what is broken today
+        content: >-
+          People get the same receipt three times because checkout retries and
+          each retry sends again. Support has a tag for it.
+      - unlock_when: asks about preferences, quiet hours, timezone, or opt-out
+        content: >-
+          Users can turn off marketing email in the app. Nobody honours it for
+          SMS. Quiet hours were promised in a blog post and never built.
+      - unlock_when: asks about delete, GDPR, retention, or what we store
+        content: >-
+          Legal will ask how we delete a user from the send log. Today we
+          cannot. They will block SMS until we can say something true.
+  - key: sasha
+    name: Sasha
+    role: SRE
+    voice: precise, thinks in retries and poison queues
+    public_brief: >-
+      You will ask about at-least-once vs exactly-once, and what happens when
+      Sendgrid is 500ing for twenty minutes.
+    reveal_ladder: []
+  - key: quin
+    name: Quin
+    role: Product (growth)
+    voice: optimistic, wants "the inbox like LinkedIn"
+    public_brief: >-
+      You want an in-app notification centre as part of the same project.
+    reveal_ladder: []
+triggers:
+  - event_id: sasha_joins
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: sasha
+    channel: dm:sasha
+    content: >-
+      Sasha. If checkout retries, how do you not send three times? If you say
+      "exactly once" I will ask which log is the source of truth. Write the
+      idempotency key.
+  - event_id: quin_inbox
+    kind: turn_count
+    at: 5
+    action: ticket
+    min_level: senior
+    persona_key: quin
+    channel: dm:evan
+    issue_type: story
+    priority: high
+    labels: [scope-creep, inbox]
+    subject: In-app notification centre in the same service
+    content: |-
+      ## Request
+      A LinkedIn-style in-app inbox, read/unread, as part of notifications v1.
+
+      ## Why now
+      "We're already building the service."
+
+      ## Acceptance criteria
+      - [ ] In-app list of notifications
+      - [ ] Read state
+      - [ ] Same events as email/push
+
+      ## Risk
+      This is a second product with its own storage and fan-out. Easy to
+      swallow the quarter. Push back unless Evan explicitly prioritises it.
+  - event_id: review_evan
+    kind: submission
+    at: 1
+    action: email
+    persona_key: evan
+    channel: general
+    subject: Design review — notifications
+    content: |-
+      Read the doc. Defend these before I schedule implementation:
+
+      1. What is the idempotency key on a checkout.paid event?
+      2. How do quiet hours interact with a "your card declined" SMS?
+      3. What is v1 vs the in-app inbox Quin is asking for?
+
+      Be concrete. "We'll figure it out in the worker" is not a design.
+  - event_id: review_sasha
+    kind: submission
+    at: 1
+    action: ticket
+    persona_key: sasha
+    channel: dm:sasha
+    issue_type: spike
+    priority: high
+    labels: [design-review, reliability]
+    subject: Sendgrid 500s for 20 minutes
+    content: |-
+      ## Ask
+      Walk the outage. Provider is down. Queue depth grows.
+
+      ## Acceptance criteria
+      - [ ] Retry / backoff policy (and what is not retried)
+      - [ ] What the user sees
+      - [ ] How we drain without a thundering herd when Sendgrid returns
+
+      ## Notes
+      Poison messages stay poison. Say where they go.
+rubric:
+  - key: discovery
+    weight: 2.0
+    description: Found duplicates, quiet hours and deletion — not "wrap Sendgrid."
+  - key: scoping
+    weight: 1.5
+    description: v1 is queue + adapters + idempotency; inbox/SMS extras are explicit.
+  - key: stakeholders
+    weight: 1.2
+    description: Handled Sasha on retries and Quin on the inbox without folding.
+  - key: communication
+    weight: 1.0
+    description: Defended the design with keys, failure modes and a cut-line.
+tickets:
+  - title: Design the notifications service
+    issue_type: story
+    priority: high
+    labels: [design, notifications]
+    created_by: evan
+    status: todo
+    description: |-
+      ## Context
+      Product wants one place to send email / push / SMS.
+
+      ## Outcome
+      DESIGN.md that names the event, the queue, the workers, and what is not v1.
+
+      ## Acceptance criteria
+      - [ ] Idempotency is specified
+      - [ ] Channel adapters are named
+      - [ ] Quiet hours / transactional vs marketing is addressed
+      - [ ] Delete/export is not hand-waved
+  - title: Map current senders and duplicate complaints
+    issue_type: spike
+    priority: high
+    labels: [discovery]
+    created_by: system
+    status: todo
+    description: |-
+      ## Why
+      "One service" is a slogan until we know who sends what today.
+
+      ## Outcome
+      A short inventory: checkout, marketing, password-reset — and whether
+      they already retry.
+
+      ## Acceptance criteria
+      - [ ] At least three current send paths named
+      - [ ] Where duplicates are coming from (or an honest unknown)

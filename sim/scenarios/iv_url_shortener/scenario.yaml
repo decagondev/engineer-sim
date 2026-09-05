@@ -1,0 +1,88 @@
+key: iv_url_shortener
+title: 'Interview: URL shortener'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: sia
+  name: Sia
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Design a URL shortener. Classic interview, but I want a design document the
+    team could implement from — not a whiteboard speech. About twenty minutes.
+  hidden_need: 100 creates/sec, 10k redirects/sec, redirects should be fast, and we need a
+    daily click count per link — not a live dashboard.
+  hidden_constraints: Custom aliases are a v1 request from marketing. Open-redirect abuse
+    will happen. One existing Postgres and a small cache.
+  reveal_ladder:
+  - unlock_when: asks about create vs redirect volume or QPS
+    content: Creates are modest — about a hundred a second. Redirects are the hot path, on
+      the order of ten thousand a second.
+  - unlock_when: asks about analytics, clicks, or reporting
+    content: A click count per link by the next morning is enough. Not live.
+  - unlock_when: asks about custom aliases, vanity URLs, or abuse
+    content: Marketing wants optional custom slugs. People will try to short-link phishing
+      URLs.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: sia
+  channel: dm:sia
+  content: Design a URL shortener. Classic interview, but I want a design document the team
+    could implement from — not a whiteboard speech. About twenty minutes.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got create/redirect rates, next-morning counts, custom aliases, and abuse.
+- key: scoping
+  weight: 2.0
+  description: Separated the redirect path from counting and named a v1 abuse stance.
+- key: stakeholders
+  weight: 1.0
+  description: Treated shortener as a read-heavy system with an ID and safety problem.
+- key: communication
+  weight: 2.0
+  description: Walked their own redirect and count path when asked.
+tickets:
+- title: Write implementation tickets for the shortener
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

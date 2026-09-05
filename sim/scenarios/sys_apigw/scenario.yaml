@@ -1,0 +1,185 @@
+key: sys_apigw
+title: The API gateway that is "just rate limits"
+track: systems
+role_label: Systems Designer
+difficulty: principal
+starter_template: starter
+definition_of_done: >-
+  The engineer uncovers multi-tenant fairness, paid burst, and multi-region
+  clock skew — not nginx limit_req — then defends a design (limit algorithm,
+  where the counter lives, what 429 looks like) that sales can sell and SRE
+  can page on.
+world:
+  facts:
+    deadline: two enterprise tenants are threatening to leave over noisy neighbours
+    budget: you; a platform engineer can implement next quarter
+    team: a public API, ~200 tenants, a handful of whales
+personas:
+  - key: kiran
+    name: Kiran
+    role: Engineering Manager, Platform
+    voice: tired of incidents, wants "rate limits" as the ticket title
+    public_brief: >-
+      Tenant B keeps knocking over Tenant A. Put rate limits on the API.
+      nginx limit_req should be enough if we pick numbers.
+    hidden_need: >-
+      This is a fairness and product problem. Whales pay for burst; free-tier
+      tenants scrape. A global RPS cap either starves a paying customer or
+      fails to protect the noisy-neighbour incident. Limits must be per-tenant
+      (and maybe per-route) with a sold burst.
+    hidden_constraints: >-
+      We are in two regions. Clocks drift. A single Redis in us-east is a
+      cross-region hop for eu. Legal wants a 429 body that does not leak
+      other tenants. Sales has already promised "unlimited" to one logo —
+      that has to be designed as an exception, not a surprise.
+    reveal_ladder:
+      - unlock_when: asks who is noisy, who pays, or whether limits are per-tenant
+        content: >-
+          The incident was one free-tier scraper. The tenant who called us is
+          on an enterprise contract that says "burst for launches." One number
+          for everyone will make sales or SRE unhappy — pick who you want to call.
+      - unlock_when: asks about regions, latency, or where the counter lives
+        content: >-
+          EU traffic should not depend on us-east Redis for every request. We
+          already have a "it felt slow on Monday" ticket from Frankfurt.
+      - unlock_when: asks about the unlimited customer, exceptions, or what sales promised
+        content: >-
+          One logo was promised "unlimited" in a side letter. We cannot 429
+          them without an exec conversation. Design the exception path.
+  - key: moe
+    name: Moe
+    role: SRE
+    voice: incident-shaped, wants dashboards and a kill switch
+    public_brief: >-
+      You will ask for a global kill switch and what we do when the limiter
+      itself is down (fail open vs fail closed).
+    reveal_ladder: []
+  - key: tess
+    name: Tess
+    role: Sales engineer
+    voice: customer-facing, will lobby for the unlimited logo
+    public_brief: >-
+      You will remind everyone that Acme was promised unlimited and that 429s
+      will hit your quarterly number.
+    reveal_ladder: []
+triggers:
+  - event_id: moe_joins
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: moe
+    channel: dm:moe
+    content: >-
+      Moe. When the limiter is on fire, do we fail open (protect revenue, risk
+      the site) or fail closed (protect the site, 429 everyone)? Write it.
+      Also I want a kill switch that is not "deploy a config."
+  - event_id: tess_unlimited
+    kind: turn_count
+    at: 4
+    action: ticket
+    min_level: staff
+    persona_key: tess
+    channel: dm:kiran
+    issue_type: story
+    priority: highest
+    labels: [scope-creep, sales]
+    subject: Acme must never receive a 429
+    content: |-
+      ## Request
+      Hard-code Acme as unlimited in v1.
+
+      ## Why now
+      Side letter. They are watching this incident thread.
+
+      ## Acceptance criteria
+      - [ ] Acme is never rate-limited
+      - [ ] No other tenant is mentioned in their 429s (n/a if they have none)
+
+      ## Risk
+      A silent unlimited tenant is how the next incident starts. Design an
+      explicit exception with an owner, not a special case in nginx.
+  - event_id: review_kiran
+    kind: submission
+    at: 1
+    action: email
+    persona_key: kiran
+    channel: general
+    subject: Design review — API limits
+    content: |-
+      Defend before I take this to the enterprise QBR:
+
+      1. Token bucket / sliding window / what, and why that and not nginx.
+      2. Where the counter lives in us-east and eu, and what "eventual" means
+         for a tenant bursting in both.
+      3. Fail open vs fail closed, in one sentence I can tell the CEO.
+
+      If you rubber-stamp "Redis + limit_req" I will send it back.
+  - event_id: review_moe
+    kind: submission
+    at: 1
+    action: ticket
+    persona_key: moe
+    channel: dm:moe
+    issue_type: spike
+    priority: high
+    labels: [design-review, reliability]
+    subject: Limiter outage drill
+    content: |-
+      ## Ask
+      The counter store is unreachable for 3 minutes. Walk the request path.
+
+      ## Acceptance criteria
+      - [ ] Fail open or closed, named
+      - [ ] What the 429 (or 200) body is
+      - [ ] How we notice (page, not Twitter)
+
+      ## Notes
+      A limiter that 500s is worse than no limiter.
+rubric:
+  - key: discovery
+    weight: 1.5
+    description: Found per-tenant fairness, paid burst, multi-region, and the unlimited exception.
+  - key: scoping
+    weight: 1.6
+    description: A real algorithm + counter placement + exception path; not a global nginx cap.
+  - key: stakeholders
+    weight: 1.5
+    description: Held Moe's fail-open question and Tess's Acme demand without hiding the trade-off.
+  - key: communication
+    weight: 1.4
+    description: Defended the review in language an EM can take to a QBR.
+tickets:
+  - title: Design per-tenant API rate limits
+    issue_type: story
+    priority: high
+    labels: [design, api]
+    created_by: kiran
+    status: todo
+    description: |-
+      ## Context
+      Noisy-neighbour incidents. Ticket says "add rate limits."
+
+      ## Outcome
+      DESIGN.md with algorithm, counter placement, 429 contract, exceptions.
+
+      ## Acceptance criteria
+      - [ ] Per-tenant (not only global) is decided
+      - [ ] Multi-region story
+      - [ ] Fail open/closed
+      - [ ] How sales exceptions are represented
+  - title: List tenant classes and the Acme letter
+    issue_type: spike
+    priority: high
+    labels: [discovery]
+    created_by: system
+    status: todo
+    description: |-
+      ## Why
+      Limits are a product. We need who is free / pro / enterprise / "unlimited."
+
+      ## Outcome
+      A table of tenant classes and what we are allowed to 429.
+
+      ## Acceptance criteria
+      - [ ] At least three classes
+      - [ ] Acme exception named with an owner

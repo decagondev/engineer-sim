@@ -1,0 +1,88 @@
+key: iv_file_upload
+title: 'Interview: file upload and download'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: rhea
+  name: Rhea
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Users need to upload files (resumes, images) and download them later. Design
+    that path. About twenty minutes.
+  hidden_need: Files up to 100MB, we should not stream them through the app boxes if we can
+    help it, and downloads need time-limited links.
+  hidden_constraints: Existing object store. Virus scan is a v1 request from security but
+    can be async. Metadata lives in Postgres. Hot linking is a concern.
+  reveal_ladder:
+  - unlock_when: asks about size, types, or how many files
+    content: Up to a hundred megabytes. Images and PDFs mostly. Thousands of uploads a day,
+      not millions.
+  - unlock_when: asks whether files go through the API servers or direct to storage
+    content: We would rather not drag 100MB through the app boxes if we can avoid it.
+  - unlock_when: asks about access, expiry, hotlinking, or scanning
+    content: Downloads should be time-limited links. Security wants a malware scan; it can
+      happen after upload.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: rhea
+  channel: dm:rhea
+  content: Users need to upload files (resumes, images) and download them later. Design that
+    path. About twenty minutes.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got size, avoid app-box streaming, time-limited download, async scan.
+- key: scoping
+  weight: 2.0
+  description: Designed upload/download with object storage and a metadata record.
+- key: stakeholders
+  weight: 1.0
+  description: Separated metadata, bytes, and auth.
+- key: communication
+  weight: 2.0
+  description: Defended the upload handshake and link expiry from the doc.
+tickets:
+- title: Write implementation tickets for file upload
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

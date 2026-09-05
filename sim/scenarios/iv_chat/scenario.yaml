@@ -1,0 +1,86 @@
+key: iv_chat
+title: 'Interview: one-to-one chat'
+track: interview
+role_label: Candidate
+difficulty: senior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: vik
+  name: Vik
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design one-to-one chat for our product: two people, message history, online
+    enough to feel instant. Write the design. Twenty minutes.'
+  hidden_need: Hundreds of thousands of users, not millions of groups; p95 send under a couple
+    of hundred milliseconds in-region; history should survive refresh; unread counts matter.
+  hidden_constraints: No group chat in v1. Media attachments later. Exactly-once is not required
+    if the UI can de-dupe. One region for v1.
+  reveal_ladder:
+  - unlock_when: asks about 1:1 vs groups, or scale of users
+    content: One-to-one only. Hundreds of thousands of users, not a global public chat.
+  - unlock_when: asks about latency, delivery, or what 'instant' means
+    content: In-region it should feel instant — a couple of hundred milliseconds is the ballpark.
+  - unlock_when: asks about history, unread, or attachments
+    content: History on refresh. Unread counts yes. Attachments can wait.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: vik
+  channel: dm:vik
+  content: 'Design one-to-one chat for our product: two people, message history, online enough
+    to feel instant. Write the design. Twenty minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted 1:1, user scale, latency, history, and unread; groups/media out.
+- key: scoping
+  weight: 2.0
+  description: Designed send, fan-in to the other user, and a history store.
+- key: stakeholders
+  weight: 1.0
+  description: Covered online path vs stored history.
+- key: communication
+  weight: 2.0
+  description: Defended delivery and storage choices from their write-up.
+tickets:
+- title: Write implementation tickets for 1:1 chat
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

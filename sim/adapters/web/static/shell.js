@@ -27,6 +27,13 @@ window.SimApps = (function () {
     $("brand").textContent = title;
     $("hero").textContent = title;
     document.title = title;
+    if (ctx.scenario.track === "systems") {
+      const sub = document.querySelector("#desktop .sub");
+      if (sub) sub.textContent = "You are the Systems Designer. Discover constraints in Team Chat, write the design in the starter, then submit and defend it.";
+    } else if (ctx.scenario.track === "interview") {
+      const sub = document.querySelector("#desktop .sub");
+      if (sub) sub.textContent = "Interview assessment. Ask the interviewer clarifying questions, write DESIGN.md, submit it, then defend your decisions with the assessor.";
+    }
     renderDock();
     tick(); setInterval(tick, 1000);
     pollMail(); setInterval(pollMail, 6000);

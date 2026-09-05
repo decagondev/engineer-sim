@@ -25,7 +25,10 @@ SimApps.register({
   .chat-app .ctop .peer .role{color:var(--muted);font-size:13px}
   .chat-app .ctop .gradeBtn{margin-left:auto;background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:7px 12px;font-size:13px;cursor:pointer}
   .chat-app .ctop .gradeBtn:hover{border-color:#3a4353}
+  .chat-app .ctop .gopts{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .chat-app .ctop .gopts label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
   .chat-app .grade{padding:0 16px 6px;white-space:pre-wrap;font:12.5px/1.6 var(--mono);color:var(--muted)}
+  .chat-app .diagram{margin:0 16px 8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font:12.5px/1.5 var(--mono);color:var(--muted);white-space:pre-wrap;display:none}
   .chat-app .log{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:2px}
   .chat-app .row{display:flex;flex-direction:column;max-width:74%}
   .chat-app .row:has(.md-code){max-width:88%}
@@ -62,8 +65,14 @@ SimApps.register({
         <div class="people"></div>
       </aside>
       <section class="cmain">
-        <div class="ctop"><div class="peer"></div><button class="gradeBtn">Grade run</button></div>
+        <div class="ctop"><div class="peer"></div>
+          <div class="gopts">
+            <label class="ticketsToggle" hidden><input type="checkbox" class="includeTickets"/> Include tickets extra credit</label>
+            <button class="gradeBtn" type="button">Grade run</button>
+          </div>
+        </div>
         <div class="grade"></div>
+        <div class="diagram"></div>
         <div class="log"></div>
         <form class="composer" autocomplete="off">
           <input class="input" placeholder="Type a message…" autofocus/>
@@ -73,10 +82,13 @@ SimApps.register({
     </div>`;
     const app = root.querySelector(".chat-app"), q = s => app.querySelector(s);
     const log = q(".log"), input = q(".input"), sendBtn = q(".send"),
-          peopleEl = q(".people"), peerEl = q(".peer"), gradeOut = q(".grade");
+          peopleEl = q(".people"), peerEl = q(".peer"), gradeOut = q(".grade"),
+          diagramEl = q(".diagram");
     if (window.SimMD) SimMD.hydrate(log);
     const sid = ctx.sid;
-    let meta = {}, primaryKey = null, active = null, awaiting = null, watchdog = null, ws = null, closed = false;
+    const interview = ctx.scenario && ctx.scenario.track === "interview";
+    if (interview) q(".ticketsToggle").hidden = false;
+    let meta = {}, primaryKey = null, active = null, awaiting = null, watchdog = null, ws = null, closed = false, seen = new Set(), pollTimer = null;
     const channels = {};
     const HUES = [210, 28, 150, 280, 340, 95];
     const hueFor = k => { let h = 0; for (const c of k) h = (h * 31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
@@ -141,6 +153,11 @@ SimApps.register({
     function signal(key, text) { (channels[key] || (channels[key] = { messages: [], unread: 0 })).messages.push({ kind: "signal", content: text }); if (key === active) renderLog(); }
     function push(key, msg) { channels[key].messages.push(msg); if (key === active) renderLog(); else { channels[key].unread++; renderRoster(); } }
     function incoming(m, o = {}) {
+      const keyId = m.id != null ? "id:" + m.id : "";
+      const keyTxt = [m.sender, m.ts, m.kind || "message", (m.content || "").slice(0, 160)].join("|");
+      if ((keyId && seen.has(keyId)) || seen.has(keyTxt)) return;
+      if (keyId) seen.add(keyId);
+      seen.add(keyTxt);
       if (m.kind === "event" && m.content.startsWith("[fired:")) return;
       if (m.channel === "general") { if (primaryKey) signal(primaryKey, m.content.replace(/\.$/, "")); return; }
       const key = m.channel.startsWith("dm:") ? m.channel.slice(3) : m.channel;
@@ -192,15 +209,47 @@ SimApps.register({
       watchdog = setTimeout(() => { if (awaiting) { signal(active, "no response yet — you can keep typing"); clearAwaiting(); } }, 120000);
     });
 
+    async function refreshDiagram() {
+      try {
+        const d = await (await fetch(`/api/session/${sid}/diagram`)).json();
+        if (!d.mermaid) return;
+        diagramEl.style.display = "block";
+        const src = "```mermaid\n" + d.mermaid + "\n```";
+        if (window.SimMD) diagramEl.innerHTML = "<div class='muted' style='margin-bottom:6px'>Design diagram</div>" + SimMD.render(src);
+        else diagramEl.textContent = d.mermaid;
+      } catch (e) {}
+    }
+
     q(".gradeBtn").addEventListener("click", async () => {
       gradeOut.textContent = "Grading this run…";
-      const g = await (await fetch(`/api/session/${sid}/grade`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+      const includeTickets = interview && q(".includeTickets").checked;
+      const g = await (await fetch(`/api/session/${sid}/grade`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ include_tickets: includeTickets })
+      })).json();
       if (g.error) { gradeOut.textContent = "grade error: " + g.error; return; }
       const rows = g.scores.map(s => `  ${s.key.padEnd(14)} ${String((s.score * 100 | 0) + "%").padStart(4)}   ${s.evidence}`).join("\n");
+      const extra = g.tickets_extra
+        ? `\n  ${"tickets+".padEnd(14)} ${String((g.tickets_extra.score * 100 | 0) + "%").padStart(4)}   ${g.tickets_extra.evidence}`
+        : "";
+      const base = g.include_tickets ? `  (base ${(g.total_base * 100 | 0)}% + tickets extra credit)\n` : "";
       const caveat = g.calibrated ? "" : `\n\n! ${g.caveat || "grader not calibrated"}`;
-      gradeOut.textContent = `SCORE ${(g.total * 100 | 0)}%\n${rows}\n\n${g.summary}${caveat}`;
+      gradeOut.textContent = `SCORE ${(g.total * 100 | 0)}%\n${base}${rows}${extra}\n\n${g.summary}${caveat}`;
+      refreshDiagram();
     });
 
-    return { unmount() { closed = true; if (ws) { ws.onclose = null; ws.close(); } clearTimeout(watchdog); } };
+    async function pollTranscript() {
+      if (closed) return;
+      try {
+        const history = await (await fetch(`/api/session/${sid}/transcript`)).json();
+        (history || []).forEach(m => incoming(m, { replay: true }));
+        if (interview) refreshDiagram();
+      } catch (e) {}
+    }
+
+    pollTimer = setInterval(pollTranscript, 4000);
+    if (interview) refreshDiagram();
+
+    return { unmount() { closed = true; if (ws) { ws.onclose = null; ws.close(); } clearTimeout(watchdog); clearInterval(pollTimer); } };
   }
 });

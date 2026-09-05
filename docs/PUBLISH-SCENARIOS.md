@@ -13,7 +13,12 @@ sim/scenarios/<scenario>/starter/
 For example:
 - `sim/scenarios/churn_dashboard/starter/`
 - `sim/scenarios/support_copilot/starter/`
-- `sim/scenarios/intern_signup/starter/`  … and so on for every scenario.
+- `sim/scenarios/intern_signup/starter/`  … and so on for every product scenario.
+- Systems design (doc-first): `sys_shortlink`, `sys_notify`, `sys_collab`,
+  `sys_apigw`, `sys_feed` — same `starter/` layout; learners submit `DESIGN.md`.
+- Interview assessment (`iv_*`): timed system-design interviews. Learners ask
+  the interviewer clarifying questions, submit `DESIGN.md`, then defend it with
+  an assessor. Extra-credit tickets live in `TICKETS.md`.
 
 ## Turn a starter folder into a public repo (once per scenario)
 

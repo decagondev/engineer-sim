@@ -1,0 +1,89 @@
+key: iv_key_value
+title: 'Interview: tiny key-value store'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: priya
+  name: Priya
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design a small key-value store our internal services can call. Not Redis-the-product
+    — your design. Twenty minutes: questions, then a written design.'
+  hidden_need: Get/put/delete of blobs up to 16KB, ~5k QPS mostly gets, and a value should
+    still be there after a process restart.
+  hidden_constraints: One availability zone for v1. Replication can wait. We have disks and
+    a couple of boxes. Strong consistency for a single key is expected.
+  reveal_ladder:
+  - unlock_when: asks about operations, value size, or the API
+    content: Get, put, delete. Values are small — think 16KB max, usually much less.
+  - unlock_when: asks about QPS, read/write mix, or latency
+    content: On the order of five thousand requests a second, mostly gets. A few milliseconds
+      is fine.
+  - unlock_when: asks about durability, restart, or replication
+    content: A process restart must not lose data. One AZ for v1; we can talk about replicas
+      as a later step.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: priya
+  channel: dm:priya
+  content: 'Design a small key-value store our internal services can call. Not Redis-the-product
+    — your design. Twenty minutes: questions, then a written design.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got ops, size, read-heavy load, and durability-after-restart.
+- key: scoping
+  weight: 2.0
+  description: Wrote a store design with a persistence story and a single-key consistency
+    stance.
+- key: stakeholders
+  weight: 1.0
+  description: Covered API, data, and failure, not just 'use a hashmap'.
+- key: communication
+  weight: 2.0
+  description: Explained their persistence and eviction (or lack of it) from the doc.
+tickets:
+- title: Write implementation tickets for the key-value store
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

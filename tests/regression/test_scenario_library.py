@@ -32,6 +32,7 @@ def test_lib03_trigger_gates_are_valid_levels():
     for key, sc in _reg().items():
         for t in sc.triggers:
             assert t.min_level in LEVEL_ORDER, f"{key}:{t.event_id} bad min_level"
+            assert t.kind in ("turn_count", "submission", "session_start"), f"{key}:{t.event_id}"
             assert t.action in ("chat", "email", "ticket")
 
 

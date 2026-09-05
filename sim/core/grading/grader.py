@@ -17,6 +17,26 @@ _GRADER_SYSTEM = (
     "and no other text."
 )
 
+_INTERVIEW_GRADER_SYSTEM = (
+    "You are grading a SYSTEM DESIGN INTERVIEW ASSESSMENT. Use the transcript "
+    "(clarifying questions + assessment defense) and the build record (design "
+    "doc, diagram, tickets). For each rubric criterion return a score from 0.0 "
+    "to 1.0 and one sentence of evidence. "
+    "discovery = quality of clarifying questions (did they extract constraints "
+    "without being fed the answer). "
+    "scoping = design-doc detail, correctness, and whether it is understandable. "
+    "stakeholders = they understand what a system design includes (API, data, "
+    "scale, consistency, failure, v1 cut). "
+    "communication = assessment answers show they wrote and can defend THEIR "
+    "design. Do not reward a plausible architecture they cannot explain. "
+    "A defensible alternate is fine. "
+    "If a tickets criterion is present it is EXTRA CREDIT: could an engineer "
+    "implement from the tickets alone? "
+    "Respond with ONLY a JSON object of the form "
+    '{"scores":[{"key":"...","score":0.0,"evidence":"..."}],"summary":"..."} '
+    "and no other text."
+)
+
 
 class Grader(Protocol):
     """Strategy port. Swap LLMGrader / HumanGrader / Hybrid without touching
@@ -49,7 +69,10 @@ class LLMGrader:
             f"BUILD RECORD:\n{build_record or '(none provided)'}"
             + (f"\n\nEXPECTATION:\n{expectation}" if expectation else "")
         )
-        raw = self._llm.complete(system=_GRADER_SYSTEM,
+        system = (_INTERVIEW_GRADER_SYSTEM
+                  if "INTERVIEW ASSESSMENT" in (expectation or "")
+                  else _GRADER_SYSTEM)
+        raw = self._llm.complete(system=system,
                                  messages=[LLMMessage("user", user)])
         data = self._parse(raw)
         return self._assemble(data, rubric)

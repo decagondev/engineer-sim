@@ -1,0 +1,87 @@
+key: iv_search
+title: 'Interview: product catalog search'
+track: interview
+role_label: Candidate
+difficulty: senior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: lina
+  name: Lina
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design search over our product catalog: type a query, get matching items.
+    I want a written design. About twenty minutes.'
+  hidden_need: ~500k products, p95 query under 200ms, filters (price, category), and the catalog
+    updates throughout the day — not only nightly.
+  hidden_constraints: Typo tolerance is expected at a basic level. Relevance can be simple
+    in v1. We should not query Postgres LIKE on every keystroke.
+  reveal_ladder:
+  - unlock_when: asks about catalog size, latency, or filters
+    content: About half a million products. Filters for price and category. Queries should
+      feel fast — under a couple of hundred milliseconds.
+  - unlock_when: asks about how often the catalog changes or indexing
+    content: Products change through the day. A nightly-only index will look wrong.
+  - unlock_when: asks about typos, ranking, or what 'good' results mean
+    content: Basic typo tolerance yes. Fancy personalization can wait. Do not LIKE-scan Postgres.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: lina
+  channel: dm:lina
+  content: 'Design search over our product catalog: type a query, get matching items. I want
+    a written design. About twenty minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got catalog size, latency, filters, intra-day updates, and typo/no-LIKE.
+- key: scoping
+  weight: 2.0
+  description: Designed an index + query path and an incremental update story.
+- key: stakeholders
+  weight: 1.0
+  description: Separated search index from the source of truth.
+- key: communication
+  weight: 2.0
+  description: Explained indexing and filters from their document.
+tickets:
+- title: Write implementation tickets for catalog search
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

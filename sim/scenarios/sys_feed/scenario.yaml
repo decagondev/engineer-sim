@@ -1,0 +1,185 @@
+key: sys_feed
+title: A home feed that "just queries friends' posts"
+track: systems
+role_label: Systems Designer
+difficulty: distinguished
+starter_template: starter
+definition_of_done: >-
+  The engineer uncovers fan-out, the celebrity problem and a freshness SLA —
+  not a friends JOIN at read time — then defends a hybrid design and a v1
+  cut (what is precomputed, what is pulled, what ads are not) that leadership
+  can fund.
+world:
+  facts:
+    deadline: leadership wants a "real home feed" in the H2 narrative
+    budget: a small team after the design is approved; not a blank cheque
+    team: social product, ~50M MAU, a few celebrity accounts
+personas:
+  - key: ansel
+    name: Ansel
+    role: VP of Engineering
+    voice: narrative, impatient with internals, will repeat "just query friends"
+    public_brief: >-
+      Instagram-style home feed. Users open the app and see what their friends
+      posted. Read path is a query. How hard can it be?
+    hidden_need: >-
+      The read-at-query-time story dies on celebrities and on people with 3k
+      friends. We need a stance on fan-out-on-write vs fan-out-on-read (or
+      hybrid), a freshness SLO, and what we do when a celebrity posts. Ads
+      are a next-year problem that will try to become this year's.
+    hidden_constraints: >-
+      We have Cassandra-ish history for posts and a friend graph that is
+      already a source of incidents. No greenfield warehouse this half.
+      Ranking quality can be crude in v1; empty feeds and 8-second opens cannot.
+    reveal_ladder:
+      - unlock_when: asks about DAU/MAU, celebrities, or fan-out / read vs write
+        content: >-
+          Fifty million MAU. A handful of accounts have tens of millions of
+          followers. If we write a copy of their post to every follower inbox
+          we will set the cluster on fire. If we query at read time, the 3k-friend
+          user waits.
+      - unlock_when: asks about freshness, ranking, or what "feels realtime" means
+        content: >-
+          Leadership said "like Instagram." Users complain if a friend's post
+          is missing for minutes. They do not complain (yet) if rank is dumb.
+          Freshness over ML for v1.
+      - unlock_when: asks about ads, ranking models, or monetisation
+        content: >-
+          Ads will ask to piggy-back. If you put them in v1 I will hold you
+          to an ads SLO we do not have. Keep the door closed unless I say so.
+  - key: vika
+    name: Vika
+    role: Product (ads, "just a slot")
+    voice: cheerful, will minimise the ads ask
+    public_brief: >-
+      You only need a slot in the feed for a promoted post. Tiny change.
+    reveal_ladder: []
+  - key: oren
+    name: Oren
+    role: SRE / data
+    voice: blunt about the friend-graph incidents
+    public_brief: >-
+      You will ask what happens when the graph is partitioned and when a
+      celebrity posts during a deploy.
+    reveal_ladder: []
+triggers:
+  - event_id: oren_joins
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: oren
+    channel: dm:oren
+    content: >-
+      Oren. Last quarter the friend graph being "a bit stale" made people see
+      exes. If your read path hits that graph live, say what stale means.
+      If you precompute inboxes, say how a celebrity post does not become a
+      write amplification incident.
+  - event_id: vika_ads
+    kind: turn_count
+    at: 5
+    action: ticket
+    min_level: distinguished
+    persona_key: vika
+    channel: dm:ansel
+    issue_type: story
+    priority: high
+    labels: [scope-creep, ads]
+    subject: Add a promoted-post slot to the home feed
+    content: |-
+      ## Request
+      One slot, position 3, for a promoted post. Same feed service.
+
+      ## Why now
+      "We're already building the feed."
+
+      ## Acceptance criteria
+      - [ ] Slot 3 can be a paid post
+      - [ ] Billing hook (they'll "add later")
+
+      ## Risk
+      Ads SLOs, auction, and legal review are a second product. Treat as
+      scope creep unless Ansel explicitly pulls it into H2.
+  - event_id: review_ansel
+    kind: submission
+    at: 1
+    action: email
+    persona_key: ansel
+    channel: general
+    subject: Design review — home feed
+    content: |-
+      I will present this to the staff meeting. Defend, in writing:
+
+      1. Fan-out-on-write, fan-out-on-read, or hybrid — and the celebrity case.
+      2. The freshness number you are willing to put on a slide.
+      3. Why ads are in or out of H2 (I need a sentence I can repeat).
+
+      If the picture is "query friends' posts," it is not a design yet.
+  - event_id: review_oren
+    kind: submission
+    at: 1
+    action: ticket
+    persona_key: oren
+    channel: dm:oren
+    issue_type: spike
+    priority: high
+    labels: [design-review, data]
+    subject: Celebrity post during a graph incident
+    content: |-
+      ## Ask
+      A celebrity posts while the friend graph is degraded.
+
+      ## Acceptance criteria
+      - [ ] What followers see (and when)
+      - [ ] What we do not try to do in that window
+      - [ ] How we repair (backfill vs wait)
+
+      ## Notes
+      "Best effort" is acceptable if you say who is unhappy and for how long.
+rubric:
+  - key: discovery
+    weight: 1.3
+    description: Named fan-out, celebrities, freshness — not a friends JOIN.
+  - key: scoping
+    weight: 1.5
+    description: Hybrid or an explicit single strategy with a v1 cut; ads stay out unless justified.
+  - key: stakeholders
+    weight: 2.0
+    description: Held Ansel's slogan, Oren's incident, and Vika's ads slot.
+  - key: communication
+    weight: 1.8
+    description: A design leadership could fund — numbers, trade-offs, a slide-ready stance.
+tickets:
+  - title: Design the home feed
+    issue_type: story
+    priority: high
+    labels: [design, feed]
+    created_by: ansel
+    status: todo
+    description: |-
+      ## Context
+      Leadership wants a "real home feed" in the H2 narrative.
+
+      ## Outcome
+      DESIGN.md with fan-out stance, freshness SLO, celebrity path, non-goals.
+
+      ## Acceptance criteria
+      - [ ] Read vs write fan-out is decided (or hybrid, with a rule)
+      - [ ] Freshness number
+      - [ ] Celebrity / whale path
+      - [ ] Ads in or out, with a sentence Ansel can repeat
+  - title: Size celebrities and the friend graph
+    issue_type: spike
+    priority: high
+    labels: [discovery]
+    created_by: system
+    status: todo
+    description: |-
+      ## Why
+      The design turns on a few accounts and on how stale the graph can be.
+
+      ## Outcome
+      Orders of magnitude: max followers, p99 friends, last graph incident.
+
+      ## Acceptance criteria
+      - [ ] Celebrity follower order-of-magnitude
+      - [ ] What "stale graph" meant last time

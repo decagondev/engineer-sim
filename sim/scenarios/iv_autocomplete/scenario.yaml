@@ -1,0 +1,86 @@
+key: iv_autocomplete
+title: 'Interview: search box autocomplete'
+track: interview
+role_label: Candidate
+difficulty: senior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: mira
+  name: Mira
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design autocomplete for our product search box: user types, we suggest queries.
+    I want the design written down. About twenty minutes.'
+  hidden_need: p95 suggestion latency under 50ms, top 10 suggestions, prefixes from a catalog
+    of ~2 million queries, and we update the catalog daily.
+  hidden_constraints: Typo-tolerance is nice-to-have, not v1. Personalized ranking is out.
+    We can precompute offline. Traffic is bursty at business hours.
+  reveal_ladder:
+  - unlock_when: asks about latency, how many suggestions, or UX
+    content: Ten suggestions. Users notice if it feels laggy — think under 50ms.
+  - unlock_when: asks about the corpus, catalog, or where queries come from
+    content: About two million historical queries we can use as the catalog.
+  - unlock_when: asks about freshness, updates, or personalization
+    content: A daily refresh of the catalog is fine. Do not personalize in v1.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: mira
+  channel: dm:mira
+  content: 'Design autocomplete for our product search box: user types, we suggest queries.
+    I want the design written down. About twenty minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got latency, k=10, catalog size, and daily refresh / no personalization.
+- key: scoping
+  weight: 2.0
+  description: Designed a prefix path that can hit the latency bar and named what is offline.
+- key: stakeholders
+  weight: 1.0
+  description: Separated online path from catalog build.
+- key: communication
+  weight: 2.0
+  description: Explained their index and update story from the document.
+tickets:
+- title: Write implementation tickets for autocomplete
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

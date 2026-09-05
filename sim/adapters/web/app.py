@@ -64,8 +64,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         starter_url = (app.state.settings.get_scenario_starter_url(sc.key)
                        if app.state.settings else None)
         return {"key": sc.key, "title": sc.title, "difficulty": sc.difficulty,
+                "track": sc.track, "role_label": sc.role_label,
                 "starter_url": starter_url,
-                "personas": [{"key": p.key, "name": p.name, "role": p.role}
+                "personas": [{"key": p.key, "name": p.name, "role": p.role,
+                              "lane": getattr(p, "lane", "")}
                              for p in sc.personas]}
 
     @app.get("/api/session/{session_id}/scenario")
@@ -99,11 +101,123 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def transcript(session_id: str):
         return JSONResponse(b(session_id).session_service.export(session_id))
 
+    def _flatten_tickets(session_id: str) -> list[dict]:
+        board = b(session_id).ticket_service.board(session_id)
+        out = []
+        for col in board.get("columns", []):
+            out.extend(col.get("tickets", []))
+        return out
+
+    def _ticket_record(session_id: str) -> str:
+        lines = []
+        for t in _flatten_tickets(session_id):
+            lines.append(f"### {t.get('key')} {t.get('title')} ({t.get('status')})")
+            lines.append(t.get("description") or "")
+        return "\n".join(lines)
+
+    def _enrich_build_record(session_id: str, build_record: str,
+                             include_tickets: bool) -> str:
+        svc = b(session_id).session_service
+        extra = []
+        design = svc.design_text(session_id)
+        mermaid = svc.diagram_text(session_id)
+        if design:
+            extra.append("DESIGN DOCUMENT:\n" + design)
+        if mermaid:
+            extra.append("DESIGN DIAGRAM (mermaid):\n" + mermaid)
+        if include_tickets:
+            extra.append("TICKETS:\n" + _ticket_record(session_id))
+        if not extra:
+            return build_record
+        return ((build_record + "\n\n") if build_record else "") + "\n\n".join(extra)
+
+    def _maybe_diagram(session_id: str, design: str) -> None:
+        bundle = b(session_id)
+        if bundle.scenario.track != "interview" or not (design or "").strip():
+            return
+        from pathlib import Path
+        from sim.core.design.diagram import render_design_diagram
+        mermaid = render_design_diagram(manager.llm, design)
+        bundle.session_service.remember_diagram(session_id, mermaid)
+        env = bundle.environment
+        h = env.handle(session_id) if env is not None else None
+        if h is None and env is not None:
+            try:
+                h = env.provision(session_id)
+            except Exception:
+                h = None
+        if h is not None:
+            try:
+                Path(h.workdir, "DESIGN.mmd").write_text(mermaid, encoding="utf-8")
+            except OSError:
+                pass
+
+    def _grade_body(session_id: str, payload: dict | None, build_record: str):
+        import dataclasses as _dc
+        from sim.core.grading.rubric import Criterion, Rubric
+        from sim.core.levels import (
+            interview_expectation, profile, systems_expectation)
+        bundle = b(session_id)
+        include_tickets = bool((payload or {}).get("include_tickets"))
+        interview = bundle.scenario.track == "interview"
+        if interview:
+            include_tickets = include_tickets  # toggle only applies here
+        else:
+            include_tickets = False
+        build_record = _enrich_build_record(
+            session_id, build_record, include_tickets)
+        prof = profile(_session_level(session_id))
+        adj = tuple(_dc.replace(c, weight=c.weight * prof.weight_shift.get(c.key, 1.0))
+                    for c in bundle.scenario.rubric.criteria)
+        grade_criteria = adj
+        if include_tickets:
+            grade_criteria = adj + (Criterion(
+                key="tickets",
+                description=(
+                    "EXTRA CREDIT: implementation tickets are specific enough "
+                    "that an engineer who had only the tickets (not the design "
+                    "doc) could implement the system. Score 0 if there are no "
+                    "useful tickets."
+                ),
+                weight=0.5,
+            ),)
+        if interview:
+            expectation = interview_expectation(prof.key)
+        elif bundle.scenario.track == "systems":
+            expectation = systems_expectation(prof.key)
+        else:
+            expectation = prof.expectation
+        result = app.state.grader.grade(
+            session_id, app.state.repo, Rubric(criteria=grade_criteria),
+            build_record, expectation)
+        body = result.as_dict()
+        if include_tickets:
+            tickets_s = next((s for s in result.scores if s.key == "tickets"), None)
+            by_key = {s.key: s.score for s in result.scores}
+            weighted = sum(by_key.get(c.key, 0.0) * c.weight for c in adj)
+            total_w = sum(c.weight for c in adj)
+            base = weighted / total_w if total_w else 0.0
+            bonus = 0.15 * (tickets_s.score if tickets_s else 0.0)
+            body["total_base"] = round(base, 3)
+            body["total"] = round(min(1.0, base + bonus), 3)
+            body["include_tickets"] = True
+            body["scores"] = [s for s in body["scores"] if s["key"] != "tickets"]
+            if tickets_s:
+                body["tickets_extra"] = {
+                    "key": "tickets", "score": round(tickets_s.score, 3),
+                    "evidence": tickets_s.evidence,
+                }
+        else:
+            body["include_tickets"] = False
+        body["level"] = prof.key
+        body["calibrated"] = app.state.grader_calibrated
+        if not app.state.grader_calibrated:
+            body["caveat"] = ("Grader is not yet calibrated against human scores — "
+                              "treat this as directional, not a grade.")
+        return body
+
     @app.post("/api/session/{session_id}/grade")
     async def grade(session_id: str, payload: dict | None = None):
-        import dataclasses as _dc
-        from sim.core.grading.rubric import Rubric
-        from sim.core.levels import profile
         bundle = b(session_id)
         build_record = (payload or {}).get("build_record", "")
         if not build_record and app.state.submissions is not None:
@@ -120,19 +234,24 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             h = bundle.environment.handle(session_id)
             if h:
                 build_record = app.state.build_observer.summary(h.workdir)
-        prof = profile(_session_level(session_id))
-        adj = tuple(_dc.replace(c, weight=c.weight * prof.weight_shift.get(c.key, 1.0))
-                    for c in bundle.scenario.rubric.criteria)
-        result = await run_in_threadpool(
-            app.state.grader.grade, session_id, app.state.repo,
-            Rubric(criteria=adj), build_record, prof.expectation)
-        body = result.as_dict()
-        body["level"] = prof.key
-        body["calibrated"] = app.state.grader_calibrated
-        if not app.state.grader_calibrated:
-            body["caveat"] = ("Grader is not yet calibrated against human scores — "
-                              "treat this as directional, not a grade.")
+        body = await run_in_threadpool(
+            _grade_body, session_id, payload, build_record)
         return JSONResponse(body)
+
+    @app.get("/api/session/{session_id}/diagram")
+    def get_diagram(session_id: str):
+        svc = b(session_id).session_service
+        mermaid = svc.diagram_text(session_id)
+        if not mermaid:
+            from pathlib import Path
+            env = b(session_id).environment
+            h = env.handle(session_id) if env is not None else None
+            if h is not None:
+                p = Path(h.workdir) / "DESIGN.mmd"
+                if p.is_file():
+                    mermaid = p.read_text(encoding="utf-8")
+                    svc.remember_diagram(session_id, mermaid)
+        return {"mermaid": mermaid}
 
     # ---- learner submission (Version A: code lives on the learner's machine) ----
     @app.get("/api/session/{session_id}/starter.zip")
@@ -168,6 +287,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             session_id=session_id, sender="tester", channel="general",
             content=f"[reveal] Submitted work: {filename} ({sub.lines} lines).",
             ts=ts, kind="event"))
+        svc = b(session_id).session_service
+        svc.remember_design(session_id, content)
+        _maybe_diagram(session_id, content)
+        svc.after_submission(session_id)
         return {"ok": True, "seq": sub.seq, "filename": filename, "lines": sub.lines}
 
     @app.post("/api/session/{session_id}/submit-repo")
@@ -185,6 +308,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         app.state.repo.append(StoredMessage(
             session_id=session_id, sender="tester", channel="general",
             content=f"[reveal] Submitted repo: {url}", ts=ts, kind="event"))
+        b(session_id).session_service.after_submission(session_id)
         return {"ok": True, "message": msg}
 
     @app.get("/api/session/{session_id}/submissions")
@@ -412,9 +536,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                                              "with_name": th["with_name"]}
         return {
             "scenario": {"title": bundle.scenario.title,
-                         "difficulty": bundle.scenario.difficulty},
+                         "difficulty": bundle.scenario.difficulty,
+                         "track": bundle.scenario.track},
             "level": _session_level(sid),
-            "personas": [{"key": p.key, "name": p.name, "role": p.role}
+            "personas": [{"key": p.key, "name": p.name, "role": p.role,
+                          "lane": getattr(p, "lane", "")}
                          for p in bundle.scenario.personas],
             "transcript": bundle.session_service.export(sid),
             "mail": mail_meta,
@@ -424,6 +550,49 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 for s in app.state.submissions.list(sid)
             ],
         }
+
+    @app.get("/api/instructor/session/{sid}/export.md")
+    def instructor_export_md(sid: str, include_tickets: bool = False,
+                             x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        from fastapi.responses import Response
+        from sim.core.levels import profile
+        from sim.core.session.audit_export import build_audit_markdown
+        bundle = b(sid)
+        svc = bundle.session_service
+        build_record = ""
+        if app.state.submissions is not None:
+            sub = app.state.submissions.latest(sid)
+            if sub:
+                build_record = f"SUBMITTED PATCH ({sub.filename}):\n{sub.content}"
+        if not svc.design_text(sid) and build_record:
+            svc.remember_design(sid, build_record)
+        try:
+            grade = _grade_body(sid, {"include_tickets": include_tickets}, build_record)
+        except Exception:
+            grade = None
+        lvl = _session_level(sid)
+        mermaid = svc.diagram_text(sid)
+        md = build_audit_markdown(
+            session_id=sid,
+            title=bundle.scenario.title,
+            track=bundle.scenario.track,
+            difficulty=bundle.scenario.difficulty,
+            level=lvl,
+            level_label=profile(lvl).label,
+            personas=bundle.scenario.personas,
+            rows=app.state.repo.list_for_session(sid),
+            grade=grade,
+            design=svc.design_text(sid),
+            mermaid=mermaid,
+            tickets=_flatten_tickets(sid),
+            submissions=app.state.submissions.list(sid) if app.state.submissions else [],
+        )
+        return Response(
+            content=md, media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="{sid}-audit.md"'})
 
     # ---- websocket ------------------------------------------------------
     @app.websocket("/ws/{session_id}")
@@ -449,8 +618,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                     continue
                 for m in msgs:
                     await websocket.send_json(
-                        {"sender": m.sender, "content": m.content,
-                         "channel": m.channel, "ts": m.ts})
+                        {"id": m.id, "sender": m.sender, "content": m.content,
+                         "channel": m.channel, "ts": m.ts, "kind": m.kind})
         except WebSocketDisconnect:
             return
 

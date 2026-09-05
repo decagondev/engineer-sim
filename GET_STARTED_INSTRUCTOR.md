@@ -59,7 +59,12 @@ run. You can change it any time.
 
 On the **New session** tab:
 
-1. Pick a **scenario**. Each shows its **difficulty** (intern → distinguished).
+1. Pick a **scenario**. The list is grouped into **Product engineering** and
+   **Systems design**. Product scenarios are the original client-engagement
+   runs. Systems design puts the learner in the **Systems Designer** seat:
+   they talk through constraints, write a design doc (`DESIGN.md` in the
+   starter), submit it, and the AI team comes back with review questions and
+   pushback. Each scenario still shows a **difficulty** (intern → distinguished).
 2. Pick the **engineer level** for this learner. A live indicator warns you if
    the scenario is pitched well above or below that level.
 3. Click **Create session & get link**, then **Copy** the trainee link.
@@ -82,6 +87,11 @@ Click one to open the **replay**:
 - Filter by surface (Chat / Mail / Tickets / Signals) to focus.
 - Click **Grade** for a per-criterion score with evidence, graded at that
   session's level.
+- **Interview assessment** scenarios (`Interview assessment` in New session)
+  are timed system-design interviews: clarifying questions, a written design,
+  then an assessor defense. Tickets are extra credit — toggle them on the
+  grader. **Export** downloads a markdown audit (transcript, scores, Q&A,
+  design, mermaid diagram) you can keep as a defensible record.
 
 ---
 

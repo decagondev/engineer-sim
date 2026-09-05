@@ -1,0 +1,88 @@
+key: iv_job_queue
+title: 'Interview: background job queue'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: cole
+  name: Cole
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Services need to enqueue background work — send email, resize an image — and
+    workers should pick it up. Design the queue. Twenty minutes.
+  hidden_need: At-least-once is acceptable, jobs should retry with a cap, and a poison message
+    must not stall the queue. A few hundred jobs/sec.
+  hidden_constraints: Multiple producer services, multiple worker pools by job type. No cloud-vendor
+    queue required if you can justify a simple one. Visibility timeout / ack is expected.
+  reveal_ladder:
+  - unlock_when: asks about volume or job types
+    content: A few hundred jobs a second. Types include email and image resize; more will
+      come.
+  - unlock_when: asks about delivery, retries, or at-least-once vs exactly-once
+    content: At-least-once is fine. Retry a few times, then dead-letter. Exactly-once is not
+      required.
+  - unlock_when: asks about poison messages, stuck jobs, or a bad payload
+    content: A bad payload must not block the rest of the queue.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: cole
+  channel: dm:cole
+  content: Services need to enqueue background work — send email, resize an image — and workers
+    should pick it up. Design the queue. Twenty minutes.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted rate, at-least-once, retry/dead-letter, and poison isolation.
+- key: scoping
+  weight: 2.0
+  description: Designed enqueue/ack/retry and named a dead-letter path.
+- key: stakeholders
+  weight: 1.0
+  description: Treated a queue as a contract (visibility, ack), not a list.
+- key: communication
+  weight: 2.0
+  description: Defended delivery guarantees from their own write-up.
+tickets:
+- title: Write implementation tickets for the job queue
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

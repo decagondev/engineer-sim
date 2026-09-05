@@ -1,0 +1,89 @@
+key: iv_pastebin
+title: 'Interview: pastebin for the company'
+track: interview
+role_label: Candidate
+difficulty: junior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: nate
+  name: Nate
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design a pastebin: people paste text, get a link, others read it. Treat it
+    as a real service. You have about twenty minutes.'
+  hidden_need: Pastes expire (default 7 days, optional never), some pastes should be burn-after-read,
+    and we expect a few million pastes with a heavy read/write imbalance toward reads of recent
+    pastes.
+  hidden_constraints: No login in v1. Max paste 1MB. Public links are fine; we will regret
+    unlisted-but-guessable IDs. Existing object store is available.
+  reveal_ladder:
+  - unlock_when: asks about expiry, lifetime, or deletion
+    content: Default expire in a week. Some people will want 'keep forever' and a few will
+      want burn-after-read.
+  - unlock_when: asks about size, login, or privacy
+    content: No accounts in v1. Cap a paste at a megabyte. Links are public if you have them.
+  - unlock_when: asks about volume, traffic, or how pastes are read
+    content: A few million pastes over time. Recent ones get almost all the reads.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: nate
+  channel: dm:nate
+  content: 'Design a pastebin: people paste text, get a link, others read it. Treat it as
+    a real service. You have about twenty minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted expiry options, burn-after-read, size cap, and read-heavy recent
+    pastes.
+- key: scoping
+  weight: 2.0
+  description: Designed create/read/expire with an ID story that is not trivially guessable.
+- key: stakeholders
+  weight: 1.0
+  description: Included data lifetime and a v1 cut (no accounts).
+- key: communication
+  weight: 2.0
+  description: Defended storage, IDs, and expiry from their document.
+tickets:
+- title: Write implementation tickets for the pastebin
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

@@ -1,0 +1,87 @@
+key: iv_scheduler
+title: 'Interview: delayed jobs / cron'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: beau
+  name: Beau
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'We need to run work later: ''send this email in 30 minutes'' or ''every night
+    at 02:00''. Design the scheduler. Twenty minutes.'
+  hidden_need: Mix of one-shot delays and recurring cron, tens of thousands of pending jobs,
+    and a missed night job should still run (catch-up), not be silently skipped.
+  hidden_constraints: Multiple scheduler boxes — no single node clock. At-least-once is OK.
+    A thundering herd at midnight is a real risk.
+  reveal_ladder:
+  - unlock_when: asks about one-shot vs recurring, or the API
+    content: 'Both: delay a one-shot, and recurring nightly jobs.'
+  - unlock_when: asks about volume of pending work or how far ahead
+    content: Tens of thousands of pending jobs is plausible. Some sit for days.
+  - unlock_when: asks about missed runs, clock, or many boxes
+    content: If we were down at 02:00 the night job should still run when we come back. More
+      than one box will run the scheduler.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: beau
+  channel: dm:beau
+  content: 'We need to run work later: ''send this email in 30 minutes'' or ''every night
+    at 02:00''. Design the scheduler. Twenty minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted one-shot + cron, pending volume, catch-up, and multi-box.
+- key: scoping
+  weight: 2.0
+  description: Designed due-work polling/partitioning that will not skip a missed cron.
+- key: stakeholders
+  weight: 1.0
+  description: Named the midnight herd and leader/lock problem.
+- key: communication
+  weight: 2.0
+  description: Defended due-time storage and catch-up from the doc.
+tickets:
+- title: Write implementation tickets for the scheduler
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

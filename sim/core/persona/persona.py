@@ -34,10 +34,12 @@ class Persona:
     hidden_need: str = ""            # ground truth for the grader, not the persona
     hidden_constraints: str = ""     # ground truth for the grader, not the persona
     reveal_ladder: tuple[RevealRung, ...] = field(default_factory=tuple)
+    lane: str = ""                   # interviewer | assessor | "" (product/systems)
 
     def system_prompt(self, world: WorldState,
                       unlocked: Sequence[RevealRung] = (),
-                      style: str = "chat", posture: str = "") -> str:
+                      style: str = "chat", posture: str = "",
+                      extra_context: str = "") -> str:
         lines = [
             f"You are {self.name}, {self.role}.",
             f"Voice and manner: {self.voice}",
@@ -56,6 +58,8 @@ class Persona:
                  "volunteer information you haven't been given here. Stay "
                  "realistically vague — you're busy. Never break the fourth wall "
                  "or mention being an AI.")
+        if extra_context:
+            lines += ["", extra_context]
         if posture:
             lines += ["", posture]
         if style == "email":

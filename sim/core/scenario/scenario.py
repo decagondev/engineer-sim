@@ -53,6 +53,8 @@ class Scenario:
     starter_template: str = ""                            # path to starter repo (Wave 5)
     image: str = ""                                       # docker image override (optional)
     tickets: tuple = field(default_factory=tuple)         # seed tickets (Wave 7)
+    track: str = "product"                                # product | systems | interview
+    role_label: str = ""                                  # e.g. Systems Designer / Candidate
 
     @property
     def primary_persona(self) -> Persona:
@@ -88,6 +90,7 @@ class Scenario:
                     hidden_need=p.get("hidden_need", ""),
                     hidden_constraints=p.get("hidden_constraints", ""),
                     reveal_ladder=ladder,
+                    lane=p.get("lane", "") or "",
                 ))
             except KeyError as e:
                 raise ScenarioError(f"persona missing required field: {e}") from e
@@ -117,4 +120,10 @@ class Scenario:
             starter_template=data.get("starter_template", ""),
             image=data.get("image", ""),
             tickets=tuple(data.get("tickets", [])),
+            track=data.get("track", "product") or "product",
+            role_label=data.get("role_label", "") or (
+                "Systems Designer" if data.get("track") == "systems"
+                else "Candidate" if data.get("track") == "interview"
+                else "Engineer"
+            ),
         )

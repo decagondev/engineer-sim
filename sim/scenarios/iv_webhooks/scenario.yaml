@@ -1,0 +1,87 @@
+key: iv_webhooks
+title: 'Interview: outbound webhook delivery'
+track: interview
+role_label: Candidate
+difficulty: senior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: joel
+  name: Joel
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Customers want webhooks when something happens in our product (payment succeeded,
+    seat added). Design delivery. Twenty minutes.
+  hidden_need: At-least-once delivery, retries with backoff for hours, customers will have
+    slow or down endpoints, and we must not let one customer block others.
+  hidden_constraints: Signing the payload is expected. Ordering per resource is nice-to-have,
+    not global. Volume is thousands of events/min, bursty. No 'infinite retry'.
+  reveal_ladder:
+  - unlock_when: asks about delivery guarantee, retries, or timeouts
+    content: At-least-once. Retry with backoff for a few hours, then give up and mark failed.
+  - unlock_when: asks about noisy / down customers or isolation
+    content: Some endpoints will be slow or down for a day. They must not stall everyone else.
+  - unlock_when: asks about signing, security, or ordering
+    content: Sign the body so they can verify it is us. Per-resource order is nice; global
+      order is not required.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: joel
+  channel: dm:joel
+  content: Customers want webhooks when something happens in our product (payment succeeded,
+    seat added). Design delivery. Twenty minutes.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted at-least-once, bounded retries, isolation, and signing.
+- key: scoping
+  weight: 2.0
+  description: Designed a delivery worker path that isolates bad endpoints.
+- key: stakeholders
+  weight: 1.0
+  description: Treated webhooks as a reliability and abuse problem, not HTTP POST.
+- key: communication
+  weight: 2.0
+  description: Walked retry, signing, and isolation from their document.
+tickets:
+- title: Write implementation tickets for webhook delivery
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

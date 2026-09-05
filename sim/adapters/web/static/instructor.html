@@ -78,7 +78,8 @@
   .ev .txt.md{white-space:normal}
   .ev.sig .txt{font:12.5px/1.5 var(--mono);color:var(--sig)}
   .replay-side{width:330px;flex:none;overflow-y:auto}
-  .replay-side .head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center}
+  .replay-side .head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .replay-side .head label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;margin:0}
   .replay-side .body{padding:16px}
   .grade .total{font-size:30px;font-weight:700}
   .grade .crit{margin-top:12px}.grade .crit .k{font-size:13px;font-weight:600;display:flex;justify-content:space-between}
@@ -182,7 +183,15 @@ function switchView(v){
 
 // ---- new session ----
 function renderNew(){
-  const scOpts = settings.scenarios.map(s=>`<option value="${s.key}" data-diff="${s.difficulty}">${s.title} — ${s.difficulty}</option>`).join("");
+  const product = settings.scenarios.filter(s=>s.track!=="systems" && s.track!=="interview");
+  const systems = settings.scenarios.filter(s=>s.track==="systems");
+  const interview = settings.scenarios.filter(s=>s.track==="interview");
+  const opt = s => `<option value="${s.key}" data-diff="${s.difficulty}">${s.title} — ${s.difficulty}</option>`;
+  const groups = [];
+  if (product.length) groups.push(`<optgroup label="Product engineering">${product.map(opt).join("")}</optgroup>`);
+  if (systems.length) groups.push(`<optgroup label="Systems design">${systems.map(opt).join("")}</optgroup>`);
+  if (interview.length) groups.push(`<optgroup label="Interview assessment">${interview.map(opt).join("")}</optgroup>`);
+  const scOpts = groups.join("") || product.map(opt).join("");
   const lvOpts = settings.levels.map(l=>`<option value="${l.key}">${l.label}</option>`).join("");
   // sane default: a scenario whose difficulty matches the default level, else first
   const match = settings.scenarios.find(s=>s.difficulty===settings.default_level);
@@ -264,7 +273,10 @@ async function openReplay(sid){
         <div class="timeline" id="timeline"></div>
       </div>
       <div class="replay-side">
-        <div class="head"><b>Assessment</b><span style="flex:1"></span><button id="gradeBtn">Grade</button></div>
+        <div class="head"><b>Assessment</b><span style="flex:1"></span>
+          <label><input type="checkbox" id="includeTickets"/> Tickets extra credit</label>
+          <button id="gradeBtn">Grade</button>
+          <button id="exportBtn">Export</button></div>
         <div class="body" id="gradebody"><div class="muted">Grade the run to see the score and evidence.</div></div>
       </div>
     </div>`;
@@ -307,15 +319,31 @@ function wireReplay(){
     applyFilter(); idx=Math.min(idx,filtered.length); syncScrub(); renderTimeline();
   });
   el("gradeBtn").onclick = doGrade;
+  el("exportBtn").onclick = doExport;
 }
 function stopPlay(){ clearInterval(playTimer); playTimer=null; const p=el("play"); if(p) p.textContent="▶ Play"; }
 async function doGrade(){
   el("gradebody").innerHTML = `<div class="muted">Grading…</div>`;
-  const g = await (await fetch(`/api/session/${curSid}/grade`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})).json();
+  const includeTickets = !!(el("includeTickets") && el("includeTickets").checked);
+  const g = await (await fetch(`/api/session/${curSid}/grade`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({include_tickets:includeTickets})})).json();
   if(g.error){ el("gradebody").innerHTML=`<div class="muted">Grade error: ${g.error}</div>`; return; }
-  const crits = g.scores.map(s=>`<div class="crit"><div class="k"><span>${s.key}</span><span>${(s.score*100|0)}%</span></div><div class="barx"><i style="width:${(s.score*100|0)}%"></i></div><div class="evd">${esc(s.evidence)}</div></div>`).join("");
+  const scores = g.scores.slice();
+  if (g.tickets_extra) scores.push({key:"tickets (extra credit)", score:g.tickets_extra.score, evidence:g.tickets_extra.evidence});
+  const crits = scores.map(s=>`<div class="crit"><div class="k"><span>${s.key}</span><span>${(s.score*100|0)}%</span></div><div class="barx"><i style="width:${(s.score*100|0)}%"></i></div><div class="evd">${esc(s.evidence)}</div></div>`).join("");
   const caveat = g.calibrated ? "" : `<div class="caveat">${esc(g.caveat||"grader not calibrated")}</div>`;
-  el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%</div><div class="muted">graded at ${levelLabel(g.level)} expectations</div>${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}</div>`;
+  const extraNote = g.include_tickets ? ` · base ${(g.total_base*100|0)}% + tickets extra credit` : "";
+  el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%</div><div class="muted">graded at ${levelLabel(g.level)} expectations${extraNote}</div>${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}</div>`;
+}
+async function doExport(){
+  const includeTickets = !!(el("includeTickets") && el("includeTickets").checked);
+  const r = await fetch(`/api/instructor/session/${curSid}/export.md?include_tickets=${includeTickets? "true":"false"}`,{headers:hdr()});
+  if(!r.ok){ el("gradebody").innerHTML=`<div class="muted">Export failed (${r.status})</div>`; return; }
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${curSid}-audit.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function wireStarterSaves(){
@@ -332,7 +360,7 @@ function wireStarterSaves(){
 function renderSettings(){
   const lvOpts = settings.levels.map(l=>`<option value="${l.key}">${l.label}</option>`).join("");
   const scList = settings.scenarios.map(s=>`<div class="srow" style="cursor:default;flex-wrap:wrap">
-      <span class="id">${s.title}</span><span class="tags"><span class="badge">${s.difficulty}</span></span>
+      <span class="id">${s.title}</span><span class="tags"><span class="badge">${s.track==="interview"?"Interview":s.track==="systems"?"Systems":"Product"}</span><span class="badge">${s.difficulty}</span></span>
       <div style="flex-basis:100%;display:flex;gap:8px;margin-top:8px">
         <input class="starter" data-key="${s.key}" placeholder="public GitHub starter repo URL (optional)" value="${s.starter_url||''}" style="flex:1;font-size:12px"/>
         <button class="savestarter" data-key="${s.key}">Save</button>

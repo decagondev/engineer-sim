@@ -3,7 +3,8 @@ from __future__ import annotations
 from sim.app.config import Config
 from sim.core.director.director import Director
 from sim.core.director.events import Event
-from sim.core.director.triggers import TurnCountTrigger
+from sim.core.director.triggers import (
+    SessionStartTrigger, SubmissionTrigger, TurnCountTrigger)
 from sim.core.grading.grader import LLMGrader
 from sim.core.persona.responder import PersonaResponder
 from sim.core.persona.unlock import UnlockEvaluator
@@ -208,14 +209,21 @@ def build_director(scenario: Scenario) -> Director | None:
     rules = []
     for t in scenario.triggers:
         if t.kind == "turn_count":
-            rules.append((
-                TurnCountTrigger(at=t.at, min_level=t.min_level),
-                Event(event_id=t.event_id, persona_key=t.persona_key,
-                      channel=t.channel, content=t.content,
-                      kind=t.action, subject=t.subject,
-                      issue_type=t.issue_type, priority=t.priority,
-                      labels=t.labels),
-            ))
+            trigger = TurnCountTrigger(at=t.at, min_level=t.min_level)
+        elif t.kind == "submission":
+            trigger = SubmissionTrigger(at=t.at or 1, min_level=t.min_level)
+        elif t.kind == "session_start":
+            trigger = SessionStartTrigger(min_level=t.min_level)
+        else:
+            continue
+        rules.append((
+            trigger,
+            Event(event_id=t.event_id, persona_key=t.persona_key,
+                  channel=t.channel, content=t.content,
+                  kind=t.action, subject=t.subject,
+                  issue_type=t.issue_type, priority=t.priority,
+                  labels=t.labels),
+        ))
     return Director(rules) if rules else None
 
 
@@ -273,6 +281,7 @@ def build_session_service(
         director=build_director(scenario), mail_service=mail,
         ticket_service=tickets, settings=settings,
         primary_key=scenario.primary_persona.key,
+        track=scenario.track, role_label=scenario.role_label,
     )
     svc.settings_store = settings   # exposed for the web layer
     return svc

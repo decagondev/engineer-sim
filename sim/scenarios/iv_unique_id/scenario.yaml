@@ -1,0 +1,93 @@
+key: iv_unique_id
+title: 'Interview: unique IDs for the write path'
+track: interview
+role_label: Candidate
+difficulty: junior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: elena
+  name: Elena
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'We need a service that issues unique IDs for every write in our product.
+    Walk me through how you would design it. You have about twenty minutes: ask what you need,
+    then write the design.'
+  hidden_need: About 10k IDs/sec at peak, IDs should be roughly time-ordered so new rows sort
+    near the end of an index, 64-bit is preferred, and we will add a second region later.
+  hidden_constraints: No new vendor. Existing Postgres and a small Redis. Clock skew across
+    boxes is a few tens of milliseconds. IDs must not collide.
+  reveal_ladder:
+  - unlock_when: asks about rate, QPS, volume, or how many IDs
+    content: Peak is on the order of ten thousand IDs a second. Average is much lower.
+  - unlock_when: asks about ordering, sorting, or whether IDs should be sequential
+    content: We want new IDs to be roughly time-ordered so recent writes land near the end
+      of an index. Strict sequential is not required.
+  - unlock_when: asks about size, format, regions, or multi-datacenter
+    content: 64-bit would fit our columns. A second region is on the roadmap; v1 can be one
+      region if you say how you would extend it.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: elena
+  channel: dm:elena
+  content: 'We need a service that issues unique IDs for every write in our product. Walk
+    me through how you would design it. You have about twenty minutes: ask what you need,
+    then write the design.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Asked enough to learn rate, time-order, bit width, and a future second region
+    — not 'just a UUID column'.
+- key: scoping
+  weight: 2.0
+  description: Wrote a design that can issue unique IDs at the stated rate and names collision
+    / clock behaviour.
+- key: stakeholders
+  weight: 1.0
+  description: Treated it as a system (generator, uniqueness, failure) rather than a one-liner.
+- key: communication
+  weight: 2.0
+  description: Defended their ID scheme from their own document without needing the assessor
+    to invent it.
+tickets:
+- title: Write implementation tickets for the ID service
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

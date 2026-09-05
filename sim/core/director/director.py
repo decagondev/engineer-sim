@@ -17,16 +17,26 @@ class Director:
         self._rules = list(rules)
 
     def after_turn(self, session_id: str, reader: MessageReader,
-                   cast: dict, level: str = "senior") -> list[Event]:
+                   cast: dict, level: str = "senior",
+                   phase: str = "turn") -> list[Event]:
         rows = list(reader.list_for_session(session_id))
         tester_turns = sum(
             1 for m in rows if m.sender == "tester" and m.kind == "message"
+        )
+        submissions = sum(
+            1 for m in rows if m.kind == "event" and (
+                "Submitted work:" in m.content or "Submitted repo:" in m.content)
+        )
+        design_ready = sum(
+            1 for m in rows if m.kind == "event" and "[ready:design]" in m.content
         )
         already = {
             m.content for m in rows if m.kind == "event"
             and m.content.startswith("[fired:")
         }
-        ctx = TurnContext(tester_turns=tester_turns, level=level)
+        ctx = TurnContext(tester_turns=tester_turns, level=level,
+                          submissions=submissions, phase=phase,
+                          design_ready=design_ready)
 
         fired: list[Event] = []
         for trigger, event in self._rules:

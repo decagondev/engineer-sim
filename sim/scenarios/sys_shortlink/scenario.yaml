@@ -1,0 +1,188 @@
+key: sys_shortlink
+title: The short-link service marketing "just needs by Friday"
+track: systems
+role_label: Systems Designer
+difficulty: mid
+starter_template: starter
+definition_of_done: >-
+  The engineer uncovers that this is a read-heavy redirect service with abuse,
+  custom domains and click analytics — not a weekend CRUD app — then defends a
+  v1 design (hash, store, cache, failure mode) that fits one engineer and no
+  new platform team.
+world:
+  facts:
+    deadline: marketing wants it live for a campaign in three weeks
+    budget: you, part-time; existing Postgres and a small Redis box
+    team: a 35-person B2B company, no dedicated platform team
+personas:
+  - key: nia
+    name: Nia
+    role: Engineering Manager
+    voice: friendly, hurried, talks in campaign dates not QPS
+    public_brief: >-
+      Marketing wants short links they can put on ads and slides. Something like
+      bit.ly but ours. Keep it simple — a table and a redirect should do it.
+    hidden_need: >-
+      This will take ~8–12 million redirects a day once the campaign is on, mostly
+      reads, and they will want per-link click counts the next morning. A single
+      web box hitting Postgres on every click will fall over.
+    hidden_constraints: >-
+      No new vendor spend. One existing Postgres, one small Redis. Custom domains
+      (go.acme.com) are "nice" for the campaign but not in the original ask.
+      Open-redirect / phishing abuse will show up the first weekend.
+    reveal_ladder:
+      - unlock_when: asks about traffic, QPS, how many clicks, or who uses the links
+        content: >-
+          Last campaign the agency said we'd see on the order of ten million clicks
+          over a few days. Most of that is people hitting the same handful of links.
+      - unlock_when: asks what they need besides the redirect, or about analytics / reporting
+        content: >-
+          Marketing will ask the next morning how each link did. They don't need
+          real-time dashboards — a number per link by 9am is enough.
+      - unlock_when: asks about custom domains, branding, or what the URL should look like
+        content: >-
+          They really want go.acme.com/spring not lnk.internal/x7k. That's how the
+          ads are already drafted.
+  - key: cole
+    name: Cole
+    role: SRE
+    voice: dry, specific, allergic to "we'll just add a box"
+    public_brief: >-
+      You will ask what happens when Redis is empty and when Postgres is slow.
+      You care about a runbook, not a pretty diagram.
+    reveal_ladder: []
+  - key: mae
+    name: Mae
+    role: Marketing lead (the requester)
+    voice: upbeat, date-driven, not technical
+    public_brief: >-
+      You just need the links to work on ads. You will add "and can we see clicks?"
+      once it sounds easy.
+    reveal_ladder: []
+triggers:
+  - event_id: cole_joins
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: cole
+    channel: dm:cole
+    content: >-
+      Cole (SRE). Before you pick a store — what happens on a cache miss storm,
+      and what's the fallback if Redis is down? "It just hits Postgres" is a
+      thundering herd. Write that down.
+  - event_id: mae_analytics
+    kind: turn_count
+    at: 4
+    action: ticket
+    min_level: mid
+    persona_key: mae
+    channel: dm:nia
+    issue_type: story
+    priority: high
+    labels: [scope-creep, analytics]
+    subject: Per-link click dashboard for the campaign
+    content: |-
+      ## Request
+      A live dashboard of clicks per short link, refreshing every few seconds.
+
+      ## Why now
+      The agency asked if we can "watch the campaign land."
+
+      ## Acceptance criteria
+      - [ ] Clicks per link visible during the campaign
+      - [ ] Updates "live" (they said every few seconds)
+
+      ## Risk
+      Real-time counters on the redirect path will cost more than the redirect
+      itself. Morning batch numbers may be enough — push back.
+  - event_id: review_nia
+    kind: submission
+    at: 1
+    min_level: intern
+    action: email
+    persona_key: nia
+    channel: general
+    subject: Design review — short links
+    content: |-
+      I read the design. Three things I need you to defend before I take this
+      to the campaign meeting:
+
+      1. How do you generate IDs, and what happens if two writers collide?
+      2. Where does a click get counted, and can that path take down redirects?
+      3. What is explicitly out of v1 (custom domains? QR? user accounts?)?
+
+      Reply on this thread or in chat. I will forward whatever you write.
+  - event_id: review_cole
+    kind: submission
+    at: 1
+    min_level: intern
+    action: ticket
+    persona_key: cole
+    channel: dm:cole
+    issue_type: spike
+    priority: high
+    labels: [design-review, reliability]
+    subject: Failure mode — cache empty, Postgres slow
+    content: |-
+      ## Ask
+      Walk the 503 path. Cache cold after a restart, Postgres at 200ms p95.
+
+      ## Acceptance criteria
+      - [ ] Written fallback (shed load, stale, error page — pick one)
+      - [ ] An estimate of QPS that fallback can survive
+      - [ ] Who gets paged, and for what
+
+      ## Notes
+      If the design says "Redis, then Postgres" with no back-pressure, that is
+      not a design yet.
+rubric:
+  - key: discovery
+    weight: 2.0
+    description: Uncovered read-heavy scale, next-morning analytics, and custom-domain pressure — not "a redirect table."
+  - key: scoping
+    weight: 1.5
+    description: Proposed a v1 (hash, store, cache, async counts) and cut live dashboards / extras.
+  - key: stakeholders
+    weight: 1.0
+    description: Handled Cole's failure-mode pushback and Mae's live-dashboard creep.
+  - key: communication
+    weight: 1.0
+    description: Defended the written design with numbers and an explicit non-goals list.
+tickets:
+  - title: Design the short-link service
+    issue_type: story
+    priority: high
+    labels: [design, links]
+    created_by: nia
+    status: todo
+    description: |-
+      ## Context
+      Marketing wants first-party short links for a campaign in three weeks.
+
+      ## Outcome
+      A written design in DESIGN.md that Nia can take to the campaign meeting
+      and Cole can review for operations.
+
+      ## Acceptance criteria
+      - [ ] Requirements and non-goals are explicit
+      - [ ] Data path for create + redirect is drawn (store, cache)
+      - [ ] A failure mode is named (cache cold / DB slow)
+      - [ ] v1 vs later is cut
+  - title: Confirm traffic and what "analytics" means
+    issue_type: spike
+    priority: high
+    labels: [discovery]
+    created_by: system
+    status: todo
+    description: |-
+      ## Why
+      "A table and a redirect" only works if traffic and reporting are small.
+
+      ## Outcome
+      Numbers (even ranges) for clicks, and whether marketing needs live
+      dashboards or a morning rollup.
+
+      ## Acceptance criteria
+      - [ ] Order-of-magnitude daily redirects
+      - [ ] Freshness they will actually accept
+      - [ ] Custom-domain yes/no for v1

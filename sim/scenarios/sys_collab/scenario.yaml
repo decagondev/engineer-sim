@@ -1,0 +1,169 @@
+key: sys_collab
+title: Live cursors and "who's in the doc"
+track: systems
+role_label: Systems Designer
+difficulty: staff
+starter_template: starter
+definition_of_done: >-
+  The engineer uncovers concurrency, presence fan-out and cost — not "one
+  websocket box" — then defends a design (rooms, presence heartbeat, what is
+  not CRDT-in-v1) that Cole-equivalent ops can run and Finance will not reject.
+world:
+  facts:
+    deadline: a customer demo in six weeks that shows live cursors
+    budget: you; one backend can implement after the design lands
+    team: a docs product, ~80k monthly actives, a few "whale" workspaces
+personas:
+  - key: jules
+    name: Jules
+    role: Engineering Manager
+    voice: demo-driven, says "like Figma" a lot
+    public_brief: >-
+      Sales promised live cursors and a "who's editing" list. Make it feel
+      realtime. One websocket server should be enough for the demo.
+    hidden_need: >-
+      The demo is one doc with eight people. Production pain is a few huge
+      workspaces (thousands of open docs) and laptops that sleep. Presence
+      must expire, and we cannot hold a process per document forever.
+    hidden_constraints: >-
+      No new realtime vendor (Ably/Pusher) — Finance already said no. Existing
+      stack is HTTP APIs + Postgres. Redis exists. CRDT-quality text sync is
+      not required for this demo; cursors + presence are.
+    reveal_ladder:
+      - unlock_when: asks who is in the demo vs production, or about scale / rooms
+        content: >-
+          The demo is eight people on one spec. The scary workspace has hundreds
+          of docs open on Monday morning. We should not design only for the demo.
+      - unlock_when: asks about offline, laptop sleep, stale cursors, or heartbeats
+        content: >-
+          People close the lid. We still show them in the doc an hour later
+          today on a hack. Sales will notice if ghosts stay.
+      - unlock_when: asks whether they need full text sync / CRDT / OT, or just presence
+        content: >-
+          The demo script is cursors and avatars. Merging characters is a
+          different project. Do not let Jules conflate them if you can help it.
+  - key: rei
+    name: Rei
+    role: Staff engineer (the skeptic)
+    voice: terse, will ask where the connection table lives
+    public_brief: >-
+      You will reject a single-process design. You want a story for fan-out
+      and for a box dying mid-demo.
+    reveal_ladder: []
+  - key: dana3
+    name: Dana
+    role: Finance Business Partner
+    voice: polite, already said no to a realtime SaaS
+    public_brief: >-
+      You will confirm in writing that this uses existing infra only.
+    reveal_ladder: []
+triggers:
+  - event_id: rei_joins
+    kind: turn_count
+    at: 3
+    min_level: intern
+    persona_key: rei
+    channel: dm:rei
+    content: >-
+      Rei. "One websocket server" dies in the demo when I bounce it. Where does
+      presence live if that process is gone? And how do you not broadcast every
+      cursor to every doc in the company?
+  - event_id: dana_vendor
+    kind: turn_count
+    at: 5
+    action: email
+    min_level: senior
+    persona_key: dana3
+    channel: general
+    subject: Realtime vendor spend
+    content: >-
+      Hi — checking this is not a Pusher/Ably/Liveblocks line item. We declined
+      those this quarter. Please confirm the design runs on what we already
+      pay for. Thanks, Dana
+  - event_id: review_jules
+    kind: submission
+    at: 1
+    action: email
+    persona_key: jules
+    channel: general
+    subject: Design review — live presence
+    content: |-
+      I need to walk sales through this. Defend:
+
+      1. What the demo shows on Monday if the websocket box restarts.
+      2. Why this is not a full collaborative editor (or why it is — I'll hold
+         you to it).
+      3. How a whale workspace does not fan every cursor to every connection.
+
+      Short answers with a picture beat a long essay.
+  - event_id: review_rei
+    kind: submission
+    at: 1
+    action: ticket
+    persona_key: rei
+    channel: dm:rei
+    issue_type: spike
+    priority: high
+    labels: [design-review, realtime]
+    subject: Presence after a deploy
+    content: |-
+      ## Ask
+      We deploy, all sockets drop. What does a user see for 30 seconds, and
+      how do they come back without a presence storm?
+
+      ## Acceptance criteria
+      - [ ] Reconnect / resume story
+      - [ ] Heartbeat and expiry numbers
+      - [ ] Who is the source of truth for "in the doc"
+
+      ## Notes
+      If the answer is "the box remembers," the box is a single point of failure.
+rubric:
+  - key: discovery
+    weight: 1.6
+    description: Separated demo (8 people) from whale workspaces; presence vs full CRDT.
+  - key: scoping
+    weight: 1.6
+    description: v1 is rooms + heartbeat + fan-out; not a new vendor or a text-sync rewrite.
+  - key: stakeholders
+    weight: 1.4
+    description: Took Rei's failure question and Dana's vendor constraint seriously.
+  - key: communication
+    weight: 1.2
+    description: Defended the written design in review without inflating scope.
+tickets:
+  - title: Design live presence and cursors
+    issue_type: story
+    priority: high
+    labels: [design, realtime]
+    created_by: jules
+    status: todo
+    description: |-
+      ## Context
+      Sales promised live cursors and "who's in the doc" for a demo in six weeks.
+
+      ## Outcome
+      DESIGN.md covering rooms, presence, fan-out, and what is not a CRDT.
+
+      ## Acceptance criteria
+      - [ ] Connection / room model
+      - [ ] Expiry for sleeping laptops
+      - [ ] What happens when the socket box dies
+      - [ ] Explicit non-goals
+  - title: Measure the whale workspace
+    issue_type: spike
+    priority: medium
+    labels: [discovery]
+    created_by: system
+    status: todo
+    description: |-
+      ## Why
+      Designing only for the eight-person demo will not survive Monday morning.
+
+      ## Outcome
+      Order-of-magnitude: open docs, concurrent connections, in the biggest
+      workspace we have (even a guess we write down).
+
+      ## Acceptance criteria
+      - [ ] A number or a range, with source
+      - [ ] Implication for fan-out

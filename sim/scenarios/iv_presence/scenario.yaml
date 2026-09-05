@@ -1,0 +1,87 @@
+key: iv_presence
+title: 'Interview: online presence'
+track: interview
+role_label: Candidate
+difficulty: mid
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: ada
+  name: Ada
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'We want a green dot: is this person online right now? Design presence. Twenty
+    minutes, written design.'
+  hidden_need: Hundreds of thousands of clients, presence can be a bit stale (tens of seconds),
+    and we must not heartbeat the database to death.
+  hidden_constraints: '''Last seen'' is enough if live is expensive. Tabs and mobile will
+    disconnect messily. No cross-region v1.'
+  reveal_ladder:
+  - unlock_when: asks how fresh 'online' must be, or tolerance for staleness
+    content: Tens of seconds late is fine. We are not building a game tick.
+  - unlock_when: asks about scale of clients or connections
+    content: Hundreds of thousands of clients could be connected at peak.
+  - unlock_when: asks about last-seen vs live, or disconnects
+    content: Last-seen is acceptable if live presence is costly. Mobile will drop without
+      a clean goodbye.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: ada
+  channel: dm:ada
+  content: 'We want a green dot: is this person online right now? Design presence. Twenty
+    minutes, written design.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Got staleness tolerance, client scale, and messy disconnects.
+- key: scoping
+  weight: 2.0
+  description: Designed a presence path that does not write the DB on every heartbeat.
+- key: stakeholders
+  weight: 1.0
+  description: Knew presence is a fan-out and TTL problem.
+- key: communication
+  weight: 2.0
+  description: Explained heartbeat, TTL, and last-seen from the document.
+tickets:
+- title: Write implementation tickets for presence
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

@@ -1,0 +1,90 @@
+key: iv_web_crawler
+title: 'Interview: polite web crawler'
+track: interview
+role_label: Candidate
+difficulty: senior
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: dev
+  name: Dev
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: Design a crawler that fetches a seed list of sites and follows links so we
+    can build a small index later. I care about how you would not get us banned. Twenty minutes
+    to a written design.
+  hidden_need: Tens of thousands of pages/day, must honour robots.txt and a per-host politeness
+    delay, and we need to recrawl changed pages without refetching everything daily.
+  hidden_constraints: A handful of worker boxes. Seed list is a few thousand domains. Legal
+    wants a crawl-delay we can prove. Javascript-heavy pages are out of v1.
+  reveal_ladder:
+  - unlock_when: asks about volume, seeds, or how many pages
+    content: Tens of thousands of pages a day from a seed list of a few thousand domains.
+  - unlock_when: asks about robots.txt, politeness, rate, or getting blocked
+    content: Honour robots.txt and a per-host delay. Legal wants us to be able to show we
+      did.
+  - unlock_when: asks about freshness, recrawl, or change detection
+    content: We do not want to refetch the whole set every day — recrawl what changed.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: dev
+  channel: dm:dev
+  content: Design a crawler that fetches a seed list of sites and follows links so we can
+    build a small index later. I care about how you would not get us banned. Twenty minutes
+    to a written design.
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted daily volume, politeness/robots, and incremental recrawl.
+- key: scoping
+  weight: 2.0
+  description: Designed URL frontier, per-host throttling, and a recrawl story; JS out of
+    v1.
+- key: stakeholders
+  weight: 1.0
+  description: Showed crawler design is scheduling and policy, not just HTTP get.
+- key: communication
+  weight: 2.0
+  description: Defended politeness and frontier choices from the write-up.
+tickets:
+- title: Write implementation tickets for the crawler
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'

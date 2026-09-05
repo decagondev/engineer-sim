@@ -1,0 +1,92 @@
+key: iv_tiny_analytics
+title: 'Interview: tiny product analytics'
+track: interview
+role_label: Candidate
+difficulty: staff
+starter_template: starter
+definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable
+  design, and defends that design under assessment. Extra credit: tickets an engineer could
+  implement from.'
+world:
+  facts:
+    interview_length: about 20 minutes from start to submitted design
+    format: clarifying questions, written design, then a defense
+    rule: the interviewer will not hand over the architecture
+personas:
+- key: noor
+  name: Noor
+  role: Staff interviewer
+  lane: interviewer
+  voice: professional, concise, slightly busy; answers facts, not designs
+  public_brief: 'Design a small analytics pipeline: our web app emits events (page view, click),
+    we want funnels and a daily dashboard. Staff-level: I will expect you to cut scope. Twenty
+    minutes.'
+  hidden_need: Tens of millions of events/day, dashboards are T+1 (next morning), and a few
+    named funnels — not ad-hoc SQL for every PM.
+  hidden_constraints: Client events will duplicate and arrive late. PII must not land in the
+    warehouse. Real-time is explicitly out. Budget is one engineer plus existing object storage
+    and a warehouse.
+  reveal_ladder:
+  - unlock_when: asks about volume, event types, or who consumes
+    content: Tens of millions of events a day. Page views and clicks. A daily dashboard and
+      a few named funnels.
+  - unlock_when: asks about freshness or real-time
+    content: Next morning is fine. Real-time is out of scope — please do not build it.
+  - unlock_when: asks about late/duplicate events, PII, or budget
+    content: Events duplicate and arrive late. Strip PII. One engineer, existing object store
+      and warehouse.
+- key: rowan
+  name: Rowan
+  role: Staff assessor
+  voice: calm, precise, skeptical of buzzwords; asks about their document, not a textbook
+  lane: assessor
+  public_brief: You read the candidate's design and ask one probing question at a time about
+    a decision they wrote. You are checking they made it and can defend it. You do not propose
+    a better architecture. You do not reveal a model answer or hidden constraints they never
+    extracted.
+triggers:
+- event_id: problem_brief
+  kind: session_start
+  at: 0
+  min_level: intern
+  persona_key: noor
+  channel: dm:noor
+  content: 'Design a small analytics pipeline: our web app emits events (page view, click),
+    we want funnels and a daily dashboard. Staff-level: I will expect you to cut scope. Twenty
+    minutes.'
+rubric:
+- key: discovery
+  weight: 2.0
+  description: Extracted daily volume, T+1, named funnels, late/dupes, PII, and no real-time.
+- key: scoping
+  weight: 2.0
+  description: Designed ingest → store → batch funnels with a v1 cut that a single engineer
+    can run.
+- key: stakeholders
+  weight: 1.0
+  description: Showed what a pipeline must include (dedupe, privacy, batch vs stream).
+- key: communication
+  weight: 2.0
+  description: Defended the batch cut and event contract from their write-up.
+tickets:
+- title: Write implementation tickets for the analytics pipeline
+  issue_type: story
+  priority: medium
+  labels:
+  - extra-credit
+  - implementation
+  created_by: system
+  status: todo
+  description: '## Extra credit
+
+    Write tickets so an engineer who has only the tickets (not DESIGN.md) could implement
+    this system.
+
+
+    ## Acceptance criteria
+
+    - [ ] Each ticket has context, interface/data shape, and AC
+
+    - [ ] Together they cover the design you submitted
+
+    - [ ] An engineer would not need to guess a hidden component'
