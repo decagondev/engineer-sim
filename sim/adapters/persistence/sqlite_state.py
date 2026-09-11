@@ -35,3 +35,7 @@ class SqliteUnlockStore:
             (session_id, persona_key, count),
         )
         self._conn.commit()
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM unlock_state WHERE session_id=?", (session_id,))
+        self._conn.commit()

@@ -24,10 +24,18 @@ class SqliteSettingsStore:
             );
             CREATE TABLE IF NOT EXISTS scenario_config (
                 scenario_key TEXT PRIMARY KEY,
-                starter_url TEXT
+                starter_url TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1
             );
             """)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(scenario_config)")}
+        if "enabled" not in cols:
+            self._conn.execute(
+                "ALTER TABLE scenario_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
 
     def get_instructor(self) -> InstructorSettings:
         r = self._conn.execute(
@@ -82,4 +90,25 @@ class SqliteSettingsStore:
             "INSERT INTO scenario_config (scenario_key, starter_url) VALUES (?, ?) "
             "ON CONFLICT(scenario_key) DO UPDATE SET starter_url=excluded.starter_url",
             (scenario_key, url))
+        self._conn.commit()
+
+    def get_scenario_enabled(self, scenario_key: str) -> bool:
+        r = self._conn.execute(
+            "SELECT enabled FROM scenario_config WHERE scenario_key=?",
+            (scenario_key,)).fetchone()
+        if not r:
+            return True
+        return bool(r["enabled"]) if "enabled" in r.keys() else True
+
+    def set_scenario_enabled(self, scenario_key: str, enabled: bool) -> None:
+        url = self.get_scenario_starter_url(scenario_key) or ""
+        self._conn.execute(
+            "INSERT INTO scenario_config (scenario_key, starter_url, enabled) VALUES (?, ?, ?) "
+            "ON CONFLICT(scenario_key) DO UPDATE SET enabled=excluded.enabled",
+            (scenario_key, url, 1 if enabled else 0))
+        self._conn.commit()
+
+    def delete_session_settings(self, session_id: str) -> None:
+        self._conn.execute(
+            "DELETE FROM session_settings WHERE session_id=?", (session_id,))
         self._conn.commit()

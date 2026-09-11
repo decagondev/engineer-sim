@@ -46,6 +46,10 @@ class SessionManager:
         self.ticketstore = SqliteTicketStore(config.db_path)
         self.settings = SqliteSettingsStore(config.db_path)
         self.submissions = SqliteSubmissionStore(config.db_path)
+        from sim.adapters.persistence.sqlite_users import SqliteUserDirectory
+        from sim.adapters.persistence.sqlite_sessions import SqliteSessionRegistry
+        self.users = SqliteUserDirectory(config.db_path)
+        self.session_registry = SqliteSessionRegistry(config.db_path)
         self.llm = llm
         self._responder = PersonaResponder(llm)
         self._judge = judge_llm

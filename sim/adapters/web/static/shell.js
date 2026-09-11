@@ -21,7 +21,16 @@ window.SimApps = (function () {
   }
 
   async function boot() {
-    try { ctx.scenario = await (await fetch(`/api/session/${sid}/scenario`)).json(); }
+    try {
+      const cfg = await (await fetch("/api/auth/config")).json();
+      if (cfg.auth_mode && cfg.auth_mode !== "password") {
+        if (!window.SimAuth || !SimAuth.token()) {
+          location.href = "/login?next=/" + location.hash;
+          return;
+        }
+      }
+    } catch (e) {}
+    try { ctx.scenario = await (await fetch(`/api/session/${sid}/scenario`, { headers: window.SimAuth ? SimAuth.headers() : {} })).json(); }
     catch (e) { ctx.scenario = { title: "Workstation", personas: [] }; }
     const title = ctx.scenario.title || "Workstation";
     $("brand").textContent = title;

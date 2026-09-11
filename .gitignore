@@ -2,3 +2,5 @@
 sim.db
 __pycache__/
 *.pyc
+*-firebase-adminsdk-*.json
+firebase-credentials.json

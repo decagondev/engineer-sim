@@ -88,3 +88,14 @@ class SqliteTicketStore:
             priority=r["priority"] if "priority" in keys else "medium",
             labels=r["labels"] if "labels" in keys else "",
         )
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM tickets WHERE session_id=?", (session_id,))
+        self._conn.commit()
+
+    def delete_one(self, session_id: str, ticket_id: str) -> bool:
+        cur = self._conn.execute(
+            "DELETE FROM tickets WHERE session_id=? AND id=?",
+            (session_id, ticket_id))
+        self._conn.commit()
+        return cur.rowcount > 0

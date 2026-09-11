@@ -18,7 +18,7 @@ from sim.core.scenario.scenario import Scenario, ScenarioError
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE_DIR = ROOT / "sim" / "core"
 FORBIDDEN_TOP = {"fastapi", "starlette", "uvicorn", "sqlite3", "subprocess",
-                 "anthropic", "yaml", "urllib"}
+                 "anthropic", "yaml", "urllib", "firebase_admin", "httpx"}
 
 
 def _cfg(tmp_path):

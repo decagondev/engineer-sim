@@ -62,3 +62,7 @@ class SqliteMessageRepository:
             )
             for r in rows
         ]
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM messages WHERE session_id=?", (session_id,))
+        self._conn.commit()

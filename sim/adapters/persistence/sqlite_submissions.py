@@ -52,3 +52,7 @@ class SqliteSubmissionStore:
         kind = r["kind"] if "kind" in keys and r["kind"] else "patch"
         return Submission(r["session_id"], r["seq"], r["filename"],
                           r["content"], r["lines"], r["ts"], kind)
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM submissions WHERE session_id=?", (session_id,))
+        self._conn.commit()

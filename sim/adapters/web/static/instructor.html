@@ -122,6 +122,7 @@
   <div class="bar">
     <span class="brand">Instructor Dashboard<span class="tag" id="scname"></span></span>
     <span class="spacer"></span>
+    <button id="signout" class="hidden">Sign out</button>
   </div>
   <div class="shell hidden" id="shell">
     <nav class="side">
@@ -133,13 +134,19 @@
   </div>
 
 <script src="/static/md.js"></script>
+<script src="/static/auth.js"></script>
 <script>
-let token = "", settings = null;
+let token = "", settings = null, authMode = "password";
 let rows = [], filtered = [], meta = {personas:[], mail:{}}, idx = 0, playTimer = null, curSid = null;
 const filters = {chat:true, mail:true, ticket:true, sig:true};
 const el = id => document.getElementById(id);
 const esc = s => { const d=document.createElement("div"); d.textContent=s??""; return d.innerHTML; };
-const hdr = () => ({"X-Instructor-Token": token});
+const hdr = () => {
+  const h = {};
+  if (token) h["X-Instructor-Token"] = token;
+  if (window.SimAuth && SimAuth.token()) h.Authorization = "Bearer " + SimAuth.token();
+  return h;
+};
 const fmt = ts => { const d=new Date(ts); return isNaN(d)?"":d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); };
 const fmtDate = ts => { const d=new Date(ts); return isNaN(d)?"":d.toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); };
 const rankOf = k => (settings.levels.findIndex(l=>l.key===k));
@@ -157,6 +164,21 @@ async function login(){
 }
 el("loginbtn").onclick = login;
 el("pw").addEventListener("keydown", e=>{ if(e.key==="Enter") login(); });
+el("signout").onclick = () => { token = ""; if (window.SimAuth) SimAuth.signOut("/login"); else location.reload(); };
+
+(async function bootAuth(){
+  try { const cfg = await SimAuth.config(); authMode = cfg.auth_mode || "password"; } catch (e) { return; }
+  if (authMode === "password") return;
+  el("login").classList.add("hidden");
+  el("signout").classList.remove("hidden");
+  if (!SimAuth.token()) { location.href = "/login?next=/instructor"; return; }
+  const me = await SimAuth.me();
+  if (!me || (me.role !== "instructor" && me.role !== "admin")) {
+    location.href = "/login?next=/instructor"; return;
+  }
+  settings = await (await fetch("/api/instructor/settings",{headers:hdr()})).json();
+  if(!settings.onboarded){ showOnboarding(); } else { enterDashboard(); }
+})();
 
 function showOnboarding(){
   const sel = el("ob-level"); sel.innerHTML = settings.levels.map(l=>`<option value="${l.key}">${l.label}</option>`).join("");
@@ -201,6 +223,7 @@ function renderNew(){
     <div class="card">
       <div class="field"><label>Scenario</label><select id="ns-sc" style="width:100%">${scOpts}</select></div>
       <div class="field"><label>Engineer level</label><select id="ns-lv" style="width:100%">${lvOpts}</select></div>
+      <div class="field"><label>Assign to challenger (email, optional)</label><input id="ns-email" placeholder="student@school.edu"/></div>
       <div id="ns-match" class="match"></div>
       <button class="primary" id="ns-create">Create session & get link</button>
       <div id="ns-result"></div>
@@ -218,9 +241,10 @@ function renderNew(){
   };
   scSel.onchange = upd; lvSel.onchange = upd; upd();
   el("ns-create").onclick = async ()=>{
-    const sid = "s-" + Math.random().toString(36).slice(2,9);
-    await fetch(`/api/instructor/session/${sid}/scenario`,{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({scenario:scSel.value})});
-    await fetch(`/api/instructor/session/${sid}/level`,{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({level:lvSel.value})});
+    const email = (el("ns-email") && el("ns-email").value.trim()) || "";
+    const created = await (await fetch(`/api/instructor/sessions`,{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({scenario:scSel.value,level:lvSel.value,assignee_email:email})})).json();
+    const sid = created.session_id;
+    if(!sid){ el("ns-result").innerHTML = `<div class="match bad">Could not create session.</div>`; return; }
     const link = `${location.origin}/#${sid}`;
     el("ns-result").innerHTML = `
       <div class="match ok" style="margin-top:16px">Session created: <b>${sid}</b></div>
@@ -325,7 +349,7 @@ function stopPlay(){ clearInterval(playTimer); playTimer=null; const p=el("play"
 async function doGrade(){
   el("gradebody").innerHTML = `<div class="muted">Grading…</div>`;
   const includeTickets = !!(el("includeTickets") && el("includeTickets").checked);
-  const g = await (await fetch(`/api/session/${curSid}/grade`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({include_tickets:includeTickets})})).json();
+  const g = await (await fetch(`/api/session/${curSid}/grade`,{method:"POST",headers:{"Content-Type":"application/json",...hdr()},body:JSON.stringify({include_tickets:includeTickets})})).json();
   if(g.error){ el("gradebody").innerHTML=`<div class="muted">Grade error: ${g.error}</div>`; return; }
   const scores = g.scores.slice();
   if (g.tickets_extra) scores.push({key:"tickets (extra credit)", score:g.tickets_extra.score, evidence:g.tickets_extra.evidence});

@@ -26,6 +26,12 @@ class Config:
     sandbox_pids: str = "512"
     instructor_password: str = "$T0mV13w"   # light gate for the replay view
     github_token: str = ""                  # optional; raises GitHub API rate limit
+    auth_mode: str = "password"             # password | firebase | fake
+    firebase_project_id: str = ""
+    firebase_web_api_key: str = ""
+    firebase_auth_domain: str = ""
+    firebase_credentials_json: str = ""     # service account JSON (optional)
+    bootstrap_admin_email: str = ""
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -46,4 +52,10 @@ class Config:
             sandbox_pids=os.environ.get("SANDBOX_PIDS", "512"),
             instructor_password=os.environ.get("INSTRUCTOR_PASSWORD", "$T0mV13w"),
             github_token=os.environ.get("GITHUB_TOKEN", ""),
+            auth_mode=os.environ.get("AUTH_MODE", "password").lower(),
+            firebase_project_id=os.environ.get("FIREBASE_PROJECT_ID", ""),
+            firebase_web_api_key=os.environ.get("FIREBASE_WEB_API_KEY", ""),
+            firebase_auth_domain=os.environ.get("FIREBASE_AUTH_DOMAIN", ""),
+            firebase_credentials_json=os.environ.get("FIREBASE_CREDENTIALS_JSON", ""),
+            bootstrap_admin_email=os.environ.get("AUTH_BOOTSTRAP_ADMIN_EMAIL", ""),
         )

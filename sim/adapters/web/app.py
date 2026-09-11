@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, Header, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -15,7 +15,8 @@ _STATIC = Path(__file__).parent / "static"
 
 def create_web_app(manager, grader, grader_calibrated: bool = False,
                    build_observer=None, workspace_reader=None,
-                   instructor_password: str = "", github_observer=None) -> FastAPI:
+                   instructor_password: str = "", github_observer=None,
+                   auth=None) -> FastAPI:
     """Web adapter. Resolves each session to a per-scenario bundle via the manager;
     grader / build observer / file reader / settings are app-global.
     """
@@ -30,6 +31,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.repo = manager.repo
     app.state.submissions = manager.submissions
     app.state.github_observer = github_observer
+    if auth is None:
+        from sim.adapters.auth.services import AuthServices
+        auth = AuthServices("password", password=instructor_password)
+    app.state.auth = auth
 
     def b(session_id):
         return manager.for_session(session_id)
@@ -40,6 +45,72 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if s is None:
             return DEFAULT_LEVEL
         return s.get_session_level(session_id) or s.get_instructor().default_level
+
+    import re as _re
+    from sim.core.ports.identity import IdentityError, Principal
+    from sim.adapters.auth.services import LOCAL_INSTRUCTOR_EMAIL, LOCAL_INSTRUCTOR_UID
+
+    _SESSION_API = _re.compile(r"^/api/session/([^/]+)")
+    _INSTR_SID = _re.compile(r"^/api/instructor/session/([^/]+)")
+
+    def _local_instructor() -> Principal:
+        return Principal(LOCAL_INSTRUCTOR_UID, LOCAL_INSTRUCTOR_EMAIL, "instructor")
+
+    def _actor(request: Request | None) -> Principal:
+        if not app.state.auth.gated:
+            return _local_instructor()
+        p = getattr(getattr(request, "state", None), "principal", None)
+        return p or _local_instructor()
+
+    @app.middleware("http")
+    async def auth_gate(request: Request, call_next):
+        auth = app.state.auth
+        if not auth.gated:
+            return await call_next(request)
+        path = request.url.path
+        if (path.startswith("/static") or path in {
+            "/health", "/api/auth/config", "/", "/instructor", "/login",
+            "/challenger", "/admin",
+        }):
+            return await call_next(request)
+        if not path.startswith("/api/"):
+            return await call_next(request)
+        try:
+            principal = auth.principal_from_headers(request.headers)
+        except IdentityError as e:
+            return JSONResponse({"error": e.detail}, status_code=e.status)
+        request.state.principal = principal
+        if path.startswith("/api/admin"):
+            if not auth.allow_admin(principal):
+                return JSONResponse({"error": "forbidden"}, status_code=403)
+            return await call_next(request)
+        if path.startswith("/api/instructor"):
+            if not auth.allow_instructor(principal):
+                return JSONResponse({"error": "forbidden"}, status_code=403)
+            m = _INSTR_SID.match(path)
+            if m and request.method == "GET":
+                if not auth.allow_session(principal, m.group(1)):
+                    return JSONResponse({"error": "forbidden"}, status_code=403)
+            return await call_next(request)
+        if path == "/api/scenarios" and principal.role == "challenger":
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        m = _SESSION_API.match(path)
+        if m:
+            sid = m.group(1)
+            if path.endswith("/claim") and request.method == "POST":
+                from sim.core.access.policy import can_claim_session
+                rec = auth.session(sid)
+                if not can_claim_session(principal, rec):
+                    return JSONResponse({"error": "forbidden"}, status_code=403)
+                return await call_next(request)
+            grade = "/grade" in path
+            mutate = request.method not in ("GET", "HEAD")
+            if grade:
+                if not auth.allow_session(principal, sid, grade=True):
+                    return JSONResponse({"error": "forbidden"}, status_code=403)
+            elif not auth.allow_session(principal, sid, mutate=mutate):
+                return JSONResponse({"error": "forbidden"}, status_code=403)
+        return await call_next(request)
 
     # ---- static / shell -------------------------------------------------
     @app.get("/health")
@@ -449,7 +520,98 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def instructor_page():
         return FileResponse(_STATIC / "instructor.html")
 
+    @app.get("/login")
+    def login_page():
+        return FileResponse(_STATIC / "login.html")
+
+    @app.get("/challenger")
+    def challenger_page():
+        return FileResponse(_STATIC / "challenger.html")
+
+    @app.get("/admin")
+    def admin_page():
+        return FileResponse(_STATIC / "admin.html")
+
+    @app.get("/api/auth/config")
+    def auth_config():
+        return app.state.auth.public_config()
+
+    @app.get("/api/auth/me")
+    def auth_me(request: Request):
+        if not app.state.auth.gated:
+            p = _local_instructor()
+            return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False}
+        p = getattr(request.state, "principal", None)
+        if p is None:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False}
+
+    @app.get("/api/me/sessions")
+    def my_sessions(request: Request):
+        auth = app.state.auth
+        p = _actor(request)
+        if auth.sessions is None:
+            return {"sessions": []}
+        rows = list(auth.sessions.list_by_assignee(p.uid))
+        if p.role in ("instructor", "admin"):
+            rows = list(auth.sessions.list_by_owner(p.uid)) if p.role == "instructor" else list(auth.sessions.list_all())
+        out = []
+        for rec in rows:
+            title = rec.scenario_key
+            if rec.scenario_key in manager.registry:
+                title = manager.registry[rec.scenario_key].title
+            out.append({
+                "session_id": rec.id, "scenario": rec.scenario_key, "title": title,
+                "level": rec.level, "status": rec.status,
+                "owner_uid": rec.owner_uid, "assignee_uid": rec.assignee_uid,
+                "created_at": rec.created_at,
+            })
+        return {"sessions": out}
+
+    @app.post("/api/session/{session_id}/claim")
+    def claim_session(session_id: str, request: Request):
+        from sim.core.access.policy import can_claim_session
+        auth = app.state.auth
+        p = _actor(request)
+        rec = auth.session(session_id) if auth.sessions else None
+        if not can_claim_session(p, rec):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        auth.touch_session(session_id, assignee_uid=p.uid, status="active")
+        return {"ok": True, "session_id": session_id}
+
+    @app.post("/api/instructor/sessions")
+    def instructor_create_session(payload: dict, request: Request,
+                                  x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        import uuid
+        from sim.core.levels import LEVEL_ORDER
+        key = (payload or {}).get("scenario", "")
+        if key and key not in manager.registry:
+            return JSONResponse({"error": "no such scenario"}, status_code=400)
+        lvl = (payload or {}).get("level") or app.state.settings.get_instructor().default_level
+        if lvl not in LEVEL_ORDER:
+            return JSONResponse({"error": "bad level"}, status_code=400)
+        sid = (payload or {}).get("session_id") or ("s-" + uuid.uuid4().hex[:10])
+        assignee = (payload or {}).get("assignee_uid") or ""
+        email = (payload or {}).get("assignee_email") or ""
+        auth = app.state.auth
+        if email and auth.users:
+            u = auth.users.get_by_email(email)
+            if u:
+                assignee = u.uid
+        owner = _actor(request).uid
+        if key:
+            app.state.settings.set_session_scenario(sid, key)
+        app.state.settings.set_session_level(sid, lvl)
+        if auth.sessions:
+            auth.touch_session(sid, owner_uid=owner, assignee_uid=assignee,
+                               scenario_key=key, level=lvl, status="assigned")
+        return {"ok": True, "session_id": sid, "url": f"/#{sid}"}
+
     def _instr_ok(token: str) -> bool:
+        if app.state.auth.gated:
+            return True
         return bool(app.state.instructor_password) and token == app.state.instructor_password
 
     @app.post("/api/instructor/auth")
@@ -480,7 +642,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"ok": True}
 
     @app.post("/api/instructor/session/{session_id}/level")
-    def instructor_set_level(session_id: str, payload: dict,
+    def instructor_set_level(session_id: str, payload: dict, request: Request,
                              x_instructor_token: str = Header(default="")):
         if not _instr_ok(x_instructor_token):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -489,6 +651,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if lvl not in LEVEL_ORDER:
             return JSONResponse({"error": "bad level"}, status_code=400)
         app.state.settings.set_session_level(session_id, lvl)
+        app.state.auth.touch_session(
+            session_id, owner_uid=_actor(request).uid, level=lvl)
         return {"ok": True, "level": lvl}
 
     @app.post("/api/instructor/scenario/{scenario_key}/starter-url")
@@ -503,7 +667,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"ok": True}
 
     @app.post("/api/instructor/session/{session_id}/scenario")
-    def instructor_set_scenario(session_id: str, payload: dict,
+    def instructor_set_scenario(session_id: str, payload: dict, request: Request,
                                 x_instructor_token: str = Header(default="")):
         if not _instr_ok(x_instructor_token):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -511,14 +675,38 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if key not in manager.registry:
             return JSONResponse({"error": "no such scenario"}, status_code=400)
         app.state.settings.set_session_scenario(session_id, key)
+        app.state.auth.touch_session(
+            session_id, owner_uid=_actor(request).uid, scenario_key=key)
         return {"ok": True, "scenario": key}
 
     @app.get("/api/instructor/sessions")
-    def instructor_sessions(x_instructor_token: str = Header(default="")):
+    def instructor_sessions(request: Request,
+                            x_instructor_token: str = Header(default="")):
         if not _instr_ok(x_instructor_token):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
+        auth = app.state.auth
+        p = _actor(request)
+        by_id = {}
         repo = app.state.repo
-        sessions = repo.list_sessions() if hasattr(repo, "list_sessions") else []
+        msg_sessions = repo.list_sessions() if hasattr(repo, "list_sessions") else []
+        for s in msg_sessions:
+            by_id[s["session_id"]] = dict(s)
+        if auth.sessions is not None:
+            recs = (list(auth.sessions.list_all()) if (auth.gated and p.role == "admin")
+                    else list(auth.sessions.list_by_owner(p.uid)) if auth.gated
+                    else list(auth.sessions.list_all()))
+            for rec in recs:
+                row = by_id.get(rec.id, {"session_id": rec.id, "count": 0,
+                                         "first_ts": rec.created_at, "last_ts": rec.created_at})
+                row["assignee_uid"] = rec.assignee_uid
+                row["owner_uid"] = rec.owner_uid
+                row["status"] = rec.status
+                by_id[rec.id] = row
+        sessions = list(by_id.values())
+        if auth.gated and p.role == "instructor":
+            sessions = [s for s in sessions
+                        if s.get("owner_uid", p.uid) in ("", p.uid)]
+        sessions.sort(key=lambda s: s.get("last_ts") or "", reverse=True)
         for s in sessions:
             sid = s["session_id"]
             s["scenario"] = manager.resolve_scenario_key(sid)
@@ -594,9 +782,227 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             headers={"Content-Disposition":
                      f'attachment; filename="{sid}-audit.md"'})
 
+    def _cascade_delete_session(sid: str) -> None:
+        auth = app.state.auth
+        for store in (app.state.repo, manager.unlock, manager.mailstore,
+                      manager.ticketstore, manager.submissions, app.state.settings):
+            fn = getattr(store, "delete_for_session", None) or getattr(
+                store, "delete_session_settings", None)
+            if callable(fn):
+                try:
+                    fn(sid)
+                except TypeError:
+                    if hasattr(store, "delete_session_settings"):
+                        store.delete_session_settings(sid)
+        env = b(sid).environment
+        if env is not None:
+            try:
+                env.teardown(sid)
+            except Exception:
+                pass
+        if auth.sessions:
+            auth.sessions.delete(sid)
+
+    @app.get("/api/admin/users")
+    def admin_list_users():
+        users = app.state.auth.users
+        if users is None:
+            return {"users": []}
+        return {"users": [
+            {"uid": u.uid, "email": u.email, "role": u.role,
+             "disabled": u.disabled, "created_at": u.created_at,
+             "last_login": u.last_login}
+            for u in users.list()
+        ]}
+
+    @app.post("/api/admin/users")
+    def admin_create_user(payload: dict):
+        import secrets
+        from sim.core.ports.identity import ROLES
+        from sim.core.ports.users import UserRecord
+        from datetime import datetime, timezone
+        email = (payload or {}).get("email", "").strip()
+        role = (payload or {}).get("role", "challenger")
+        if not email or role not in ROLES:
+            return JSONResponse({"error": "email and valid role required"}, status_code=400)
+        auth = app.state.auth
+        uid = ""
+        if auth.firebase is not None:
+            password = secrets.token_urlsafe(16)
+            try:
+                uid = auth.firebase.create_email_user(email, password)
+                if (payload or {}).get("send_reset", True):
+                    auth.firebase.send_password_reset(email)
+            except IdentityError as e:
+                return JSONResponse({"error": e.detail}, status_code=e.status)
+        uid = uid or ("u-" + secrets.token_hex(8))
+        rec = auth.users.upsert(UserRecord(
+            uid=uid, email=email, role=role, disabled=False,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        ))
+        return {"ok": True, "uid": rec.uid, "email": rec.email, "role": rec.role}
+
+    @app.patch("/api/admin/users/{uid}")
+    def admin_patch_user(uid: str, payload: dict):
+        from sim.core.ports.identity import ROLES
+        from sim.core.ports.users import UserRecord
+        auth = app.state.auth
+        rec = auth.users.get(uid) if auth.users else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        role = (payload or {}).get("role", rec.role)
+        disabled = rec.disabled
+        if "disabled" in (payload or {}):
+            disabled = bool(payload["disabled"])
+        if role not in ROLES:
+            return JSONResponse({"error": "bad role"}, status_code=400)
+        if rec.role == "admin" and (role != "admin" or disabled) and auth.users.count_role("admin") <= 1:
+            return JSONResponse({"error": "cannot remove the last admin"}, status_code=400)
+        rec = auth.users.upsert(UserRecord(
+            uid=rec.uid, email=rec.email, role=role, disabled=disabled,
+            created_at=rec.created_at, last_login=rec.last_login))
+        return {"ok": True, "uid": rec.uid, "role": rec.role, "disabled": rec.disabled}
+
+    @app.delete("/api/admin/users/{uid}")
+    def admin_delete_user(uid: str):
+        auth = app.state.auth
+        rec = auth.users.get(uid) if auth.users else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        if rec.role == "admin" and auth.users.count_role("admin") <= 1:
+            return JSONResponse({"error": "cannot delete the last admin"}, status_code=400)
+        auth.users.delete(uid)
+        return {"ok": True}
+
+    @app.get("/api/admin/sessions")
+    def admin_list_sessions():
+        auth = app.state.auth
+        rows = list(auth.sessions.list_all()) if auth.sessions else []
+        return {"sessions": [
+            {"session_id": r.id, "owner_uid": r.owner_uid,
+             "assignee_uid": r.assignee_uid, "scenario": r.scenario_key,
+             "level": r.level, "status": r.status, "created_at": r.created_at}
+            for r in rows
+        ]}
+
+    @app.patch("/api/admin/sessions/{sid}")
+    def admin_patch_session(sid: str, payload: dict):
+        auth = app.state.auth
+        rec = auth.session(sid)
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        owner = (payload or {}).get("owner_uid", rec.owner_uid)
+        assignee = (payload or {}).get("assignee_uid", rec.assignee_uid)
+        scenario = (payload or {}).get("scenario", rec.scenario_key)
+        level = (payload or {}).get("level", rec.level)
+        status = (payload or {}).get("status", rec.status)
+        if scenario:
+            app.state.settings.set_session_scenario(sid, scenario)
+        if level:
+            app.state.settings.set_session_level(sid, level)
+        auth.touch_session(sid, owner_uid=owner, assignee_uid=assignee,
+                           scenario_key=scenario, level=level, status=status)
+        return {"ok": True}
+
+    @app.delete("/api/admin/sessions/{sid}")
+    def admin_delete_session(sid: str):
+        _cascade_delete_session(sid)
+        return {"ok": True}
+
+    @app.get("/api/admin/sessions/{sid}/messages")
+    def admin_messages(sid: str):
+        return {"messages": b(sid).session_service.export(sid)}
+
+    @app.delete("/api/admin/sessions/{sid}/messages")
+    def admin_delete_messages(sid: str):
+        app.state.repo.delete_for_session(sid)
+        return {"ok": True}
+
+    @app.get("/api/admin/sessions/{sid}/tickets")
+    def admin_tickets(sid: str):
+        return b(sid).ticket_service.board(sid)
+
+    @app.delete("/api/admin/sessions/{sid}/tickets/{tid}")
+    def admin_delete_ticket(sid: str, tid: str):
+        ok = manager.ticketstore.delete_one(sid, tid)
+        if not ok:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return {"ok": True}
+
+    @app.get("/api/admin/sessions/{sid}/submissions")
+    def admin_submissions(sid: str):
+        subs = app.state.submissions.list(sid)
+        return {"submissions": [
+            {"seq": s.seq, "filename": s.filename, "lines": s.lines,
+             "ts": s.ts, "kind": s.kind, "content": s.content}
+            for s in subs]}
+
+    @app.delete("/api/admin/sessions/{sid}/submissions")
+    def admin_delete_submissions(sid: str):
+        app.state.submissions.delete_for_session(sid)
+        return {"ok": True}
+
+    @app.post("/api/admin/sessions/{sid}/unlock/reset")
+    def admin_unlock_reset(sid: str):
+        manager.unlock.delete_for_session(sid)
+        return {"ok": True}
+
+    @app.get("/api/admin/settings")
+    def admin_get_settings():
+        s = app.state.settings.get_instructor()
+        return {"onboarded": s.onboarded, "default_level": s.default_level}
+
+    @app.put("/api/admin/settings")
+    def admin_put_settings(payload: dict):
+        from sim.core.ports.settings import InstructorSettings
+        app.state.settings.set_instructor(InstructorSettings(
+            onboarded=bool(payload.get("onboarded", True)),
+            default_level=payload.get("default_level", "senior")))
+        return {"ok": True}
+
+    @app.get("/api/admin/scenarios")
+    def admin_scenarios():
+        out = []
+        for m in manager.scenarios_meta():
+            m = dict(m)
+            m["starter_url"] = app.state.settings.get_scenario_starter_url(m["key"])
+            m["enabled"] = app.state.settings.get_scenario_enabled(m["key"])
+            out.append(m)
+        return {"scenarios": out}
+
+    @app.put("/api/admin/scenarios/{key}")
+    def admin_put_scenario(key: str, payload: dict):
+        if key not in manager.registry:
+            return JSONResponse({"error": "no such scenario"}, status_code=400)
+        if "url" in payload or "starter_url" in payload:
+            app.state.settings.set_scenario_starter_url(
+                key, (payload.get("starter_url") or payload.get("url") or "").strip())
+        if "enabled" in payload:
+            app.state.settings.set_scenario_enabled(key, bool(payload["enabled"]))
+        return {"ok": True}
+
+    @app.get("/api/admin/auth/status")
+    def admin_auth_status():
+        auth = app.state.auth
+        n = len(list(auth.users.list())) if auth.users else 0
+        return {"auth_mode": auth.mode, "firebase_project_id": auth.firebase_project_id,
+                "users_count": n,
+                "bootstrap_configured": bool(auth.bootstrap_admin_email)}
+
     # ---- websocket ------------------------------------------------------
     @app.websocket("/ws/{session_id}")
     async def ws(websocket: WebSocket, session_id: str):
+        auth = app.state.auth
+        if auth.gated:
+            token = websocket.query_params.get("token") or ""
+            try:
+                principal = auth.principal_from_token(token)
+            except IdentityError as e:
+                await websocket.close(code=4401)
+                return
+            if not auth.allow_session(principal, session_id, mutate=True):
+                await websocket.close(code=4403)
+                return
         await websocket.accept()
         svc = b(session_id).session_service
         try:

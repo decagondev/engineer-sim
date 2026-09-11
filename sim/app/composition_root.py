@@ -292,6 +292,40 @@ def _build_workspace_reader():
     return LocalWorkspaceReader()
 
 
+def build_auth(config: Config, manager) -> "object":
+    """Wire identity adapters. Core never sees Firebase."""
+    from sim.adapters.auth.services import AuthServices
+    from sim.adapters.auth.fake_verifier import FakeVerifier
+    users = getattr(manager, "users", None)
+    sessions = getattr(manager, "session_registry", None)
+    mode = (config.auth_mode or "password").lower()
+    if mode == "firebase":
+        if not config.firebase_web_api_key or not config.firebase_project_id:
+            raise RuntimeError(
+                "AUTH_MODE=firebase requires FIREBASE_WEB_API_KEY and "
+                "FIREBASE_PROJECT_ID")
+        from sim.adapters.auth.firebase_verifier import FirebaseVerifier
+        fb = FirebaseVerifier(config.firebase_web_api_key, config.firebase_project_id)
+        return AuthServices(
+            "firebase", verifier=fb, users=users, sessions=sessions,
+            bootstrap_admin_email=config.bootstrap_admin_email,
+            firebase_api_key=config.firebase_web_api_key,
+            firebase_auth_domain=config.firebase_auth_domain
+            or f"{config.firebase_project_id}.firebaseapp.com",
+            firebase_project_id=config.firebase_project_id,
+            firebase=fb,
+        )
+    if mode == "fake":
+        return AuthServices(
+            "fake", verifier=FakeVerifier(), users=users, sessions=sessions,
+            bootstrap_admin_email=config.bootstrap_admin_email,
+        )
+    return AuthServices(
+        "password", password=config.instructor_password,
+        users=users, sessions=sessions,
+    )
+
+
 def build_app(config: Config | None = None):
     from sim.adapters.web.app import create_web_app
     from sim.adapters.build.git_observer import GitBuildObserver
@@ -306,4 +340,5 @@ def build_app(config: Config | None = None):
         workspace_reader=_build_workspace_reader(),
         instructor_password=config.instructor_password,
         github_observer=GitHostBuildObserver(token=config.github_token),
+        auth=build_auth(config, manager),
     )

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sign in</title>
+<style>
+  :root{
+    --ink:#0f1217; --panel:#161b23; --line:#272e3a; --text:#e7eaf0; --muted:#8a93a4;
+    --me:#3b6ef5; --bad:#e0655c;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 var(--ui);background:var(--ink);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .box{width:380px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 24px;display:flex;flex-direction:column;gap:12px}
+  h1{font-size:19px;margin:0}
+  p{color:var(--muted);font-size:13px;margin:0}
+  input,select{background:#12151b;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 12px;font:inherit;width:100%}
+  button{background:var(--me);border:0;color:#fff;font-weight:600;border-radius:9px;padding:10px 14px;cursor:pointer;font:inherit}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+  .err{color:var(--bad);font-size:13px;min-height:18px}
+  a{color:var(--me)}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Sign in</h1>
+  <p id="blurb">Use the email your instructor gave you.</p>
+  <div id="form"></div>
+  <div class="err" id="err"></div>
+</div>
+<script src="/static/auth.js"></script>
+<script>
+const next = new URLSearchParams(location.search).get("next") || "";
+const el = id => document.getElementById(id);
+
+function homeFor(role){
+  if (next) return next;
+  if (role === "admin") return "/admin";
+  if (role === "instructor") return "/instructor";
+  return "/challenger";
+}
+
+(async function(){
+  const cfg = await SimAuth.config();
+  if (cfg.auth_mode === "password") {
+    el("blurb").textContent = "This server is using the classroom password. Instructors sign in at the instructor dashboard.";
+    el("form").innerHTML = `<a href="/instructor">Instructor dashboard</a> · <a href="/">Workstation</a>`;
+    return;
+  }
+  if (cfg.auth_mode === "fake") {
+    el("blurb").textContent = "Dev auth (AUTH_MODE=fake). No Firebase project required.";
+    el("form").innerHTML = `
+      <input id="email" placeholder="email@test.local" value="dev@test.local"/>
+      <input id="uid" placeholder="uid" value="dev"/>
+      <select id="role">
+        <option value="challenger">challenger</option>
+        <option value="instructor">instructor</option>
+        <option value="admin">admin</option>
+      </select>
+      <button id="go">Sign in</button>`;
+    el("go").onclick = async () => {
+      const uid = el("uid").value.trim() || "dev";
+      const role = el("role").value;
+      const email = el("email").value.trim() || (uid + "@test.local");
+      SimAuth.setToken(`fake:${uid}:${role}:${email}`);
+      const me = await SimAuth.me();
+      if (!me) { el("err").textContent = "Sign-in failed."; return; }
+      location.href = homeFor(me.role);
+    };
+    return;
+  }
+  el("form").innerHTML = `
+    <input id="email" type="email" placeholder="Email" autocomplete="username"/>
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password"/>
+    <button id="go">Sign in</button>
+    <button class="ghost" id="up" type="button">Create challenger account</button>
+    <button class="ghost" id="reset" type="button">Send password reset</button>`;
+  const fb = cfg.firebase || {};
+  const s1 = document.createElement("script");
+  s1.src = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
+  const s2 = document.createElement("script");
+  s2.src = "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js";
+  document.body.appendChild(s1);
+  s1.onload = () => document.body.appendChild(s2);
+  s2.onload = () => {
+    firebase.initializeApp({
+      apiKey: fb.apiKey, authDomain: fb.authDomain, projectId: fb.projectId,
+    });
+    const auth = firebase.auth();
+    async function after(cred) {
+      const t = await cred.user.getIdToken();
+      SimAuth.setToken(t);
+      const me = await SimAuth.me();
+      if (!me) { el("err").textContent = "Server rejected the token. Check FIREBASE_WEB_API_KEY."; return; }
+      location.href = homeFor(me.role);
+    }
+    el("go").onclick = async () => {
+      el("err").textContent = "";
+      try {
+        const cred = await auth.signInWithEmailAndPassword(el("email").value, el("pw").value);
+        await after(cred);
+      } catch (e) { el("err").textContent = e.message || String(e); }
+    };
+    el("up").onclick = async () => {
+      el("err").textContent = "";
+      try {
+        const cred = await auth.createUserWithEmailAndPassword(el("email").value, el("pw").value);
+        await after(cred);
+      } catch (e) { el("err").textContent = e.message || String(e); }
+    };
+    el("reset").onclick = async () => {
+      el("err").textContent = "";
+      try {
+        await auth.sendPasswordResetEmail(el("email").value);
+        el("err").textContent = "Reset email sent (if that account exists).";
+      } catch (e) { el("err").textContent = e.message || String(e); }
+    };
+  };
+})();
+</script>
+</body>
+</html>

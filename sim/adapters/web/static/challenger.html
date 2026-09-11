@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Challenger</title>
+<style>
+  :root{
+    --ink:#0f1217; --panel:#161b23; --panel-2:#1b212b; --line:#272e3a;
+    --text:#e7eaf0; --muted:#8a93a4; --me:#3b6ef5;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 var(--ui);background:var(--ink);color:var(--text)}
+  .bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .bar .spacer{flex:1}
+  .muted{color:var(--muted);font-size:13px}
+  button{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 13px;font:inherit;font-size:13px;cursor:pointer}
+  button.primary{background:var(--me);border-color:var(--me);color:#fff;font-weight:600}
+  .content{max-width:720px;margin:28px auto;padding:0 20px}
+  .srow{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;background:var(--panel)}
+  .srow .id{font-family:var(--mono);font-size:13px}
+  .badge{font:11px/1 var(--mono);border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="bar"><span><b>Challenger</b></span><span class="muted" id="who"></span><span class="spacer"></span><button id="out">Sign out</button></div>
+  <div class="content">
+    <h1 style="font-size:18px;margin:0 0 6px">Your sessions</h1>
+    <p class="muted" id="sub">Assigned challenges appear here. Open one to enter the workstation.</p>
+    <div id="list"></div>
+  </div>
+<script src="/static/auth.js"></script>
+<script>
+(async function(){
+  const cfg = await SimAuth.config();
+  if (cfg.auth_mode === "password") { location.href = "/"; return; }
+  if (!SimAuth.requireToken("/challenger")) return;
+  const me = await SimAuth.me();
+  if (!me) { SimAuth.signOut("/login?next=/challenger"); return; }
+  if (me.role === "instructor") { location.href = "/instructor"; return; }
+  if (me.role === "admin") { /* admin may view */ }
+  document.getElementById("who").textContent = me.email + " · " + me.role;
+  document.getElementById("out").onclick = () => SimAuth.signOut();
+  const data = await (await fetch("/api/me/sessions", {headers: SimAuth.headers()})).json();
+  const list = document.getElementById("list");
+  if (!data.sessions || !data.sessions.length) {
+    list.innerHTML = `<p class="muted">Your instructor has not assigned a session yet.</p>`;
+    return;
+  }
+  list.innerHTML = data.sessions.map(s => `
+    <div class="srow">
+      <div>
+        <div>${s.title || s.scenario}</div>
+        <div class="id">${s.session_id}</div>
+      </div>
+      <span class="badge">${s.level || ""}</span>
+      <span class="badge">${s.status || ""}</span>
+      <span class="spacer"></span>
+      <a href="/#${s.session_id}"><button class="primary">Open</button></a>
+    </div>`).join("");
+})();
+</script>
+</body>
+</html>

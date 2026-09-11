@@ -76,3 +76,7 @@ class SqliteMailStore:
     def _row(r) -> MailThread:
         return MailThread(r["id"], r["session_id"], r["subject"],
                           r["participant"], r["created_ts"])
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._conn.execute("DELETE FROM mail_threads WHERE session_id=?", (session_id,))
+        self._conn.commit()

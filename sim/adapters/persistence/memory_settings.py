@@ -35,3 +35,13 @@ class InMemorySettingsStore:
 
     def set_scenario_starter_url(self, scenario_key: str, url: str) -> None:
         self._starter_urls[scenario_key] = url
+
+    def get_scenario_enabled(self, scenario_key: str) -> bool:
+        return True
+
+    def set_scenario_enabled(self, scenario_key: str, enabled: bool) -> None:
+        pass
+
+    def delete_session_settings(self, session_id: str) -> None:
+        self._levels.pop(session_id, None)
+        self._scenarios.pop(session_id, None)
