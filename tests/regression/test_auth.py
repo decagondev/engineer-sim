@@ -259,3 +259,58 @@ def test_auth_claim02_unknown_session_not_claimable(tmp_path):
     ch = _h("c1", "challenger")
     assert c.post("/api/session/s-madeup/claim", headers=ch).status_code == 403
     assert c.get("/api/session/s-madeup/scenario", headers=ch).status_code == 403
+
+
+def test_auth_cohort01_batch_sessions_for_cohort(tmp_path):
+    """Instructor creates one session per challenger in a cohort; non-challengers
+    and members who already hold the scenario are skipped; each challenger sees
+    only their own session; a stranger cannot open another's."""
+    c = _fake(tmp_path)
+    admin, inst = _h("a1", "admin", "admin@t.local"), _h("i1", "instructor")
+    c.get("/api/auth/me", headers=admin)
+    co = c.post("/api/admin/cohorts", json={"name": "Sept intake"}, headers=admin).json()["id"]
+    students = []
+    for i in range(3):
+        u = c.post("/api/admin/users",
+                   json={"email": f"s{i}@t.local", "role": "challenger", "name": f"Student {i}"},
+                   headers=admin).json()
+        students.append(u)
+        assert c.post(f"/api/admin/cohorts/{co}/members", json={"uid": u["uid"]}, headers=admin).json()["ok"]
+    ta = c.post("/api/admin/users", json={"email": "ta@t.local", "role": "instructor"}, headers=admin).json()
+    c.post(f"/api/admin/cohorts/{co}/members", json={"uid": ta["uid"]}, headers=admin)
+
+    listed = c.get("/api/instructor/cohorts", headers=inst).json()["cohorts"]
+    assert [x["id"] for x in listed] == [co]
+    assert listed[0]["member_count"] == 4 and listed[0]["challenger_count"] == 3
+
+    r = c.post(f"/api/instructor/cohorts/{co}/sessions",
+               json={"scenario": "iv_url_shortener", "level": "senior"}, headers=inst).json()
+    assert r["ok"] and len(r["created"]) == 3
+    assert [x["reason"] for x in r["skipped"]] == ["role is instructor"]
+    sids = {x["email"]: x["session_id"] for x in r["created"]}
+
+    for i in range(3):
+        me_h = _h("tok%d" % i, "challenger", f"s{i}@t.local")   # resolves by email
+        mine = c.get("/api/me/sessions", headers=me_h).json()["sessions"]
+        assert [s["session_id"] for s in mine] == [sids[f"s{i}@t.local"]]
+        assert c.get(f"/api/session/{sids[f's{i}@t.local']}/scenario", headers=me_h).json()["key"] == "iv_url_shortener"
+    assert c.get(f"/api/session/{sids['s0@t.local']}/scenario",
+                 headers=_h("x", "challenger", "s1@t.local")).status_code == 403
+
+    # second run on the same scenario skips everyone; detail shows what they hold
+    again = c.post(f"/api/instructor/cohorts/{co}/sessions",
+                   json={"scenario": "iv_url_shortener", "level": "senior"}, headers=inst).json()
+    assert again["created"] == [] and sum(1 for x in again["skipped"] if "already" in x["reason"]) == 3
+    detail = c.get(f"/api/instructor/cohorts/{co}?scenario=iv_url_shortener", headers=inst).json()
+    held = {m["email"]: [s["session_id"] for s in m["sessions"]] for m in detail["members"]}
+    assert held["s0@t.local"] == [sids["s0@t.local"]] and held["ta@t.local"] == []
+    # skip_existing=false creates a fresh set
+    third = c.post(f"/api/instructor/cohorts/{co}/sessions",
+                   json={"scenario": "iv_url_shortener", "level": "junior", "skip_existing": False},
+                   headers=inst).json()
+    assert len(third["created"]) == 3
+
+    # validation + role gates
+    assert c.post(f"/api/instructor/cohorts/{co}/sessions", json={"scenario": "nope"}, headers=inst).status_code == 400
+    assert c.post("/api/instructor/cohorts/co-missing/sessions", json={"scenario": "churn_dashboard"}, headers=inst).status_code == 404
+    assert c.get("/api/instructor/cohorts", headers=_h("c9", "challenger")).status_code == 403

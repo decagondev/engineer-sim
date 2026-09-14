@@ -655,6 +655,119 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                                scenario_key=key, level=lvl, status="assigned")
         return {"ok": True, "session_id": sid, "url": f"/#{sid}"}
 
+    # ---- cohorts (instructor view: read cohorts, batch-create sessions) ----
+    def _cohort_members(store, cid: str) -> list:
+        users = app.state.auth.users
+        out = []
+        for uid in store.members(cid):
+            u = users.get(uid) if users else None
+            if u is None:
+                out.append({"uid": uid, "email": "", "name": "", "role": "",
+                            "disabled": False})
+            else:
+                out.append({"uid": u.uid, "email": u.email, "name": u.name or "",
+                            "role": u.role, "disabled": u.disabled})
+        out.sort(key=lambda m: (m["name"] or m["email"] or m["uid"]).lower())
+        return out
+
+    def _assignable(m: dict) -> str:
+        """'' when a member can be handed a session, else the reason not."""
+        if not m["role"]:
+            return "no account"
+        if m["role"] != "challenger":
+            return f"role is {m['role']}"
+        if m["disabled"]:
+            return "account disabled"
+        return ""
+
+    @app.get("/api/instructor/cohorts")
+    def instructor_cohorts(x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        store = _cohorts()
+        if store is None:
+            return {"cohorts": []}
+        rows = []
+        for c in store.list():
+            members = _cohort_members(store, c.id)
+            rows.append({"id": c.id, "name": c.name, "notes": c.notes,
+                         "member_count": len(members),
+                         "challenger_count": sum(1 for m in members if not _assignable(m))})
+        rows.sort(key=lambda r: r["name"].lower())
+        return {"cohorts": rows}
+
+    @app.get("/api/instructor/cohorts/{cid}")
+    def instructor_cohort(cid: str, scenario: str = "",
+                          x_instructor_token: str = Header(default="")):
+        """Members plus, for each, the sessions they already hold (optionally
+        only for one scenario) so the batch screen can show who is covered."""
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        store = _cohorts()
+        rec = store.get(cid) if store else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        sessions = app.state.auth.sessions
+        members = []
+        for m in _cohort_members(store, cid):
+            held = []
+            if sessions is not None and m["uid"]:
+                for r in sessions.list_by_assignee(m["uid"]):
+                    if scenario and r.scenario_key != scenario:
+                        continue
+                    held.append({"session_id": r.id, "scenario": r.scenario_key,
+                                 "level": r.level, "status": r.status})
+            members.append({**m, "blocked": _assignable(m), "sessions": held})
+        return {"id": rec.id, "name": rec.name, "notes": rec.notes,
+                "members": members}
+
+    @app.post("/api/instructor/cohorts/{cid}/sessions")
+    def instructor_cohort_sessions(cid: str, payload: dict, request: Request,
+                                   x_instructor_token: str = Header(default="")):
+        """One session per assignable member, all on the same scenario + level.
+        Members who already hold a session on that scenario are skipped unless
+        skip_existing is false."""
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        import uuid
+        from sim.core.levels import LEVEL_ORDER
+        store = _cohorts()
+        rec = store.get(cid) if store else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        key = (payload or {}).get("scenario", "")
+        if key not in manager.registry:
+            return JSONResponse({"error": "no such scenario"}, status_code=400)
+        lvl = (payload or {}).get("level") or app.state.settings.get_instructor().default_level
+        if lvl not in LEVEL_ORDER:
+            return JSONResponse({"error": "bad level"}, status_code=400)
+        skip_existing = bool((payload or {}).get("skip_existing", True))
+        auth = app.state.auth
+        owner = _actor(request).uid
+        created, skipped = [], []
+        for m in _cohort_members(store, cid):
+            why = _assignable(m)
+            if why:
+                skipped.append({**m, "reason": why})
+                continue
+            if skip_existing and auth.sessions is not None:
+                have = [r for r in auth.sessions.list_by_assignee(m["uid"])
+                        if r.scenario_key == key]
+                if have:
+                    skipped.append({**m, "reason": "already has this scenario",
+                                    "session_id": have[0].id})
+                    continue
+            sid = "s-" + uuid.uuid4().hex[:10]
+            app.state.settings.set_session_scenario(sid, key)
+            app.state.settings.set_session_level(sid, lvl)
+            if auth.sessions:
+                auth.touch_session(sid, owner_uid=owner, assignee_uid=m["uid"],
+                                   scenario_key=key, level=lvl, status="assigned")
+            created.append({**m, "session_id": sid, "url": f"/#{sid}"})
+        return {"ok": True, "cohort": {"id": rec.id, "name": rec.name},
+                "scenario": key, "level": lvl,
+                "created": created, "skipped": skipped}
+
     def _instr_ok(token: str) -> bool:
         if app.state.auth.gated:
             return True

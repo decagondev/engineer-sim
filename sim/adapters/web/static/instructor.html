@@ -50,6 +50,13 @@
 
   .srow{display:flex;align-items:center;gap:14px;padding:13px 15px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;cursor:pointer;background:var(--panel)}
   .srow:hover{border-color:var(--me)}
+  .co-head{margin:14px 0 6px;font-size:13px}
+  .co-list{border:1px solid var(--line);border-radius:11px;background:var(--panel);max-height:320px;overflow:auto}
+  .co-row{display:flex;align-items:center;gap:12px;padding:9px 13px;border-bottom:1px solid var(--line);font-size:13px}
+  .co-row:last-child{border-bottom:0}
+  .co-row .spacer{flex:1}
+  .co-row .id{font-family:var(--mono);font-size:12px}
+  .co-row button{font-size:12px;padding:4px 9px}
   .srow .id{font-family:var(--mono);font-size:13px}
   .srow .tags{display:flex;gap:6px}
   .srow .meta{margin-left:auto;color:var(--muted);font-size:12px;text-align:right}
@@ -127,6 +134,7 @@
   <div class="shell hidden" id="shell">
     <nav class="side">
       <div class="nav active" data-view="new">New session</div>
+      <div class="nav" data-view="cohort">Cohort</div>
       <div class="nav" data-view="sessions">Sessions</div>
       <div class="nav" data-view="settings">Settings</div>
     </nav>
@@ -199,12 +207,13 @@ document.querySelectorAll(".side .nav").forEach(n=> n.onclick = ()=> switchView(
 function switchView(v){
   document.querySelectorAll(".side .nav").forEach(n=> n.classList.toggle("active", n.dataset.view===v));
   if(v==="new") renderNew();
+  else if(v==="cohort") renderCohort();
   else if(v==="sessions") renderSessions();
   else if(v==="settings") renderSettings();
 }
 
 // ---- new session ----
-function renderNew(){
+function scenarioOptions(){
   const product = settings.scenarios.filter(s=>s.track!=="systems" && s.track!=="interview");
   const systems = settings.scenarios.filter(s=>s.track==="systems");
   const interview = settings.scenarios.filter(s=>s.track==="interview");
@@ -213,8 +222,14 @@ function renderNew(){
   if (product.length) groups.push(`<optgroup label="Product engineering">${product.map(opt).join("")}</optgroup>`);
   if (systems.length) groups.push(`<optgroup label="Systems design">${systems.map(opt).join("")}</optgroup>`);
   if (interview.length) groups.push(`<optgroup label="Interview assessment">${interview.map(opt).join("")}</optgroup>`);
-  const scOpts = groups.join("") || product.map(opt).join("");
-  const lvOpts = settings.levels.map(l=>`<option value="${l.key}">${l.label}</option>`).join("");
+  return groups.join("") || product.map(opt).join("");
+}
+function levelOptions(){
+  return settings.levels.map(l=>`<option value="${l.key}">${l.label}</option>`).join("");
+}
+function renderNew(){
+  const scOpts = scenarioOptions();
+  const lvOpts = levelOptions();
   // sane default: a scenario whose difficulty matches the default level, else first
   const match = settings.scenarios.find(s=>s.difficulty===settings.default_level);
   el("content").innerHTML = `
@@ -253,6 +268,90 @@ function renderNew(){
       <div style="margin-top:12px"><button id="ns-watch">Open replay for this session</button></div>`;
     el("ns-copy").onclick = ()=>{ navigator.clipboard.writeText(link); el("ns-copy").textContent="Copied"; };
     el("ns-watch").onclick = ()=> openReplay(sid);
+  };
+}
+
+// ---- cohort batch ----
+async function renderCohort(){
+  el("content").innerHTML = `<h1>Cohort</h1><p class="sub">Create one session per challenger in a cohort, all on the same scenario and level.</p><div id="co-body"><div class="muted">Loading cohorts…</div></div>`;
+  const data = await (await fetch("/api/instructor/cohorts",{headers:hdr()})).json();
+  const cohorts = data.cohorts || [];
+  const body = el("co-body");
+  if(!cohorts.length){
+    body.innerHTML = `<div class="card"><div class="muted">No cohorts yet. An admin creates cohorts and adds challengers under <a href="/admin">Admin → Cohorts</a>.</div></div>`;
+    return;
+  }
+  const coOpts = cohorts.map(c=>`<option value="${esc(c.id)}">${esc(c.name)} — ${c.challenger_count} challenger${c.challenger_count===1?"":"s"}</option>`).join("");
+  body.innerHTML = `
+    <div class="card">
+      <div class="field"><label>Cohort</label><select id="co-sel" style="width:100%">${coOpts}</select></div>
+      <div class="field"><label>Scenario</label><select id="co-sc" style="width:100%">${scenarioOptions()}</select></div>
+      <div class="field"><label>Engineer level</label><select id="co-lv" style="width:100%">${levelOptions()}</select></div>
+      <div class="field"><label><input type="checkbox" id="co-skip" checked/> Skip challengers who already have this scenario</label></div>
+      <div id="co-members" class="muted">Loading members…</div>
+      <button class="primary" id="co-create">Create sessions</button>
+      <div id="co-result"></div>
+    </div>`;
+  const coSel = el("co-sel"), scSel = el("co-sc"), lvSel = el("co-lv"), skip = el("co-skip");
+  const match = settings.scenarios.find(s=>s.difficulty===settings.default_level);
+  if(match) scSel.value = match.key;
+  lvSel.value = settings.default_level;
+  let members = [];
+  async function loadMembers(){
+    el("co-members").innerHTML = `<div class="muted">Loading members…</div>`;
+    const d = await (await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}?scenario=${encodeURIComponent(scSel.value)}`,{headers:hdr()})).json();
+    members = d.members || [];
+    renderMembers();
+  }
+  function renderMembers(){
+    const ready = members.filter(m=>!m.blocked && !(skip.checked && m.sessions.length));
+    const rows = members.map(m=>{
+      const has = m.sessions.length;
+      let note = "";
+      if(m.blocked) note = `<span class="badge">${esc(m.blocked)}</span>`;
+      else if(has) note = `<span class="badge">${skip.checked ? "will skip — has " : "has "}${esc(m.sessions[0].session_id)}</span>`;
+      else note = `<span class="badge">new session</span>`;
+      return `<div class="co-row"><span>${esc(m.name || m.email || m.uid)}</span><span class="muted">${esc(m.email)}</span><span class="spacer"></span>${note}</div>`;
+    }).join("");
+    el("co-members").innerHTML = `
+      <div class="co-head"><b>${members.length} member${members.length===1?"":"s"}</b><span class="muted"> · ${ready.length} will get a session</span></div>
+      <div class="co-list">${rows || `<div class="muted" style="padding:10px 13px">This cohort has no members.</div>`}</div>`;
+    el("co-create").textContent = ready.length ? `Create ${ready.length} session${ready.length===1?"":"s"}` : "Nothing to create";
+    el("co-create").disabled = !ready.length;
+  }
+  coSel.onchange = loadMembers; scSel.onchange = loadMembers; skip.onchange = renderMembers;
+  await loadMembers();
+  el("co-create").onclick = async ()=>{
+    el("co-create").disabled = true;
+    const r = await (await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}/sessions`,{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({scenario:scSel.value,level:lvSel.value,skip_existing:skip.checked})})).json();
+    if(!r.ok){ el("co-result").innerHTML = `<div class="match bad">${esc(r.error||"Could not create sessions.")}</div>`; el("co-create").disabled=false; return; }
+    const link = sid => `${location.origin}/#${sid}`;
+    const lines = r.created.map(c=>`${c.name||c.email}${c.name?" <"+c.email+">":""}: ${link(c.session_id)}`).join("\n");
+    const q = v => '"' + String(v||"").split('"').join('""') + '"';
+    const csv = ["name,email,session_id,link", ...r.created.map(c=>[c.name,c.email,c.session_id,link(c.session_id)].map(q).join(","))].join("\n");
+    const rows = r.created.map(c=>`
+      <div class="co-row"><span>${esc(c.name||c.email)}</span><span class="muted">${esc(c.email)}</span><span class="spacer"></span>
+        <span class="id">${esc(c.session_id)}</span>
+        <button data-copy="${esc(link(c.session_id))}">Copy link</button>
+        <button data-replay="${esc(c.session_id)}">Replay</button></div>`).join("");
+    const skipped = r.skipped.map(x=>`<div class="co-row"><span>${esc(x.name||x.email||x.uid)}</span><span class="muted">${esc(x.email)}</span><span class="spacer"></span><span class="badge">${esc(x.reason)}${x.session_id?" · "+esc(x.session_id):""}</span></div>`).join("");
+    el("co-result").innerHTML = `
+      <div class="match ok" style="margin-top:16px">Created <b>${r.created.length}</b> session${r.created.length===1?"":"s"} on <b>${esc(scSel.options[scSel.selectedIndex].text)}</b> at <b>${levelLabel(r.level)}</b>${r.skipped.length?` · skipped ${r.skipped.length}`:""}</div>
+      ${r.created.length ? `<div class="linkbox"><button id="co-copyall">Copy all links</button><button id="co-csv">Download CSV</button></div>` : ""}
+      <div class="co-list">${rows}</div>
+      ${skipped ? `<div class="co-head" style="margin-top:12px"><b>Skipped</b></div><div class="co-list">${skipped}</div>` : ""}`;
+    const copyAll = el("co-copyall");
+    if(copyAll) copyAll.onclick = ()=>{ navigator.clipboard.writeText(lines); copyAll.textContent = "Copied"; };
+    const dl = el("co-csv");
+    if(dl) dl.onclick = ()=>{
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+      a.download = `${(r.cohort.name||"cohort").replace(/[^\w-]+/g,"_")}-${scSel.value}.csv`;
+      a.click(); URL.revokeObjectURL(a.href);
+    };
+    el("co-result").querySelectorAll("[data-copy]").forEach(b=> b.onclick = ()=>{ navigator.clipboard.writeText(b.dataset.copy); b.textContent="Copied"; });
+    el("co-result").querySelectorAll("[data-replay]").forEach(b=> b.onclick = ()=> openReplay(b.dataset.replay));
+    await loadMembers();
   };
 }
 
