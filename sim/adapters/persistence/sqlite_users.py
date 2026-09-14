@@ -23,11 +23,23 @@ class SqliteUserDirectory:
                 role TEXT NOT NULL,
                 disabled INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                last_login TEXT NOT NULL DEFAULT ''
+                last_login TEXT NOT NULL DEFAULT '',
+                name TEXT NOT NULL DEFAULT '',
+                groq_key_enc TEXT NOT NULL DEFAULT ''
             )
             """
         )
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(users)")}
+        if "name" not in cols:
+            self._conn.execute(
+                "ALTER TABLE users ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+        if "groq_key_enc" not in cols:
+            self._conn.execute(
+                "ALTER TABLE users ADD COLUMN groq_key_enc TEXT NOT NULL DEFAULT ''")
 
     def get(self, uid: str) -> Optional[UserRecord]:
         r = self._conn.execute(
@@ -49,14 +61,17 @@ class SqliteUserDirectory:
             pass
         created = user.created_at or (existing.created_at if existing else now)
         last = user.last_login or (existing.last_login if existing else "")
+        name = user.name
+        enc = user.groq_key_enc
         self._conn.execute(
-            "INSERT INTO users (uid, email, role, disabled, created_at, last_login) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "INSERT INTO users (uid, email, role, disabled, created_at, last_login, name, groq_key_enc) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(uid) DO UPDATE SET "
             "email=excluded.email, role=excluded.role, disabled=excluded.disabled, "
-            "last_login=excluded.last_login",
+            "last_login=excluded.last_login, name=excluded.name, "
+            "groq_key_enc=excluded.groq_key_enc",
             (user.uid, user.email, user.role, 1 if user.disabled else 0,
-             created, last),
+             created, last, name, enc),
         )
         self._conn.commit()
         return self.get(user.uid)
@@ -79,10 +94,13 @@ class SqliteUserDirectory:
 
     @staticmethod
     def _row(r) -> UserRecord:
+        keys = r.keys()
         return UserRecord(
             uid=r["uid"], email=r["email"], role=r["role"],
             disabled=bool(r["disabled"]), created_at=r["created_at"] or "",
             last_login=r["last_login"] or "",
+            name=r["name"] if "name" in keys else "",
+            groq_key_enc=r["groq_key_enc"] if "groq_key_enc" in keys else "",
         )
 
 

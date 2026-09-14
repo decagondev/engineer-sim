@@ -1,34 +1,25 @@
-# From local MVP to hosted (Wave 4 seams, not yet built)
+# From local MVP to hosted
 
-The MVP is single-process, single-user, no-auth by design. Going multi-user does
-NOT require rewriting the core — every scaling concern maps to a port that
-already exists. This doc records the swap points so the work is bounded.
+Hosted stack is **Railway (uvicorn) + Firebase Auth + Firestore**. Detail and
+waves: `DEPLOYMENT-PLAN.md`. Identity build order: `auth-plan.md`.
+
+Local/LAN stays `AUTH_MODE=password` and `PERSISTENCE=sqlite` unless you opt in.
 
 ## What changes, and where
 
-| Concern | Today (MVP) | Hosted | Swap point (port) |
+| Concern | Local default | Hosted | Swap point |
 |---|---|---|---|
-| Transcript store | `SqliteMessageRepository` (one file) | Postgres, one row-set per session | `ports/repository.py` |
-| Unlock state | `SqliteUnlockStore` | same Postgres | `ports/state.py` |
-| Model calls | in-process Ollama/Anthropic | same, but with rate limiting + retries in the adapter | `ports/llm.py` |
-| Build record | local git via `GitBuildObserver` | a cloned repo in the session's container, or a git host API | `ports/build_record.py` |
-| The "real computer" | tester's own machine | a per-session container (VM/pod) with the repo + agent | new adapter behind a new `Environment` port |
-| Transport | one FastAPI process | same app, many workers behind a load balancer | `adapters/web` (unchanged core) |
+| Identity | instructor password | Firebase email | `ports/identity.py`, `AUTH_MODE` |
+| Transcript / mail / tickets / settings / users / sessions | SQLite file | Firestore collections | existing ports + `PERSISTENCE=firestore` |
+| Model calls | Ollama / Groq / Anthropic env | same adapters; challenger Groq key in Settings (H2) | `ports/llm.py` + `BYOK_SECRET` |
+| Build record | local git | learner patch / GitHub submit (no Railway sandbox) | `ports/build_record.py` |
+| Transport | one uvicorn | one Railway replica, HTTPS + `wss://` | `adapters/web` |
 
-Because `sim/core/` imports none of these (enforced by SMK-02), swapping any row
-is an adapter + composition-root change only.
+`sim/core/` imports none of these (`test_smk02`).
 
-## The three things to actually build for hosting
-1. **Per-session isolation.** Repositories are already keyed by `session_id`;
-   move them to Postgres and add auth so a tester only sees their own session.
-2. **Concurrency.** `post_tester_message` is synchronous and offloaded via
-   `run_in_threadpool`; under real load, move LLM/grader calls onto a queue and
-   make the WebSocket handler push results as they complete. No core change.
-3. **The containerized environment** (the "real computer" from the pitch). This
-   is the one genuinely new adapter: provision a sandbox per session with the
-   starter repo + the tester's coding agent, and point `BuildRecordSource` at it.
+## Not on the first Railway deploy
 
-## Explicitly out of scope until calibration passes
-Do not scale the grader before `python -m sim.app.calibrate` passes on real
-human-scored fixtures. Shipping an uncalibrated score to many users is worse
-than shipping it to one — the `calibrated:false` flag on `/grade` is the guard.
+- Server-side Docker / code-server workspaces
+- Postgres
+- Firebase Hosting as the API
+- More than one Railway replica (in-process WebSockets)

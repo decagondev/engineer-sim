@@ -1,7 +1,7 @@
 """Auth wiring used by the web adapter. Not imported by sim/core."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Mapping
 
 from sim.core.access.policy import can_access_session, can_admin, can_grade, can_use_instructor_api
@@ -15,6 +15,18 @@ LOCAL_INSTRUCTOR_EMAIL = "instructor@local"
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _login_is_fresh(last_login: str, ttl_sec: int = 900) -> bool:
+    if not last_login:
+        return False
+    try:
+        prev = datetime.fromisoformat(last_login.replace("Z", "+00:00"))
+        if prev.tzinfo is None:
+            prev = prev.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - prev < timedelta(seconds=ttl_sec)
+    except ValueError:
+        return False
 
 
 class AuthServices:
@@ -98,11 +110,14 @@ class AuthServices:
                 role=role, disabled=False, created_at=_now(), last_login=_now(),
             ))
         else:
-            rec = self.users.upsert(UserRecord(
-                uid=rec.uid, email=p.email or rec.email, role=rec.role,
-                disabled=rec.disabled, created_at=rec.created_at,
-                last_login=_now(),
-            ))
+            email = p.email or rec.email
+            if email != rec.email or not _login_is_fresh(rec.last_login):
+                rec = self.users.upsert(UserRecord(
+                    uid=rec.uid, email=email, role=rec.role,
+                    disabled=rec.disabled, created_at=rec.created_at,
+                    last_login=_now(), name=rec.name,
+                    groq_key_enc=rec.groq_key_enc,
+                ))
         if rec.disabled:
             raise IdentityError("account disabled", status=403)
         return Principal(

@@ -12,6 +12,8 @@ class UserRecord:
     disabled: bool = False
     created_at: str = ""
     last_login: str = ""
+    name: str = ""
+    groq_key_enc: str = ""
 
 
 class UserDirectory(Protocol):

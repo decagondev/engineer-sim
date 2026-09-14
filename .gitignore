@@ -1,6 +1,8 @@
--e .sandboxes/
+.sandboxes/
 sim.db
 __pycache__/
 *.pyc
 *-firebase-adminsdk-*.json
 firebase-credentials.json
+work-sim-79d4d-*.json
+.venv/

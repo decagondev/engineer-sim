@@ -757,8 +757,8 @@ Third PR (A2): Firebase adapter behind the port, `/login`, instructor
 - Impersonate-as-challenger.
 - Per-org tenancy beyond `owner_uid` (a later `org_id` column).
 - Rewriting replay, chat, tickets, or mermaid.
-- Postgres (that is `DEPLOYMENT-PLAN.md` Epic R / Wave H0). Auth adapters
-  should not assume SQLite-only APIs — keep SQL in persistence adapters.
+- A third database. Hosted persistence is Firestore
+  (`DEPLOYMENT-PLAN.md` Epic R). Auth adapters stay store-agnostic.
 - BYOK Groq keys (Epic S / Wave H2).
 - Changing `hidden_need` from the admin UI.
 - Replacing `session_id` in the workstation hash with a UUID in the path
@@ -803,7 +803,7 @@ Third PR (A2): Firebase adapter behind the port, `/login`, instructor
 | Doc | Relationship |
 |---|---|
 | `PLANNING.md` | Product architecture; do not violate ports/adapters. |
-| `DEPLOYMENT-PLAN.md` | Hosted Waves H0–H4. **This file is Wave H1 (Epic Q) in detail**, plus local dual-mode so H1 can land before Railway. |
+| `DEPLOYMENT-PLAN.md` | Hosted stack: Railway + Firebase Auth + Firestore. This file is Epic Q in detail. |
 | `docs/CLASSROOM.md` | LAN password flow remains until an operator chooses Firebase. |
 
 When A2+ ships, add a one-paragraph pointer in `DEPLOYMENT-PLAN.md` Epic Q

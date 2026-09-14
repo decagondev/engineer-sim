@@ -7,59 +7,219 @@
 <style>
   :root{
     --ink:#0f1217; --panel:#161b23; --panel-2:#1b212b; --line:#272e3a;
-    --text:#e7eaf0; --muted:#8a93a4; --me:#3b6ef5;
+    --text:#e7eaf0; --muted:#8a93a4; --me:#3b6ef5; --bad:#e0655c; --ok:#3d9a6a;
     --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;font:15px/1.5 var(--ui);background:var(--ink);color:var(--text)}
+  body{margin:0;font:15px/1.5 var(--ui);background:var(--ink);color:var(--text);height:100vh;display:flex;flex-direction:column}
   .bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line)}
-  .bar .spacer{flex:1}
+  .spacer{flex:1}
+  .shell{flex:1;display:flex;min-height:0}
+  .side{width:180px;border-right:1px solid var(--line);padding:12px 10px}
+  .nav{padding:10px 12px;border-radius:9px;cursor:pointer}
+  .nav:hover,.nav.active{background:var(--panel-2)}
+  .content{flex:1;overflow:auto;padding:24px 28px;max-width:760px}
   .muted{color:var(--muted);font-size:13px}
+  a{color:#8eb4ff}
+  input{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 10px;font:inherit;width:100%;max-width:420px}
   button{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 13px;font:inherit;font-size:13px;cursor:pointer}
   button.primary{background:var(--me);border-color:var(--me);color:#fff;font-weight:600}
-  .content{max-width:720px;margin:28px auto;padding:0 20px}
+  button.danger{border-color:var(--bad);color:var(--bad)}
+  button:disabled{opacity:.65;cursor:wait}
   .srow{display:flex;align-items:center;gap:14px;padding:14px 16px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;background:var(--panel)}
   .srow .id{font-family:var(--mono);font-size:13px}
   .badge{font:11px/1 var(--mono);border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--muted)}
+  .card{border:1px solid var(--line);border-radius:12px;padding:18px 20px;background:var(--panel);margin:16px 0}
+  .card h2{margin:0 0 6px;font-size:16px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:center}
+  .status{font-size:13px;min-height:18px;margin:8px 0 0}
+  .status.err{color:var(--bad)}
+  .status.ok{color:var(--ok)}
+  .spin{display:none;width:12px;height:12px;border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:-2px}
+  button.busy .spin{display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
 </style>
 </head>
 <body>
   <div class="bar"><span><b>Challenger</b></span><span class="muted" id="who"></span><span class="spacer"></span><button id="out">Sign out</button></div>
-  <div class="content">
-    <h1 style="font-size:18px;margin:0 0 6px">Your sessions</h1>
-    <p class="muted" id="sub">Assigned challenges appear here. Open one to enter the workstation.</p>
-    <div id="list"></div>
+  <div class="shell">
+    <nav class="side">
+      <div class="nav active" data-v="sessions">Sessions</div>
+      <div class="nav" data-v="settings">Settings</div>
+    </nav>
+    <div class="content" id="content"></div>
   </div>
 <script src="/static/auth.js"></script>
 <script>
+const h = () => SimAuth.headers({"Content-Type":"application/json"});
+const el = id => document.getElementById(id);
+const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let me = null;
+let view = "sessions";
+
+function setBusy(btn, on, labelId, idle, working){
+  if (!btn) return;
+  btn.disabled = !!on;
+  btn.classList.toggle("busy", !!on);
+  const lab = labelId ? el(labelId) : null;
+  if (lab) lab.textContent = on ? working : idle;
+}
+function errText(d, r, fallback){
+  return (d && (d.error || (typeof d.detail === "string" ? d.detail : ""))) || fallback || ("Failed ("+(r&&r.status||"?")+")");
+}
+function setWho(){
+  const label = (me.name ? me.name + " · " : "") + me.email + " · " + me.role;
+  el("who").textContent = label;
+}
+
+function renderSessions(sessions){
+  if (!sessions || !sessions.length) {
+    return `<h1 style="font-size:18px;margin:0 0 6px">Your sessions</h1>
+      <p class="muted">Your instructor has not assigned a session yet.</p>`;
+  }
+  return `<h1 style="font-size:18px;margin:0 0 6px">Your sessions</h1>
+    <p class="muted">Assigned challenges appear here. Open one to enter the workstation.</p>
+    ${sessions.map(s => `
+    <div class="srow">
+      <div>
+        <div>${esc(s.title || s.scenario)}</div>
+        <div class="id">${esc(s.session_id)}</div>
+      </div>
+      <span class="badge">${esc(s.level || "")}</span>
+      <span class="badge">${esc(s.status || "")}</span>
+      <span class="spacer"></span>
+      <a href="/#${esc(s.session_id)}"><button class="primary">Open</button></a>
+    </div>`).join("")}`;
+}
+
+function renderSettings(){
+  const keyNote = me.has_groq_key
+    ? `Your Groq key is saved. Chat and grading will use it instead of the classroom key.`
+    : `No personal key yet — the classroom key is used until you add yours.`;
+  const clearBtn = me.has_groq_key
+    ? `<button class="danger" id="clear-key" type="button">Remove key</button>` : "";
+  return `
+    <h1 style="font-size:18px;margin:0 0 6px">Settings</h1>
+    <p class="muted">Your name is visible to instructors. Your Groq key is stored encrypted and never shown again.</p>
+    <div class="card">
+      <h2>Display name</h2>
+      <label for="disp-name">How you appear in the directory</label>
+      <input id="disp-name" maxlength="80" value="${esc(me.name || "")}" placeholder="Your name"/>
+      <div class="row">
+        <button class="primary" id="save-name" type="button"><span class="spin"></span><span id="save-name-lab">Save name</span></button>
+      </div>
+      <p class="status" id="name-status"></p>
+    </div>
+    <div class="card">
+      <h2>Your Groq API key</h2>
+      <p class="muted">${esc(keyNote)}</p>
+      <p class="muted">Create a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>, then paste it here. We never display the key after you save it.</p>
+      <label for="groq-key">Groq API key</label>
+      <input id="groq-key" type="password" autocomplete="off" placeholder="gsk_…"/>
+      <div class="row">
+        <button class="primary" id="save-key" type="button"><span class="spin"></span><span id="save-key-lab">Save key</span></button>
+        ${clearBtn}
+      </div>
+      <p class="status" id="key-status"></p>
+    </div>`;
+}
+
+async function showSessions(){
+  const data = await (await fetch("/api/me/sessions", {headers: SimAuth.headers()})).json();
+  el("content").innerHTML = renderSessions(data.sessions);
+}
+
+function showSettings(){
+  el("content").innerHTML = renderSettings();
+  el("save-name").onclick = saveName;
+  el("save-key").onclick = saveKey;
+  const clear = el("clear-key");
+  if (clear) clear.onclick = clearKey;
+}
+
+async function saveName(){
+  const btn = el("save-name");
+  const status = el("name-status");
+  status.className = "status";
+  status.textContent = "";
+  setBusy(btn, true, "save-name-lab", "Save name", "Saving…");
+  try {
+    const r = await fetch("/api/me", {
+      method: "PATCH", headers: h(),
+      body: JSON.stringify({name: el("disp-name").value}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+    me.name = d.name || "";
+    setWho();
+    status.className = "status ok";
+    status.textContent = "Name saved.";
+  } finally {
+    setBusy(btn, false, "save-name-lab", "Save name", "Saving…");
+  }
+}
+
+async function saveKey(){
+  const btn = el("save-key");
+  const status = el("key-status");
+  const raw = el("groq-key").value.trim();
+  status.className = "status";
+  status.textContent = "";
+  if (!raw) { status.className = "status err"; status.textContent = "Paste a Groq API key first."; return; }
+  setBusy(btn, true, "save-key-lab", "Save key", "Checking key…");
+  try {
+    const r = await fetch("/api/me", {
+      method: "PATCH", headers: h(),
+      body: JSON.stringify({groq_key: raw}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+    me.has_groq_key = !!d.has_groq_key;
+    el("groq-key").value = "";
+    showSettings();
+    el("key-status").className = "status ok";
+    el("key-status").textContent = "Key saved. Chat will use your Groq key.";
+  } finally {
+    const still = el("save-key");
+    setBusy(still, false, "save-key-lab", "Save key", "Checking key…");
+  }
+}
+
+async function clearKey(){
+  const status = el("key-status");
+  status.className = "status";
+  const r = await fetch("/api/me", {
+    method: "PATCH", headers: h(),
+    body: JSON.stringify({clear_groq_key: true}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+  me.has_groq_key = false;
+  showSettings();
+  el("key-status").className = "status ok";
+  el("key-status").textContent = "Key removed. The classroom key will be used.";
+}
+
+async function go(next){
+  view = next;
+  document.querySelectorAll(".nav").forEach(n => n.classList.toggle("active", n.dataset.v === view));
+  if (view === "settings") showSettings();
+  else await showSessions();
+}
+
 (async function(){
   const cfg = await SimAuth.config();
   if (cfg.auth_mode === "password") { location.href = "/"; return; }
   if (!SimAuth.requireToken("/challenger")) return;
-  const me = await SimAuth.me();
+  me = await SimAuth.me();
   if (!me) { SimAuth.signOut("/login?next=/challenger"); return; }
   if (me.role === "instructor") { location.href = "/instructor"; return; }
-  if (me.role === "admin") { /* admin may view */ }
-  document.getElementById("who").textContent = me.email + " · " + me.role;
-  document.getElementById("out").onclick = () => SimAuth.signOut();
-  const data = await (await fetch("/api/me/sessions", {headers: SimAuth.headers()})).json();
-  const list = document.getElementById("list");
-  if (!data.sessions || !data.sessions.length) {
-    list.innerHTML = `<p class="muted">Your instructor has not assigned a session yet.</p>`;
-    return;
-  }
-  list.innerHTML = data.sessions.map(s => `
-    <div class="srow">
-      <div>
-        <div>${s.title || s.scenario}</div>
-        <div class="id">${s.session_id}</div>
-      </div>
-      <span class="badge">${s.level || ""}</span>
-      <span class="badge">${s.status || ""}</span>
-      <span class="spacer"></span>
-      <a href="/#${s.session_id}"><button class="primary">Open</button></a>
-    </div>`).join("");
+  setWho();
+  el("out").onclick = () => SimAuth.signOut();
+  document.querySelectorAll(".nav").forEach(n => n.onclick = () => go(n.dataset.v));
+  await go("sessions");
 })();
 </script>
 </body>

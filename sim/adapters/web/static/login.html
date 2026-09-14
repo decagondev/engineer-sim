@@ -12,17 +12,40 @@
   }
   *{box-sizing:border-box}
   body{margin:0;font:15px/1.5 var(--ui);background:var(--ink);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
-  .box{width:380px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 24px;display:flex;flex-direction:column;gap:12px}
+  .box{width:380px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 24px;display:flex;flex-direction:column;gap:14px}
   h1{font-size:19px;margin:0}
   p{color:var(--muted);font-size:13px;margin:0}
+  #form{display:flex;flex-direction:column;gap:10px}
   input,select{background:#12151b;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 12px;font:inherit;width:100%}
-  button{background:var(--me);border:0;color:#fff;font-weight:600;border-radius:9px;padding:10px 14px;cursor:pointer;font:inherit}
+  input:focus,select:focus{outline:none;border-color:var(--me)}
+  input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus{
+    -webkit-text-fill-color:var(--text);
+    caret-color:var(--text);
+    box-shadow:0 0 0 1000px #12151b inset;
+    transition:background-color 9999s ease-out 0s;
+  }
+  button{background:var(--me);border:0;color:#fff;font-weight:600;border-radius:9px;padding:11px 14px;cursor:pointer;font:inherit;width:100%}
+  button:hover{filter:brightness(1.08)}
   button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+  button.ghost:hover{background:#1b212b}
+  button.link{background:transparent;border:0;color:var(--muted);font-weight:500;padding:4px 0;width:auto;align-self:center}
+  button.link:hover{color:var(--text);filter:none}
+  button:disabled{opacity:.65;cursor:wait;filter:none}
   .err{color:var(--bad);font-size:13px;min-height:18px}
   a{color:var(--me)}
+  .load{position:fixed;inset:0;background:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20}
+  .load.dim{background:rgba(15,18,23,.78)}
+  .load.hidden{display:none}
+  .spin{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--me);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .load p{color:var(--text);font-size:14px}
 </style>
 </head>
 <body>
+<div class="load" id="load" aria-live="polite" aria-busy="true">
+  <div class="spin" aria-hidden="true"></div>
+  <p id="load-msg">Loading…</p>
+</div>
 <div class="box">
   <h1>Sign in</h1>
   <p id="blurb">Use the email your instructor gave you.</p>
@@ -41,11 +64,48 @@ function homeFor(role){
   return "/challenger";
 }
 
+function showLoad(msg, dim){
+  const load = el("load");
+  el("load-msg").textContent = msg || "Loading…";
+  load.classList.toggle("dim", !!dim);
+  load.classList.remove("hidden");
+  load.setAttribute("aria-busy", "true");
+}
+
+function hideLoad(){
+  const load = el("load");
+  load.classList.add("hidden");
+  load.classList.remove("dim");
+  load.setAttribute("aria-busy", "false");
+}
+
+async function withLoad(msg, fn){
+  el("err").textContent = "";
+  showLoad(msg, true);
+  document.querySelectorAll("#form button").forEach(b => { b.disabled = true; });
+  try {
+    await fn();
+  } catch (e) {
+    el("err").textContent = e.message || String(e);
+    hideLoad();
+  } finally {
+    document.querySelectorAll("#form button").forEach(b => { b.disabled = false; });
+  }
+}
+
 (async function(){
-  const cfg = await SimAuth.config();
+  let cfg;
+  try {
+    cfg = await SimAuth.config();
+  } catch (e) {
+    el("err").textContent = "Could not reach the server.";
+    hideLoad();
+    return;
+  }
   if (cfg.auth_mode === "password") {
     el("blurb").textContent = "This server is using the classroom password. Instructors sign in at the instructor dashboard.";
     el("form").innerHTML = `<a href="/instructor">Instructor dashboard</a> · <a href="/">Workstation</a>`;
+    hideLoad();
     return;
   }
   if (cfg.auth_mode === "fake") {
@@ -58,29 +118,36 @@ function homeFor(role){
         <option value="instructor">instructor</option>
         <option value="admin">admin</option>
       </select>
-      <button id="go">Sign in</button>`;
-    el("go").onclick = async () => {
+      <button id="go" type="button">Sign in</button>`;
+    hideLoad();
+    el("go").onclick = () => withLoad("Signing in…", async () => {
       const uid = el("uid").value.trim() || "dev";
       const role = el("role").value;
       const email = el("email").value.trim() || (uid + "@test.local");
       SimAuth.setToken(`fake:${uid}:${role}:${email}`);
       const me = await SimAuth.me();
-      if (!me) { el("err").textContent = "Sign-in failed."; return; }
+      if (!me) throw new Error("Sign-in failed.");
       location.href = homeFor(me.role);
-    };
+    });
     return;
   }
   el("form").innerHTML = `
     <input id="email" type="email" placeholder="Email" autocomplete="username"/>
     <input id="pw" type="password" placeholder="Password" autocomplete="current-password"/>
-    <button id="go">Sign in</button>
+    <button id="go" type="button">Sign in</button>
     <button class="ghost" id="up" type="button">Create challenger account</button>
-    <button class="ghost" id="reset" type="button">Send password reset</button>`;
+    <button class="link" id="reset" type="button">Forgot password?</button>`;
   const fb = cfg.firebase || {};
+  function bootFail(){
+    el("err").textContent = "Could not load Firebase. Check your connection and refresh.";
+    hideLoad();
+  }
   const s1 = document.createElement("script");
   s1.src = "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js";
   const s2 = document.createElement("script");
   s2.src = "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js";
+  s1.onerror = bootFail;
+  s2.onerror = bootFail;
   document.body.appendChild(s1);
   s1.onload = () => document.body.appendChild(s2);
   s2.onload = () => {
@@ -92,30 +159,26 @@ function homeFor(role){
       const t = await cred.user.getIdToken();
       SimAuth.setToken(t);
       const me = await SimAuth.me();
-      if (!me) { el("err").textContent = "Server rejected the token. Check FIREBASE_WEB_API_KEY."; return; }
+      if (!me) throw new Error("Server rejected the token. Check FIREBASE_WEB_API_KEY.");
       location.href = homeFor(me.role);
     }
-    el("go").onclick = async () => {
-      el("err").textContent = "";
-      try {
-        const cred = await auth.signInWithEmailAndPassword(el("email").value, el("pw").value);
-        await after(cred);
-      } catch (e) { el("err").textContent = e.message || String(e); }
-    };
-    el("up").onclick = async () => {
-      el("err").textContent = "";
-      try {
-        const cred = await auth.createUserWithEmailAndPassword(el("email").value, el("pw").value);
-        await after(cred);
-      } catch (e) { el("err").textContent = e.message || String(e); }
-    };
-    el("reset").onclick = async () => {
-      el("err").textContent = "";
-      try {
-        await auth.sendPasswordResetEmail(el("email").value);
-        el("err").textContent = "Reset email sent (if that account exists).";
-      } catch (e) { el("err").textContent = e.message || String(e); }
-    };
+    el("go").onclick = () => withLoad("Signing in…", async () => {
+      const cred = await auth.signInWithEmailAndPassword(el("email").value, el("pw").value);
+      await after(cred);
+    });
+    el("pw").addEventListener("keydown", e => {
+      if (e.key === "Enter") el("go").click();
+    });
+    el("up").onclick = () => withLoad("Creating account…", async () => {
+      const cred = await auth.createUserWithEmailAndPassword(el("email").value, el("pw").value);
+      await after(cred);
+    });
+    el("reset").onclick = () => withLoad("Sending reset email…", async () => {
+      await auth.sendPasswordResetEmail(el("email").value);
+      el("err").textContent = "Reset email sent (if that account exists).";
+      hideLoad();
+    });
+    hideLoad();
   };
 })();
 </script>

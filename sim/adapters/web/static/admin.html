@@ -20,14 +20,34 @@
   .nav{padding:10px 12px;border-radius:9px;cursor:pointer}
   .nav:hover,.nav.active{background:var(--panel-2)}
   .content{flex:1;overflow:auto;padding:24px 28px}
+  .content h1{font-size:22px;margin:0 0 8px}
   .muted{color:var(--muted);font-size:13px}
+  .suspense{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;min-height:min(420px,calc(100vh - 140px));padding:24px}
+  .spin-lg{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--me);border-radius:50%;animation:spin .7s linear infinite}
   input,select{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 10px;font:inherit}
   button{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 13px;cursor:pointer;font:inherit;font-size:13px}
   button.primary{background:var(--me);border-color:var(--me);color:#fff;font-weight:600}
   button.danger{border-color:var(--bad);color:var(--bad)}
+  button:disabled{opacity:.65;cursor:wait}
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}
-  .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:center}
+  .spin{display:none;width:12px;height:12px;border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:spin .6s linear infinite;margin-right:8px;vertical-align:-2px}
+  button.busy .spin{display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .status{font-size:13px;min-height:18px;margin:0 0 8px}
+  .status.err{color:var(--bad)}
+  th.sort{cursor:pointer;user-select:none;white-space:nowrap}
+  th.sort:hover{color:#fff}
+  .chip{display:inline-block;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:12px;margin:0 4px 4px 0}
+  input.inline{width:100%;min-width:120px;padding:5px 8px}
+  .editor{display:none}
+  .editor.open{display:table-row}
+  .editor-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:6px 0 14px}
+  .fld{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:180px}
+  .fld input,.fld select{min-width:180px}
+  .co-list{display:flex;flex-wrap:wrap;gap:10px 16px;margin:4px 0}
+  .co-list label{display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px}
 </style>
 </head>
 <body>
@@ -37,82 +57,407 @@
   <div class="shell">
     <nav class="side">
       <div class="nav active" data-v="users">Users</div>
+      <div class="nav" data-v="cohorts">Cohorts</div>
       <div class="nav" data-v="sessions">Sessions</div>
       <div class="nav" data-v="scenarios">Scenarios</div>
       <div class="nav" data-v="settings">Settings</div>
     </nav>
-    <div class="content" id="content"></div>
+    <div class="content" id="content">
+      <div class="suspense" aria-busy="true" aria-live="polite">
+        <div class="spin-lg" aria-hidden="true"></div>
+        <p class="muted">Checking your account…</p>
+      </div>
+    </div>
   </div>
 <script src="/static/auth.js"></script>
 <script>
 const h = () => SimAuth.headers({"Content-Type":"application/json"});
 const el = id => document.getElementById(id);
+const state = {uSort:"name", uDir:"asc", cSort:"name", cDir:"asc", cohortId:""};
+let loadGen = 0;
+const titles = {
+  users: "Users", cohorts: "Cohorts", sessions: "All sessions",
+  scenarios: "Scenarios", settings: "Settings",
+};
+const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function sortHead(cols, cur, dir){
+  return cols.map(([k,label]) => {
+    const mark = cur===k ? (dir==="desc" ? " ↓" : " ↑") : "";
+    return `<th class="sort" data-sort="${k}">${label}${mark}</th>`;
+  }).join("");
+}
+function errText(d, r, fallback){
+  return (d && (d.error || (typeof d.detail === "string" ? d.detail : ""))) || fallback || ("Failed ("+(r&&r.status||"?")+")");
+}
+function setBusy(btn, on, labelId, idle, working){
+  if (!btn) return;
+  btn.disabled = !!on;
+  btn.classList.toggle("busy", !!on);
+  const lab = labelId ? el(labelId) : null;
+  if (lab) lab.textContent = on ? working : idle;
+}
+function beginLoad(title, msg){
+  const gen = ++loadGen;
+  el("content").innerHTML =
+    `<div class="suspense" aria-busy="true" aria-live="polite">
+       <div class="spin-lg" aria-hidden="true"></div>
+       <p class="muted">${esc(msg)}</p>
+     </div>`;
+  return gen;
+}
+function still(gen){ return gen === loadGen; }
+function failPane(title, err, retry){
+  el("content").innerHTML =
+    `<h1>${esc(title)}</h1>
+     <p class="status err">${esc(err)}</p>
+     <button class="primary" type="button" id="retry">Try again</button>`;
+  el("retry").onclick = retry;
+}
+const cache = new Map();
+const CACHE_MS = 45000;
+function peek(url){
+  const hit = cache.get(url);
+  return hit && (Date.now() - hit.at) < CACHE_MS ? hit.data : null;
+}
+function peekAll(urls){ return urls.every(u => peek(u)); }
+function bustAdmin(){ cache.clear(); }
+function viewUrls(v){
+  if (v==="users") return [
+    `/api/admin/users?sort=${state.uSort}&direction=${state.uDir}`,
+    "/api/admin/cohorts?sort=name&direction=asc",
+  ];
+  if (v==="cohorts") return state.cohortId
+    ? ["/api/admin/cohorts/"+state.cohortId, "/api/admin/users?sort=name&direction=asc"]
+    : [`/api/admin/cohorts?sort=${state.cSort}&direction=${state.cDir}`];
+  if (v==="sessions") return ["/api/admin/sessions"];
+  if (v==="scenarios") return ["/api/admin/scenarios"];
+  if (v==="settings") return ["/api/admin/settings", "/api/admin/auth/status"];
+  return [];
+}
+async function loadJson(url, fresh){
+  if (!fresh) {
+    const hit = peek(url);
+    if (hit) return hit;
+  }
+  const r = await fetch(url, {headers: h()});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(errText(d, r, "Could not load."));
+  cache.set(url, {at: Date.now(), data: d});
+  return d;
+}
+function toggleSort(which, key){
+  if (which==="u") {
+    if (state.uSort===key) state.uDir = state.uDir==="asc"?"desc":"asc";
+    else { state.uSort=key; state.uDir="asc"; }
+  } else {
+    if (state.cSort===key) state.cDir = state.cDir==="asc"?"desc":"asc";
+    else { state.cSort=key; state.cDir="asc"; }
+  }
+}
 (async function(){
-  const cfg = await SimAuth.config();
-  if (cfg.auth_mode === "password") { el("content").innerHTML = "<p>Admin dashboard is for AUTH_MODE=firebase or fake.</p>"; return; }
-  if (!SimAuth.requireToken("/admin")) return;
-  const me = await SimAuth.me();
-  if (!me || me.role !== "admin") { location.href = "/login?next=/admin"; return; }
-  el("who").textContent = me.email;
-  el("out").onclick = () => SimAuth.signOut();
-  document.querySelectorAll(".nav").forEach(n => n.onclick = () => {
-    document.querySelectorAll(".nav").forEach(x => x.classList.toggle("active", x===n));
-    show(n.dataset.v);
-  });
-  show("users");
+  try {
+    const cfg = await SimAuth.config();
+    if (cfg.auth_mode === "password") { el("content").innerHTML = "<p>Admin dashboard is for AUTH_MODE=firebase or fake.</p>"; return; }
+    if (!SimAuth.requireToken("/admin")) return;
+    const me = await SimAuth.me();
+    if (!me || me.role !== "admin") { location.href = "/login?next=/admin"; return; }
+    el("who").textContent = me.email;
+    el("out").onclick = () => SimAuth.signOut();
+    document.querySelectorAll(".nav").forEach(n => n.onclick = () => {
+      document.querySelectorAll(".nav").forEach(x => x.classList.toggle("active", x===n));
+      if (n.dataset.v === "cohorts") state.cohortId = "";
+      show(n.dataset.v);
+    });
+    show("users");
+  } catch (e) {
+    failPane("Admin", e.message || "Could not reach the server.", () => location.reload());
+  }
 })();
 
 async function show(v){
   const c = el("content");
+  const hints = {
+    users: "Loading users and cohorts…",
+    cohorts: state.cohortId ? "Loading this cohort…" : "Loading cohorts…",
+    sessions: "Loading sessions…",
+    scenarios: "Loading scenarios…",
+    settings: "Loading settings…",
+  };
+  const gen = peekAll(viewUrls(v)) ? ++loadGen : beginLoad(titles[v] || "Admin", hints[v] || "Loading…");
+  try {
   if (v==="users") {
-    const d = await (await fetch("/api/admin/users",{headers:h()})).json();
+    const [ud, cd] = await Promise.all([
+      loadJson(`/api/admin/users?sort=${state.uSort}&direction=${state.uDir}`),
+      loadJson("/api/admin/cohorts?sort=name&direction=asc"),
+    ]);
+    if (!still(gen)) return;
+    const cohorts = cd.cohorts || [];
+    const cname = Object.fromEntries(cohorts.map(x => [x.id, x.name]));
+    const coBoxes = (uid, selected) => cohorts.map(x => {
+      const on = (selected||[]).includes(x.id);
+      return `<label><input type="checkbox" data-co="${esc(uid)}" value="${esc(x.id)}" ${on?"checked":""}/> ${esc(x.name)}</label>`;
+    }).join("") || `<span class="muted">No cohorts yet.</span>`;
     c.innerHTML = `<h1>Users</h1>
+      <p class="muted">Create an account, then open Edit to change name, email, password, role, or cohorts.</p>
       <div class="row">
+        <input id="nu-name" placeholder="name"/>
         <input id="nu-email" placeholder="email"/>
+        <input id="nu-pw" type="password" autocomplete="new-password" placeholder="password (optional)"/>
         <select id="nu-role"><option>challenger</option><option>instructor</option><option>admin</option></select>
-        <button class="primary" id="nu">Create</button>
+        <select id="nu-co"><option value="">no cohort</option>${cohorts.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
+        <button class="primary" id="nu"><span class="spin"></span><span id="nu-label">Create</span></button>
       </div>
-      <table><thead><tr><th>Email</th><th>Role</th><th>Disabled</th><th></th></tr></thead>
-      <tbody>${(d.users||[]).map(u=>`<tr>
-        <td>${u.email}<div class="muted">${u.uid}</div></td>
-        <td><select data-role="${u.uid}">${["challenger","instructor","admin"].map(r=>`<option ${r===u.role?"selected":""}>${r}</option>`).join("")}</select></td>
-        <td><input type="checkbox" data-dis="${u.uid}" ${u.disabled?"checked":""}/></td>
-        <td><button data-del="${u.uid}" class="danger">Delete</button></td>
-      </tr>`).join("")}</tbody></table>`;
+      <p class="status muted" id="nu-status"></p>
+      <table><thead><tr>
+        ${sortHead([["name","Name"],["email","Email"],["role","Role"]], state.uSort, state.uDir)}
+        <th>Cohorts</th><th>Disabled</th><th></th>
+      </tr></thead>
+      <tbody>${(ud.users||[]).map(u=>`
+      <tr>
+        <td>${esc(u.name)||"<span class='muted'>—</span>"}</td>
+        <td>${esc(u.email)}<div class="muted">${esc(u.uid)}</div></td>
+        <td>${esc(u.role)}</td>
+        <td>${(u.cohort_ids||[]).map(id=>`<span class="chip">${esc(cname[id]||id)}</span>`).join("") || `<span class="muted">—</span>`}</td>
+        <td>${u.disabled?"yes":""}</td>
+        <td><button data-edit="${esc(u.uid)}">Edit</button>
+            <button data-del="${esc(u.uid)}" class="danger">Delete</button></td>
+      </tr>
+      <tr class="editor" data-for="${esc(u.uid)}"><td colspan="6">
+        <div class="editor-card">
+          <div class="row">
+            <label class="fld">Name<input id="ed-name-${esc(u.uid)}" value="${esc(u.name)}" maxlength="80"/></label>
+            <label class="fld">Email<input id="ed-email-${esc(u.uid)}" type="email" value="${esc(u.email)}"/></label>
+            <label class="fld">Role<select id="ed-role-${esc(u.uid)}">${["challenger","instructor","admin"].map(r=>`<option ${r===u.role?"selected":""}>${r}</option>`).join("")}</select></label>
+            <label class="fld" style="flex-direction:row;align-items:center;gap:8px;margin-top:18px">
+              <input type="checkbox" id="ed-dis-${esc(u.uid)}" ${u.disabled?"checked":""}/> Disabled
+            </label>
+          </div>
+          <p class="muted" style="margin:8px 0 4px">Cohorts</p>
+          <div class="co-list">${coBoxes(u.uid, u.cohort_ids)}</div>
+          <div class="row">
+            <input id="ed-pw-${esc(u.uid)}" type="password" autocomplete="new-password" placeholder="new password"/>
+            <button data-setpw="${esc(u.uid)}"><span class="spin"></span>Set password</button>
+            <button data-reset="${esc(u.uid)}"><span class="spin"></span>Send reset email</button>
+          </div>
+          <div class="row">
+            <button class="primary" data-save="${esc(u.uid)}"><span class="spin"></span>Save</button>
+          </div>
+          <p class="status muted" id="ed-status-${esc(u.uid)}"></p>
+        </div>
+      </td></tr>`).join("")}</tbody></table>`;
+    c.querySelectorAll("th.sort").forEach(th => th.onclick = () => { toggleSort("u", th.dataset.sort); show("users"); });
     el("nu").onclick = async () => {
-      await fetch("/api/admin/users",{method:"POST",headers:h(),body:JSON.stringify({email:el("nu-email").value,role:el("nu-role").value,send_reset:true})});
-      show("users");
+      const email = el("nu-email").value.trim();
+      const btn = el("nu");
+      const status = el("nu-status");
+      if (!email) { status.className = "status err"; status.textContent = "Enter an email."; return; }
+      const pw = el("nu-pw").value;
+      btn.disabled = true;
+      btn.classList.add("busy");
+      ["nu-email","nu-role","nu-name","nu-co","nu-pw"].forEach(id => el(id).disabled = true);
+      el("nu-label").textContent = "Creating…";
+      status.className = "status muted";
+      status.textContent = pw
+        ? "Creating the account…"
+        : "Creating the account and sending a password-reset email…";
+      try {
+        const body = {email, name:el("nu-name").value.trim(),
+          role:el("nu-role").value, cohort_id:el("nu-co").value};
+        if (pw) body.password = pw;
+        const r = await fetch("/api/admin/users",{method:"POST",headers:h(),
+          body:JSON.stringify(body)});
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          status.className = "status err";
+          status.textContent = d.error || "Could not create that user.";
+          return;
+        }
+        bustAdmin();
+        await show("users");
+      } catch (e) {
+        status.className = "status err";
+        status.textContent = "Network error — try again.";
+      } finally {
+        if (el("nu")) {
+          btn.disabled = false;
+          btn.classList.remove("busy");
+          ["nu-email","nu-role","nu-name","nu-co","nu-pw"].forEach(id => { if (el(id)) el(id).disabled = false; });
+          el("nu-label").textContent = "Create";
+        }
+      }
     };
-    c.querySelectorAll("[data-role]").forEach(s => s.onchange = async () => {
-      await fetch("/api/admin/users/"+s.dataset.role,{method:"PATCH",headers:h(),body:JSON.stringify({role:s.value})});
+    const patchUser = async (uid, payload, statusId) => {
+      const status = el(statusId);
+      status.className = "status muted";
+      status.textContent = "Saving…";
+      const r = await fetch("/api/admin/users/"+uid,{method:"PATCH",headers:h(),
+        body:JSON.stringify(payload)});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        status.className = "status err";
+        status.textContent = errText(d, r, "Save failed.");
+        return null;
+      }
+      bustAdmin();
+      return d;
+    };
+    c.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => {
+      const uid = b.dataset.edit;
+      document.querySelectorAll(".editor").forEach(row => {
+        const mine = row.dataset.for === uid;
+        row.classList.toggle("open", mine ? !row.classList.contains("open") : false);
+      });
     });
-    c.querySelectorAll("[data-dis]").forEach(s => s.onchange = async () => {
-      await fetch("/api/admin/users/"+s.dataset.dis,{method:"PATCH",headers:h(),body:JSON.stringify({disabled:s.checked})});
+    c.querySelectorAll("[data-save]").forEach(b => b.onclick = async () => {
+      const uid = b.dataset.save;
+      const cohort_ids = [...c.querySelectorAll(`[data-co="${uid}"]:checked`)].map(x => x.value);
+      setBusy(b, true);
+      try {
+        const d = await patchUser(uid, {
+          name: el("ed-name-"+uid).value.trim(),
+          email: el("ed-email-"+uid).value.trim(),
+          role: el("ed-role-"+uid).value,
+          disabled: el("ed-dis-"+uid).checked,
+          cohort_ids,
+        }, "ed-status-"+uid);
+        if (d) await show("users");
+      } finally { setBusy(b, false); }
+    });
+    c.querySelectorAll("[data-setpw]").forEach(b => b.onclick = async () => {
+      const uid = b.dataset.setpw;
+      const pw = el("ed-pw-"+uid).value;
+      const status = el("ed-status-"+uid);
+      if (!pw || pw.length < 6) {
+        status.className = "status err";
+        status.textContent = "Password must be at least 6 characters.";
+        return;
+      }
+      setBusy(b, true);
+      try {
+        const d = await patchUser(uid, {password: pw}, "ed-status-"+uid);
+        if (d) {
+          el("ed-pw-"+uid).value = "";
+          status.className = "status";
+          status.textContent = "Password updated.";
+        }
+      } finally { setBusy(b, false); }
+    });
+    c.querySelectorAll("[data-reset]").forEach(b => b.onclick = async () => {
+      const uid = b.dataset.reset;
+      setBusy(b, true);
+      try {
+        const d = await patchUser(uid, {send_reset: true}, "ed-status-"+uid);
+        if (d) {
+          const status = el("ed-status-"+uid);
+          status.className = "status";
+          status.textContent = "Reset email sent (if that account exists).";
+        }
+      } finally { setBusy(b, false); }
     });
     c.querySelectorAll("[data-del]").forEach(s => s.onclick = async () => {
-      if (!confirm("Delete user?")) return;
-      await fetch("/api/admin/users/"+s.dataset.del,{method:"DELETE",headers:h()});
+      if (!confirm("Delete user "+s.dataset.del+"?")) return;
+      s.disabled = true;
+      const r = await fetch("/api/admin/users/"+s.dataset.del,{method:"DELETE",headers:h()});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(errText(d, r, "Delete failed.")); s.disabled = false; return; }
+      bustAdmin();
       show("users");
     });
   }
+  if (v==="cohorts") {
+    if (state.cohortId) { await showCohort(c, state.cohortId, gen); return; }
+    const d = await loadJson(`/api/admin/cohorts?sort=${state.cSort}&direction=${state.cDir}`);
+    if (!still(gen)) return;
+    const rows = d.cohorts || [];
+    c.innerHTML = `<h1>Cohorts</h1>
+      <p class="muted">A cohort is an intake you onboard people into. Open one to add existing users or create new accounts into it.</p>
+      <div class="row">
+        <input id="nc-name" placeholder="cohort name"/>
+        <input id="nc-notes" placeholder="notes (optional)" style="flex:1"/>
+        <button class="primary" id="nc"><span class="spin"></span><span id="nc-label">Create cohort</span></button>
+      </div>
+      <p class="status muted" id="nc-status"></p>
+      <table><thead><tr>
+        ${sortHead([["name","Name"],["members","Members"],["created_at","Created"]], state.cSort, state.cDir)}
+        <th></th>
+      </tr></thead>
+      <tbody>${rows.map(x=>`<tr>
+        <td><b>${esc(x.name)}</b>${x.notes?`<div class="muted">${esc(x.notes)}</div>`:""}</td>
+        <td>${x.member_count||0}</td>
+        <td class="muted">${esc((x.created_at||"").replace("T"," ").slice(0,16))}</td>
+        <td><button data-open="${esc(x.id)}">Open</button>
+            <button class="danger" data-dc="${esc(x.id)}">Delete</button></td>
+      </tr>`).join("") || `<tr><td colspan="4" class="muted">No cohorts yet.</td></tr>`}</tbody></table>`;
+    c.querySelectorAll("th.sort").forEach(th => th.onclick = () => { toggleSort("c", th.dataset.sort); show("cohorts"); });
+    el("nc").onclick = async () => {
+      const name = el("nc-name").value.trim();
+      const status = el("nc-status");
+      if (!name) { status.className="status err"; status.textContent="Name required."; return; }
+      setBusy(el("nc"), true, "nc-label", "Create cohort", "Creating…");
+      el("nc-name").disabled = true;
+      el("nc-notes").disabled = true;
+      status.className = "status muted";
+      status.textContent = "Saving the cohort…";
+      try {
+        const r = await fetch("/api/admin/cohorts",{method:"POST",headers:h(),
+          body:JSON.stringify({name, notes:el("nc-notes").value.trim()})});
+        const d = await r.json().catch(()=>({}));
+        if (!r.ok) {
+          status.className = "status err";
+          status.textContent = errText(d, r, "Could not create that cohort.");
+          return;
+        }
+        state.cohortId = d.id;
+        bustAdmin();
+        await show("cohorts");
+      } catch (e) {
+        status.className = "status err";
+        status.textContent = "Network error — try again.";
+      } finally {
+        if (el("nc")) {
+          setBusy(el("nc"), false, "nc-label", "Create cohort", "Creating…");
+          if (el("nc-name")) el("nc-name").disabled = false;
+          if (el("nc-notes")) el("nc-notes").disabled = false;
+        }
+      }
+    };
+    c.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { state.cohortId=b.dataset.open; show("cohorts"); });
+    c.querySelectorAll("[data-dc]").forEach(b => b.onclick = async () => {
+      if (!confirm("Delete this cohort? Users stay; they are only removed from the group.")) return;
+      b.disabled = true;
+      b.textContent = "Deleting…";
+      await fetch("/api/admin/cohorts/"+b.dataset.dc,{method:"DELETE",headers:h()});
+      bustAdmin();
+      show("cohorts");
+    });
+  }
   if (v==="sessions") {
-    const d = await (await fetch("/api/admin/sessions",{headers:h()})).json();
+    const d = await loadJson("/api/admin/sessions");
+    if (!still(gen)) return;
+    const rows = d.sessions || [];
+    const dash = v => v || "—";
     c.innerHTML = `<h1>All sessions</h1>
-      <table><thead><tr><th>Id</th><th>Scenario</th><th>Owner</th><th>Assignee</th><th></th></tr></thead>
-      <tbody>${(d.sessions||[]).map(s=>`<tr>
-        <td class="muted">${s.session_id}</td><td>${s.scenario}</td>
-        <td>${s.owner_uid}</td><td>${s.assignee_uid}</td>
+      <p class="muted">${rows.length ? "Includes assigned sessions and older recorded runs." : "No sessions yet."}</p>
+      <table><thead><tr><th>Id</th><th>Scenario</th><th>Owner</th><th>Assignee</th><th>Events</th><th></th></tr></thead>
+      <tbody>${rows.map(s=>`<tr>
+        <td class="muted">${s.session_id}</td>
+        <td>${dash(s.scenario)} <span class="muted">${dash(s.level)}</span></td>
+        <td>${dash(s.owner || s.owner_uid)}</td>
+        <td>${dash(s.assignee || s.assignee_uid)}</td>
+        <td class="muted">${s.count||0}</td>
         <td><a href="/instructor"><button>Replay via instructor</button></a>
             <button class="danger" data-ds="${s.session_id}">Delete</button></td>
       </tr>`).join("")}</tbody></table>`;
     c.querySelectorAll("[data-ds]").forEach(b => b.onclick = async () => {
       if (!confirm("Cascade delete session "+b.dataset.ds+"?")) return;
       await fetch("/api/admin/sessions/"+b.dataset.ds,{method:"DELETE",headers:h()});
+      bustAdmin();
       show("sessions");
     });
   }
   if (v==="scenarios") {
-    const d = await (await fetch("/api/admin/scenarios",{headers:h()})).json();
+    const d = await loadJson("/api/admin/scenarios");
+    if (!still(gen)) return;
     c.innerHTML = `<h1>Scenarios</h1>
       ${(d.scenarios||[]).map(s=>`<div class="row" style="border-bottom:1px solid var(--line);padding:10px 0">
         <b style="min-width:220px">${s.title}</b>
@@ -125,19 +470,130 @@ async function show(v){
       const url = c.querySelector(`[data-url="${key}"]`).value;
       const enabled = c.querySelector(`[data-en="${key}"]`).checked;
       await fetch("/api/admin/scenarios/"+key,{method:"PUT",headers:h(),body:JSON.stringify({starter_url:url,enabled})});
+      bustAdmin();
     });
   }
   if (v==="settings") {
-    const s = await (await fetch("/api/admin/settings",{headers:h()})).json();
-    const st = await (await fetch("/api/admin/auth/status",{headers:h()})).json();
+    const [s, st] = await Promise.all([
+      loadJson("/api/admin/settings"),
+      loadJson("/api/admin/auth/status"),
+    ]);
+    if (!still(gen)) return;
     c.innerHTML = `<h1>Settings</h1>
-      <p class="muted">Auth mode <b>${st.auth_mode}</b> · project ${st.firebase_project_id||"(none)"} · ${st.users_count} users</p>
+      <p class="muted">Auth mode <b>${st.auth_mode}</b> · store <b>${st.persistence||"sqlite"}</b> · project ${st.firebase_project_id||"(none)"} · ${st.users_count} users</p>
       <div class="row"><label>Default level <input id="dl" value="${s.default_level}"/></label>
       <button class="primary" id="sv">Save</button></div>`;
     el("sv").onclick = async () => {
       await fetch("/api/admin/settings",{method:"PUT",headers:h(),body:JSON.stringify({onboarded:true,default_level:el("dl").value})});
+      bustAdmin();
     };
   }
+  } catch (e) {
+    if (!still(gen)) return;
+    failPane(titles[v] || "Admin", e.message || "Could not load.", () => show(v));
+  }
+}
+
+async function showCohort(c, cid, gen){
+  const [detail, users] = await Promise.all([
+    loadJson("/api/admin/cohorts/"+cid),
+    loadJson("/api/admin/users?sort=name&direction=asc"),
+  ]);
+  if (!still(gen)) return;
+  if (detail.error) { state.cohortId=""; show("cohorts"); return; }
+  const inCohort = new Set((detail.members||[]).map(m => m.uid));
+  const addable = (users.users||[]).filter(u => !inCohort.has(u.uid));
+  c.innerHTML = `<p class="muted"><a href="#" id="back-co">← All cohorts</a></p>
+    <h1>${esc(detail.name)}</h1>
+    <div class="row">
+      <input id="co-name" value="${esc(detail.name)}"/>
+      <input id="co-notes" value="${esc(detail.notes||"")}" placeholder="notes" style="flex:1"/>
+      <button id="co-save"><span class="spin"></span><span id="co-save-label">Save</span></button>
+    </div>
+    <p class="status muted" id="co-status"></p>
+    <h2 style="font-size:16px;margin:22px 0 8px">Onboard someone new</h2>
+    <div class="row">
+      <input id="on-name" placeholder="name"/>
+      <input id="on-email" placeholder="email"/>
+      <select id="on-role"><option>challenger</option><option>instructor</option><option>admin</option></select>
+      <button class="primary" id="on"><span class="spin"></span><span id="on-label">Onboard</span></button>
+    </div>
+    <p class="status muted" id="on-status"></p>
+    <h2 style="font-size:16px;margin:22px 0 8px">Members (${(detail.members||[]).length})</h2>
+    <div class="row">
+      <select id="add-uid" style="min-width:240px">
+        <option value="">Add existing user…</option>
+        ${addable.map(u=>`<option value="${esc(u.uid)}">${esc(u.name||u.email)} · ${esc(u.role)}</option>`).join("")}
+      </select>
+      <button id="add-m"><span class="spin"></span><span id="add-m-label">Add</span></button>
+    </div>
+    <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+    <tbody>${(detail.members||[]).map(m=>`<tr>
+      <td>${esc(m.name)||"<span class='muted'>—</span>"}</td>
+      <td>${esc(m.email)}</td>
+      <td>${esc(m.role)}</td>
+      <td><button class="danger" data-rm="${esc(m.uid)}">Remove</button></td>
+    </tr>`).join("") || `<tr><td colspan="4" class="muted">Nobody in this cohort yet.</td></tr>`}</tbody></table>`;
+  el("back-co").onclick = e => { e.preventDefault(); state.cohortId=""; show("cohorts"); };
+  el("co-save").onclick = async () => {
+    const status = el("co-status");
+    setBusy(el("co-save"), true, "co-save-label", "Save", "Saving…");
+    status.className = "status muted";
+    status.textContent = "Saving…";
+    try {
+      const r = await fetch("/api/admin/cohorts/"+cid,{method:"PATCH",headers:h(),
+        body:JSON.stringify({name:el("co-name").value.trim(), notes:el("co-notes").value.trim()})});
+      const d = await r.json().catch(()=>({}));
+      if (!r.ok) { status.className="status err"; status.textContent=errText(d,r,"Save failed."); return; }
+      bustAdmin();
+      await show("cohorts");
+    } finally {
+      setBusy(el("co-save"), false, "co-save-label", "Save", "Saving…");
+    }
+  };
+  el("on").onclick = async () => {
+    const email = el("on-email").value.trim();
+    if (!email) { el("on-status").className="status err"; el("on-status").textContent="Enter an email."; return; }
+    const btn = el("on");
+    setBusy(btn, true, "on-label", "Onboard", "Onboarding…");
+    ["on-name","on-email","on-role"].forEach(id => { if (el(id)) el(id).disabled = true; });
+    el("on-status").className="status muted";
+    el("on-status").textContent="Creating the account and sending a password-reset email…";
+    try {
+      const r = await fetch("/api/admin/cohorts/"+cid+"/onboard",{method:"POST",headers:h(),
+        body:JSON.stringify({email, name:el("on-name").value.trim(), role:el("on-role").value, send_reset:true})});
+      const d = await r.json().catch(()=>({}));
+      if (!r.ok) { el("on-status").className="status err"; el("on-status").textContent=errText(d,r,"Could not onboard."); return; }
+      bustAdmin();
+      await show("cohorts");
+    } finally {
+      if (el("on")) {
+        setBusy(el("on"), false, "on-label", "Onboard", "Onboarding…");
+        ["on-name","on-email","on-role"].forEach(id => { if (el(id)) el(id).disabled = false; });
+      }
+    }
+  };
+  el("add-m").onclick = async () => {
+    const uid = el("add-uid").value;
+    if (!uid) return;
+    setBusy(el("add-m"), true, "add-m-label", "Add", "Adding…");
+    el("add-uid").disabled = true;
+    try {
+      await fetch("/api/admin/cohorts/"+cid+"/members",{method:"POST",headers:h(),body:JSON.stringify({uid})});
+      bustAdmin();
+      await show("cohorts");
+    } finally {
+      setBusy(el("add-m"), false, "add-m-label", "Add", "Adding…");
+      if (el("add-uid")) el("add-uid").disabled = false;
+    }
+  };
+  c.querySelectorAll("[data-rm]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    b.textContent = "Removing…";
+    await fetch("/api/admin/cohorts/"+cid+"/members/"+b.dataset.rm,{method:"DELETE",headers:h()});
+    bustAdmin();
+    show("cohorts");
+  });
 }
 </script>
 </body>

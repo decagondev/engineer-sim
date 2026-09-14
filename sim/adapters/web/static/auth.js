@@ -28,11 +28,20 @@ window.SimAuth = (function () {
     }
     return true;
   }
+  function sameOrigin(url) {
+    if (typeof url === "string") {
+      return url.startsWith("/") || url.startsWith(location.origin);
+    }
+    if (url && typeof url.url === "string") {
+      return sameOrigin(url.url);
+    }
+    return false;
+  }
   const _fetch = window.fetch.bind(window);
   window.fetch = function (url, opts) {
     opts = opts || {};
     const t = token();
-    if (t) {
+    if (t && sameOrigin(url)) {
       const headers = new Headers(opts.headers || {});
       if (!headers.has("Authorization")) headers.set("Authorization", "Bearer " + t);
       opts = Object.assign({}, opts, { headers });

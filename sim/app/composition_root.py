@@ -242,8 +242,12 @@ def build_environment(config: Config, scenario: Scenario):
     raise ValueError(f"unknown ENV_PROVIDER: {config.env_provider!r}")
 
 
-def build_grader(config: Config) -> LLMGrader:
-    return LLMGrader(build_llm(config))
+def build_grader(config: Config, users=None) -> LLMGrader:
+    llm = build_llm(config)
+    if users is not None:
+        from sim.adapters.llm.scoped_client import wrap_user_scoped_llm
+        llm = wrap_user_scoped_llm(llm, users=users, config=config)
+    return LLMGrader(llm)
 
 
 def build_session_service(
@@ -252,25 +256,22 @@ def build_session_service(
     judge_llm: LLMClient | None = None,
     scenario: Scenario | None = None,
 ) -> SessionService:
-    from sim.adapters.persistence.sqlite_repo import SqliteMessageRepository
-    from sim.adapters.persistence.sqlite_state import SqliteUnlockStore
-    from sim.adapters.persistence.sqlite_mail import SqliteMailStore
-    from sim.adapters.persistence.sqlite_tickets import SqliteTicketStore
-    from sim.adapters.persistence.sqlite_settings import SqliteSettingsStore
+    from sim.adapters.persistence.stores import build_stores
     from sim.core.mail.mail_service import MailService
     from sim.core.tickets.ticket_service import TicketService, project_prefix
 
     scenario = scenario or build_scenario(config)
-    repo = SqliteMessageRepository(config.db_path)
-    unlock = SqliteUnlockStore(config.db_path)
-    settings = SqliteSettingsStore(config.db_path)
+    stores = build_stores(config)
+    repo = stores.repo
+    unlock = stores.unlock
+    settings = stores.settings
     responder = PersonaResponder(llm or build_llm(config))
     mail = MailService(
-        writer=repo, reader=repo, mail_store=SqliteMailStore(config.db_path),
+        writer=repo, reader=repo, mail_store=stores.mailstore,
         responder=responder, unlock_store=unlock,
         world=scenario.world, cast=scenario.cast, settings=settings)
     tickets = TicketService(
-        store=SqliteTicketStore(config.db_path), writer=repo,
+        store=stores.ticketstore, writer=repo,
         cast=scenario.cast, seed_tickets=scenario.tickets,
         project_key=project_prefix(scenario.key))
     svc = SessionService(
@@ -305,7 +306,9 @@ def build_auth(config: Config, manager) -> "object":
                 "AUTH_MODE=firebase requires FIREBASE_WEB_API_KEY and "
                 "FIREBASE_PROJECT_ID")
         from sim.adapters.auth.firebase_verifier import FirebaseVerifier
-        fb = FirebaseVerifier(config.firebase_web_api_key, config.firebase_project_id)
+        fb = FirebaseVerifier(
+            config.firebase_web_api_key, config.firebase_project_id,
+            credentials_json=config.firebase_credentials_json)
         return AuthServices(
             "firebase", verifier=fb, users=users, sessions=sessions,
             bootstrap_admin_email=config.bootstrap_admin_email,
@@ -334,7 +337,7 @@ def build_app(config: Config | None = None):
     manager = build_manager(config)
     return create_web_app(
         manager=manager,
-        grader=build_grader(config),
+        grader=build_grader(config, users=manager.users),
         grader_calibrated=config.grader_calibrated,
         build_observer=GitBuildObserver(),
         workspace_reader=_build_workspace_reader(),

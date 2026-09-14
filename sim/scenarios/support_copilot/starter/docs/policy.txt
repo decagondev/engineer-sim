@@ -1,0 +1,6 @@
+FEE SCHEDULE (compliance-approved, effective this quarter)
+Instant transfer fee: 1.5%
+International transfer fee: 2.0% + fixed FX spread
+Standard transfer: no fee (personal); business accounts see contract.
+
+Only this document is the approved source of truth for fees.

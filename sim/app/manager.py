@@ -1,7 +1,7 @@
 """SessionManager — resolves each session to a scenario and hands out a per-scenario
-bundle of services. Shared stores (one SQLite file, keyed by session_id) are built
-once; scenario-specific services (cast/world/rubric/triggers/starter/seeds) are built
-per scenario and cached.
+bundle of services. Shared stores (sqlite or Firestore, keyed by session_id) are
+built once; scenario-specific services (cast/world/rubric/triggers/starter/seeds)
+are built per scenario and cached.
 """
 from __future__ import annotations
 
@@ -28,31 +28,26 @@ class Bundle:
 class SessionManager:
     def __init__(self, config: Config, registry: dict[str, Scenario],
                  default_scenario_key: str, llm, judge_llm) -> None:
-        from sim.adapters.persistence.sqlite_repo import SqliteMessageRepository
-        from sim.adapters.persistence.sqlite_state import SqliteUnlockStore
-        from sim.adapters.persistence.sqlite_mail import SqliteMailStore
-        from sim.adapters.persistence.sqlite_tickets import SqliteTicketStore
-        from sim.adapters.persistence.sqlite_settings import SqliteSettingsStore
-        from sim.adapters.persistence.sqlite_submissions import SqliteSubmissionStore
+        from sim.adapters.persistence.stores import build_stores
 
         self._config = config
         self._registry = registry
         self._default = (default_scenario_key if default_scenario_key in registry
                          else next(iter(registry)))
-        # shared, per-DB stores (all keyed by session_id)
-        self.repo = SqliteMessageRepository(config.db_path)
-        self.unlock = SqliteUnlockStore(config.db_path)
-        self.mailstore = SqliteMailStore(config.db_path)
-        self.ticketstore = SqliteTicketStore(config.db_path)
-        self.settings = SqliteSettingsStore(config.db_path)
-        self.submissions = SqliteSubmissionStore(config.db_path)
-        from sim.adapters.persistence.sqlite_users import SqliteUserDirectory
-        from sim.adapters.persistence.sqlite_sessions import SqliteSessionRegistry
-        self.users = SqliteUserDirectory(config.db_path)
-        self.session_registry = SqliteSessionRegistry(config.db_path)
-        self.llm = llm
-        self._responder = PersonaResponder(llm)
-        self._judge = judge_llm
+        stores = build_stores(config)
+        self.repo = stores.repo
+        self.unlock = stores.unlock
+        self.mailstore = stores.mailstore
+        self.ticketstore = stores.ticketstore
+        self.settings = stores.settings
+        self.submissions = stores.submissions
+        self.users = stores.users
+        self.session_registry = stores.session_registry
+        self.cohorts = stores.cohorts
+        from sim.adapters.llm.scoped_client import wrap_user_scoped_llm
+        self.llm = wrap_user_scoped_llm(llm, users=self.users, config=config)
+        self._responder = PersonaResponder(self.llm)
+        self._judge = wrap_user_scoped_llm(judge_llm, users=self.users, config=config)
         self._cache: dict[str, Bundle] = {}
 
     # -- registry -----------------------------------------------------------

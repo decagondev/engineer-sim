@@ -80,37 +80,42 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         except IdentityError as e:
             return JSONResponse({"error": e.detail}, status_code=e.status)
         request.state.principal = principal
-        if path.startswith("/api/admin"):
-            if not auth.allow_admin(principal):
-                return JSONResponse({"error": "forbidden"}, status_code=403)
-            return await call_next(request)
-        if path.startswith("/api/instructor"):
-            if not auth.allow_instructor(principal):
-                return JSONResponse({"error": "forbidden"}, status_code=403)
-            m = _INSTR_SID.match(path)
-            if m and request.method == "GET":
-                if not auth.allow_session(principal, m.group(1)):
-                    return JSONResponse({"error": "forbidden"}, status_code=403)
-            return await call_next(request)
-        if path == "/api/scenarios" and principal.role == "challenger":
-            return JSONResponse({"error": "forbidden"}, status_code=403)
-        m = _SESSION_API.match(path)
-        if m:
-            sid = m.group(1)
-            if path.endswith("/claim") and request.method == "POST":
-                from sim.core.access.policy import can_claim_session
-                rec = auth.session(sid)
-                if not can_claim_session(principal, rec):
+        from sim.adapters.llm.request_context import current_uid
+        uid_token = current_uid.set(principal.uid)
+        try:
+            if path.startswith("/api/admin"):
+                if not auth.allow_admin(principal):
                     return JSONResponse({"error": "forbidden"}, status_code=403)
                 return await call_next(request)
-            grade = "/grade" in path
-            mutate = request.method not in ("GET", "HEAD")
-            if grade:
-                if not auth.allow_session(principal, sid, grade=True):
+            if path.startswith("/api/instructor"):
+                if not auth.allow_instructor(principal):
                     return JSONResponse({"error": "forbidden"}, status_code=403)
-            elif not auth.allow_session(principal, sid, mutate=mutate):
+                m = _INSTR_SID.match(path)
+                if m and request.method == "GET":
+                    if not auth.allow_session(principal, m.group(1)):
+                        return JSONResponse({"error": "forbidden"}, status_code=403)
+                return await call_next(request)
+            if path == "/api/scenarios" and principal.role == "challenger":
                 return JSONResponse({"error": "forbidden"}, status_code=403)
-        return await call_next(request)
+            m = _SESSION_API.match(path)
+            if m:
+                sid = m.group(1)
+                if path.endswith("/claim") and request.method == "POST":
+                    from sim.core.access.policy import can_claim_session
+                    rec = auth.session(sid)
+                    if not can_claim_session(principal, rec):
+                        return JSONResponse({"error": "forbidden"}, status_code=403)
+                    return await call_next(request)
+                grade = "/grade" in path
+                mutate = request.method not in ("GET", "HEAD")
+                if grade:
+                    if not auth.allow_session(principal, sid, grade=True):
+                        return JSONResponse({"error": "forbidden"}, status_code=403)
+                elif not auth.allow_session(principal, sid, mutate=mutate):
+                    return JSONResponse({"error": "forbidden"}, status_code=403)
+            return await call_next(request)
+        finally:
+            current_uid.reset(uid_token)
 
     # ---- static / shell -------------------------------------------------
     @app.get("/health")
@@ -540,11 +545,52 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def auth_me(request: Request):
         if not app.state.auth.gated:
             p = _local_instructor()
-            return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False}
+            return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
+                    "name": "", "has_groq_key": False}
         p = getattr(request.state, "principal", None)
         if p is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False}
+        rec = app.state.auth.users.get(p.uid) if app.state.auth.users else None
+        return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
+                "name": rec.name if rec else "",
+                "has_groq_key": bool(rec.groq_key_enc) if rec else False}
+
+    @app.patch("/api/me")
+    def patch_me(request: Request, payload: dict):
+        from sim.core.ports.users import UserRecord
+        auth = app.state.auth
+        if not auth.gated:
+            return JSONResponse({"error": "sign-in required"}, status_code=400)
+        p = getattr(request.state, "principal", None)
+        if p is None or auth.users is None:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        rec = auth.users.get(p.uid)
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        name = rec.name
+        if "name" in (payload or {}):
+            name = str(payload.get("name") or "").strip()
+        enc = rec.groq_key_enc
+        if (payload or {}).get("clear_groq_key"):
+            enc = ""
+        elif "groq_key" in (payload or {}):
+            raw = str(payload.get("groq_key") or "").strip()
+            if not raw:
+                return JSONResponse({"error": "Paste a Groq API key."}, status_code=400)
+            try:
+                from sim.adapters.llm.groq_client import validate_groq_key
+                validate_groq_key(raw)
+            except RuntimeError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+            from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
+            enc = encrypt_secret(secret_from_config(manager._config), raw)
+        rec = auth.users.upsert(UserRecord(
+            uid=rec.uid, email=rec.email, role=rec.role, disabled=rec.disabled,
+            created_at=rec.created_at, last_login=rec.last_login,
+            name=name, groq_key_enc=enc,
+        ))
+        return {"ok": True, "name": rec.name,
+                "has_groq_key": bool(rec.groq_key_enc)}
 
     @app.get("/api/me/sessions")
     def my_sessions(request: Request):
@@ -679,22 +725,21 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             session_id, owner_uid=_actor(request).uid, scenario_key=key)
         return {"ok": True, "scenario": key}
 
-    @app.get("/api/instructor/sessions")
-    def instructor_sessions(request: Request,
-                            x_instructor_token: str = Header(default="")):
-        if not _instr_ok(x_instructor_token):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-        auth = app.state.auth
-        p = _actor(request)
+    def _merge_known_sessions(*, all_registered: bool, owner_uid: str = ""):
+        """Message-store runs (legacy classroom) plus assignment-registry rows."""
         by_id = {}
         repo = app.state.repo
         msg_sessions = repo.list_sessions() if hasattr(repo, "list_sessions") else []
         for s in msg_sessions:
-            by_id[s["session_id"]] = dict(s)
+            row = dict(s)
+            row.setdefault("owner_uid", "")
+            row.setdefault("assignee_uid", "")
+            row.setdefault("status", "")
+            by_id[s["session_id"]] = row
+        auth = app.state.auth
         if auth.sessions is not None:
-            recs = (list(auth.sessions.list_all()) if (auth.gated and p.role == "admin")
-                    else list(auth.sessions.list_by_owner(p.uid)) if auth.gated
-                    else list(auth.sessions.list_all()))
+            recs = (list(auth.sessions.list_all()) if all_registered
+                    else list(auth.sessions.list_by_owner(owner_uid)))
             for rec in recs:
                 row = by_id.get(rec.id, {"session_id": rec.id, "count": 0,
                                          "first_ts": rec.created_at, "last_ts": rec.created_at})
@@ -703,14 +748,25 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 row["status"] = rec.status
                 by_id[rec.id] = row
         sessions = list(by_id.values())
-        if auth.gated and p.role == "instructor":
-            sessions = [s for s in sessions
-                        if s.get("owner_uid", p.uid) in ("", p.uid)]
-        sessions.sort(key=lambda s: s.get("last_ts") or "", reverse=True)
+        sessions.sort(key=lambda s: s.get("last_ts") or s.get("first_ts") or "", reverse=True)
         for s in sessions:
             sid = s["session_id"]
             s["scenario"] = manager.resolve_scenario_key(sid)
             s["level"] = _session_level(sid)
+        return sessions
+
+    @app.get("/api/instructor/sessions")
+    def instructor_sessions(request: Request,
+                            x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        auth = app.state.auth
+        p = _actor(request)
+        all_reg = (not auth.gated) or p.role == "admin"
+        sessions = _merge_known_sessions(all_registered=all_reg, owner_uid=p.uid)
+        if auth.gated and p.role == "instructor":
+            sessions = [s for s in sessions
+                        if s.get("owner_uid", p.uid) in ("", p.uid)]
         return {"sessions": sessions}
 
     @app.get("/api/instructor/session/{sid}")
@@ -803,44 +859,115 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if auth.sessions:
             auth.sessions.delete(sid)
 
+    def _cohorts():
+        return getattr(manager, "cohorts", None)
+
+    def _membership_map(store):
+        by_uid = {}
+        if store is None:
+            return by_uid
+        for c in store.list():
+            for uid in store.members(c.id):
+                by_uid.setdefault(uid, []).append(c.id)
+        return by_uid
+
+    def _user_payload(u, cohort_ids=None):
+        return {"uid": u.uid, "email": u.email, "name": u.name or "",
+                "role": u.role, "disabled": u.disabled,
+                "created_at": u.created_at, "last_login": u.last_login,
+                "has_groq_key": bool(getattr(u, "groq_key_enc", "")),
+                "cohort_ids": list(cohort_ids or [])}
+
+    def _sort_dicts(rows, sort: str, direction: str, allowed: dict):
+        key = allowed.get(sort) or next(iter(allowed.values()))
+        rev = (direction or "asc").lower() == "desc"
+        def val(row):
+            v = key(row)
+            if isinstance(v, (int, float)):
+                return v
+            return str(v or "").lower()
+        return sorted(rows, key=val, reverse=rev)
+
+    def _create_directory_user(payload: dict):
+        import secrets
+        from datetime import datetime, timezone
+        from sim.core.ports.identity import ROLES
+        from sim.core.ports.users import UserRecord
+        email = (payload or {}).get("email", "").strip()
+        role = (payload or {}).get("role", "challenger")
+        name = (payload or {}).get("name", "").strip()
+        if not email or role not in ROLES:
+            return None, JSONResponse({"error": "email and valid role required"},
+                                      status_code=400)
+        auth = app.state.auth
+        uid = ""
+        chosen = str((payload or {}).get("password") or "").strip()
+        if chosen and len(chosen) < 6:
+            return None, JSONResponse(
+                {"error": "Password must be at least 6 characters."}, status_code=400)
+        if auth.firebase is not None:
+            password = chosen or secrets.token_urlsafe(16)
+            send_reset = (payload or {}).get("send_reset")
+            if send_reset is None:
+                send_reset = not bool(chosen)
+            try:
+                uid = auth.firebase.create_email_user(email, password)
+                if send_reset:
+                    auth.firebase.send_password_reset(email)
+            except IdentityError as e:
+                return None, JSONResponse({"error": e.detail}, status_code=e.status)
+        uid = uid or ("u-" + secrets.token_hex(8))
+        rec = auth.users.upsert(UserRecord(
+            uid=uid, email=email, role=role, name=name, disabled=False,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        ))
+        return rec, None
+
     @app.get("/api/admin/users")
-    def admin_list_users():
+    def admin_list_users(sort: str = "name", direction: str = "asc"):
         users = app.state.auth.users
         if users is None:
             return {"users": []}
-        return {"users": [
-            {"uid": u.uid, "email": u.email, "role": u.role,
-             "disabled": u.disabled, "created_at": u.created_at,
-             "last_login": u.last_login}
-            for u in users.list()
-        ]}
+        by_uid = _membership_map(_cohorts())
+        rows = []
+        for u in users.list():
+            rows.append(_user_payload(u, by_uid.get(u.uid, [])))
+        rows = _sort_dicts(rows, sort, direction, {
+            "name": lambda r: r["name"] or r["email"],
+            "email": lambda r: r["email"],
+            "role": lambda r: r["role"],
+            "created_at": lambda r: r["created_at"],
+        })
+        return {"users": rows}
 
     @app.post("/api/admin/users")
     def admin_create_user(payload: dict):
-        import secrets
-        from sim.core.ports.identity import ROLES
-        from sim.core.ports.users import UserRecord
-        from datetime import datetime, timezone
-        email = (payload or {}).get("email", "").strip()
-        role = (payload or {}).get("role", "challenger")
-        if not email or role not in ROLES:
-            return JSONResponse({"error": "email and valid role required"}, status_code=400)
-        auth = app.state.auth
-        uid = ""
-        if auth.firebase is not None:
-            password = secrets.token_urlsafe(16)
-            try:
-                uid = auth.firebase.create_email_user(email, password)
-                if (payload or {}).get("send_reset", True):
-                    auth.firebase.send_password_reset(email)
-            except IdentityError as e:
-                return JSONResponse({"error": e.detail}, status_code=e.status)
-        uid = uid or ("u-" + secrets.token_hex(8))
-        rec = auth.users.upsert(UserRecord(
-            uid=uid, email=email, role=role, disabled=False,
-            created_at=datetime.now(timezone.utc).isoformat(),
-        ))
-        return {"ok": True, "uid": rec.uid, "email": rec.email, "role": rec.role}
+        rec, err = _create_directory_user(payload or {})
+        if err:
+            return err
+        cid = (payload or {}).get("cohort_id") or ""
+        if cid and _cohorts() and _cohorts().get(cid):
+            _cohorts().add_member(cid, rec.uid)
+        return {"ok": True, "uid": rec.uid, "email": rec.email, "role": rec.role,
+                "name": rec.name}
+
+    def _sync_user_cohorts(uid: str, cohort_ids):
+        store = _cohorts()
+        if store is None:
+            return []
+        wanted = []
+        for raw in list(cohort_ids or []):
+            cid = str(raw or "").strip()
+            if cid and store.get(cid) and cid not in wanted:
+                wanted.append(cid)
+        current = list(store.cohorts_for(uid))
+        for cid in wanted:
+            if cid not in current:
+                store.add_member(cid, uid)
+        for cid in current:
+            if cid not in wanted:
+                store.remove_member(cid, uid)
+        return wanted
 
     @app.patch("/api/admin/users/{uid}")
     def admin_patch_user(uid: str, payload: dict):
@@ -850,18 +977,58 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         rec = auth.users.get(uid) if auth.users else None
         if rec is None:
             return JSONResponse({"error": "not found"}, status_code=404)
-        role = (payload or {}).get("role", rec.role)
+        body = payload or {}
+        role = body.get("role", rec.role)
         disabled = rec.disabled
-        if "disabled" in (payload or {}):
-            disabled = bool(payload["disabled"])
+        if "disabled" in body:
+            disabled = bool(body["disabled"])
+        name = rec.name
+        if "name" in body:
+            name = str(body.get("name") or "").strip()
+        email = rec.email
+        if "email" in body:
+            email = str(body.get("email") or "").strip()
+            if not email:
+                return JSONResponse({"error": "email required"}, status_code=400)
+            other = auth.users.get_by_email(email)
+            if other and other.uid != rec.uid:
+                return JSONResponse({"error": "email already in use"}, status_code=400)
         if role not in ROLES:
             return JSONResponse({"error": "bad role"}, status_code=400)
         if rec.role == "admin" and (role != "admin" or disabled) and auth.users.count_role("admin") <= 1:
             return JSONResponse({"error": "cannot remove the last admin"}, status_code=400)
+        fb = auth.firebase
+        try:
+            if fb is not None and email != rec.email:
+                fb.update_email(rec.uid, email)
+            if fb is not None and disabled != rec.disabled:
+                fb.set_disabled(rec.uid, disabled)
+            if body.get("password"):
+                if fb is None:
+                    pass
+                else:
+                    fb.set_password(rec.uid, str(body.get("password") or ""))
+            if body.get("send_reset"):
+                if fb is None:
+                    pass
+                else:
+                    fb.send_password_reset(email)
+        except IdentityError as e:
+            return JSONResponse({"error": e.detail}, status_code=e.status)
         rec = auth.users.upsert(UserRecord(
-            uid=rec.uid, email=rec.email, role=role, disabled=disabled,
-            created_at=rec.created_at, last_login=rec.last_login))
-        return {"ok": True, "uid": rec.uid, "role": rec.role, "disabled": rec.disabled}
+            uid=rec.uid, email=email, role=role, disabled=disabled,
+            created_at=rec.created_at, last_login=rec.last_login, name=name,
+            groq_key_enc=rec.groq_key_enc))
+        if "cohort_ids" in body:
+            cids = _sync_user_cohorts(rec.uid, body.get("cohort_ids"))
+        else:
+            store = _cohorts()
+            cids = list(store.cohorts_for(rec.uid)) if store else []
+        return {"ok": True, "uid": rec.uid, "role": rec.role,
+                "disabled": rec.disabled, "name": rec.name,
+                "email": rec.email, "cohort_ids": cids,
+                "password_set": bool(body.get("password")),
+                "reset_sent": bool(body.get("send_reset"))}
 
     @app.delete("/api/admin/users/{uid}")
     def admin_delete_user(uid: str):
@@ -871,18 +1038,155 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             return JSONResponse({"error": "not found"}, status_code=404)
         if rec.role == "admin" and auth.users.count_role("admin") <= 1:
             return JSONResponse({"error": "cannot delete the last admin"}, status_code=400)
+        if auth.firebase is not None:
+            try:
+                auth.firebase.delete_account(uid)
+            except IdentityError as e:
+                return JSONResponse({"error": e.detail}, status_code=e.status)
+        if _cohorts():
+            _cohorts().remove_user(uid)
         auth.users.delete(uid)
         return {"ok": True}
 
+    @app.get("/api/admin/cohorts")
+    def admin_list_cohorts(sort: str = "name", direction: str = "asc"):
+        store = _cohorts()
+        if store is None:
+            return {"cohorts": []}
+        rows = []
+        for c in store.list():
+            members = list(store.members(c.id))
+            rows.append({"id": c.id, "name": c.name, "notes": c.notes,
+                         "created_at": c.created_at, "member_count": len(members)})
+        rows = _sort_dicts(rows, sort, direction, {
+            "name": lambda r: r["name"],
+            "created_at": lambda r: r["created_at"],
+            "members": lambda r: r["member_count"],
+        })
+        return {"cohorts": rows}
+
+    @app.post("/api/admin/cohorts")
+    def admin_create_cohort(payload: dict):
+        import secrets
+        from datetime import datetime, timezone
+        from sim.core.ports.cohorts import CohortRecord
+        store = _cohorts()
+        if store is None:
+            return JSONResponse({"error": "cohorts unavailable"}, status_code=503)
+        name = (payload or {}).get("name", "").strip()
+        if not name:
+            return JSONResponse({"error": "name required"}, status_code=400)
+        rec = store.upsert(CohortRecord(
+            id="co-" + secrets.token_hex(5),
+            name=name,
+            notes=(payload or {}).get("notes", "").strip(),
+            created_at=datetime.now(timezone.utc).isoformat(),
+        ))
+        return {"ok": True, "id": rec.id, "name": rec.name, "notes": rec.notes}
+
+    @app.get("/api/admin/cohorts/{cid}")
+    def admin_get_cohort(cid: str):
+        store = _cohorts()
+        rec = store.get(cid) if store else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        users = app.state.auth.users
+        members = []
+        for uid in store.members(cid):
+            u = users.get(uid) if users else None
+            if u:
+                members.append(_user_payload(u, [cid]))
+            else:
+                members.append({"uid": uid, "email": "", "name": "", "role": "",
+                                "disabled": False, "created_at": "",
+                                "last_login": "", "cohort_ids": [cid]})
+        members.sort(key=lambda m: (m.get("name") or m.get("email") or "").lower())
+        return {"id": rec.id, "name": rec.name, "notes": rec.notes,
+                "created_at": rec.created_at, "members": members}
+
+    @app.patch("/api/admin/cohorts/{cid}")
+    def admin_patch_cohort(cid: str, payload: dict):
+        from sim.core.ports.cohorts import CohortRecord
+        store = _cohorts()
+        rec = store.get(cid) if store else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        name = (payload or {}).get("name", rec.name).strip()
+        if not name:
+            return JSONResponse({"error": "name required"}, status_code=400)
+        notes = rec.notes
+        if "notes" in (payload or {}):
+            notes = str(payload.get("notes") or "").strip()
+        rec = store.upsert(CohortRecord(
+            id=rec.id, name=name, notes=notes, created_at=rec.created_at))
+        return {"ok": True, "id": rec.id, "name": rec.name, "notes": rec.notes}
+
+    @app.delete("/api/admin/cohorts/{cid}")
+    def admin_delete_cohort(cid: str):
+        store = _cohorts()
+        if store is None or not store.delete(cid):
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return {"ok": True}
+
+    @app.post("/api/admin/cohorts/{cid}/members")
+    def admin_add_cohort_member(cid: str, payload: dict):
+        store = _cohorts()
+        if store is None or store.get(cid) is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        uid = (payload or {}).get("uid") or ""
+        email = (payload or {}).get("email") or ""
+        users = app.state.auth.users
+        rec = users.get(uid) if uid and users else None
+        if rec is None and email and users:
+            rec = users.get_by_email(email)
+        if rec is None:
+            return JSONResponse({"error": "user not found"}, status_code=404)
+        store.add_member(cid, rec.uid)
+        return {"ok": True, "uid": rec.uid}
+
+    @app.delete("/api/admin/cohorts/{cid}/members/{uid}")
+    def admin_remove_cohort_member(cid: str, uid: str):
+        store = _cohorts()
+        if store is None or store.get(cid) is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        store.remove_member(cid, uid)
+        return {"ok": True}
+
+    @app.post("/api/admin/cohorts/{cid}/onboard")
+    def admin_onboard_cohort_member(cid: str, payload: dict):
+        store = _cohorts()
+        if store is None or store.get(cid) is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        rec, err = _create_directory_user(payload or {})
+        if err:
+            return err
+        store.add_member(cid, rec.uid)
+        return {"ok": True, "uid": rec.uid, "email": rec.email, "name": rec.name,
+                "role": rec.role, "cohort_id": cid}
+
+    def _uid_label(uid: str) -> str:
+        if not uid:
+            return ""
+        users = app.state.auth.users
+        rec = users.get(uid) if users else None
+        return rec.email if rec else uid
+
     @app.get("/api/admin/sessions")
     def admin_list_sessions():
-        auth = app.state.auth
-        rows = list(auth.sessions.list_all()) if auth.sessions else []
+        rows = _merge_known_sessions(all_registered=True)
         return {"sessions": [
-            {"session_id": r.id, "owner_uid": r.owner_uid,
-             "assignee_uid": r.assignee_uid, "scenario": r.scenario_key,
-             "level": r.level, "status": r.status, "created_at": r.created_at}
-            for r in rows
+            {"session_id": s["session_id"],
+             "owner_uid": s.get("owner_uid") or "",
+             "assignee_uid": s.get("assignee_uid") or "",
+             "owner": _uid_label(s.get("owner_uid") or ""),
+             "assignee": _uid_label(s.get("assignee_uid") or ""),
+             "scenario": s.get("scenario") or "",
+             "level": s.get("level") or "",
+             "status": s.get("status") or "",
+             "created_at": s.get("first_ts") or "",
+             "count": s.get("count") or 0,
+             "last_ts": s.get("last_ts") or ""}
+            for s in rows
         ]}
 
     @app.patch("/api/admin/sessions/{sid}")
@@ -987,12 +1291,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         n = len(list(auth.users.list())) if auth.users else 0
         return {"auth_mode": auth.mode, "firebase_project_id": auth.firebase_project_id,
                 "users_count": n,
-                "bootstrap_configured": bool(auth.bootstrap_admin_email)}
+                "bootstrap_configured": bool(auth.bootstrap_admin_email),
+                "persistence": getattr(manager._config, "persistence", "sqlite")}
 
     # ---- websocket ------------------------------------------------------
     @app.websocket("/ws/{session_id}")
     async def ws(websocket: WebSocket, session_id: str):
         auth = app.state.auth
+        uid = ""
         if auth.gated:
             token = websocket.query_params.get("token") or ""
             try:
@@ -1003,6 +1309,15 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             if not auth.allow_session(principal, session_id, mutate=True):
                 await websocket.close(code=4403)
                 return
+            uid = principal.uid
+        from sim.adapters.llm.request_context import current_uid
+        uid_token = current_uid.set(uid)
+        try:
+            await _ws_loop(websocket, session_id)
+        finally:
+            current_uid.reset(uid_token)
+
+    async def _ws_loop(websocket: WebSocket, session_id: str):
         await websocket.accept()
         svc = b(session_id).session_service
         try:

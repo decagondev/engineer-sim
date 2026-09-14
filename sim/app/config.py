@@ -32,6 +32,8 @@ class Config:
     firebase_auth_domain: str = ""
     firebase_credentials_json: str = ""     # service account JSON (optional)
     bootstrap_admin_email: str = ""
+    persistence: str = "sqlite"             # sqlite | firestore
+    byok_secret: str = ""                   # Fernet secret for per-user Groq keys
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -58,4 +60,6 @@ class Config:
             firebase_auth_domain=os.environ.get("FIREBASE_AUTH_DOMAIN", ""),
             firebase_credentials_json=os.environ.get("FIREBASE_CREDENTIALS_JSON", ""),
             bootstrap_admin_email=os.environ.get("AUTH_BOOTSTRAP_ADMIN_EMAIL", ""),
+            persistence=os.environ.get("PERSISTENCE", "sqlite").lower(),
+            byok_secret=os.environ.get("BYOK_SECRET", ""),
         )

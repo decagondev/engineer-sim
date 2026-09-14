@@ -169,7 +169,7 @@ SimApps.register({
     function clearAwaiting() { awaiting = null; clearTimeout(watchdog); sendBtn.disabled = false; input.disabled = false; input.focus(); if (active) renderLog(); }
 
     function connect() {
-      ws = new WebSocket(`ws://${location.host}/ws/${sid}${window.SimAuth && SimAuth.token() ? "?token="+encodeURIComponent(SimAuth.token()) : ""}`);
+      ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/${sid}${window.SimAuth && SimAuth.token() ? "?token="+encodeURIComponent(SimAuth.token()) : ""}`);
       ws.onmessage = e => {
         const m = JSON.parse(e.data);
         if (m.error || m.kind === "error") {

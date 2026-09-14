@@ -1,0 +1,14 @@
+.git
+.gitignore
+.venv
+.sandboxes
+.pytest_cache
+__pycache__
+*.pyc
+sim.db
+*-firebase-adminsdk-*.json
+firebase-credentials.json
+work-sim-79d4d-*.json
+tests
+calibration
+docs

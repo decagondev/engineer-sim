@@ -103,3 +103,134 @@ def test_auth06_pages_exist(tmp_path):
     c, _ = _pw(tmp_path)
     for path in ("/login", "/challenger", "/admin", "/instructor"):
         assert c.get(path).status_code == 200
+
+
+def test_auth07_admin_lists_legacy_recorded_sessions(tmp_path):
+    """Classroom runs live in the message store; admin must see them even
+    when they were never written to the assignment registry."""
+    c = _fake(tmp_path)
+    admin = _h("a1", "admin", "admin@t.local")
+    c.get("/api/auth/me", headers=admin)
+    sid = "s-legacy01"
+    assert c.post(f"/api/session/{sid}/start", headers=admin).status_code == 200
+    listed = c.get("/api/admin/sessions", headers=admin).json()["sessions"]
+    assert any(s["session_id"] == sid for s in listed)
+    row = next(s for s in listed if s["session_id"] == sid)
+    assert row["count"] >= 1
+
+
+def test_auth08_admin_name_and_cohorts(tmp_path):
+    c = _fake(tmp_path)
+    admin = _h("a1", "admin", "admin@t.local")
+    c.get("/api/auth/me", headers=admin)
+    created = c.post("/api/admin/users",
+                     json={"email": "pat@t.local", "role": "challenger",
+                           "name": "Pat"}, headers=admin).json()
+    uid = created["uid"]
+    assert created["name"] == "Pat"
+    assert c.patch(f"/api/admin/users/{uid}",
+                   json={"name": "Patricia"}, headers=admin).json()["name"] == "Patricia"
+    users = c.get("/api/admin/users?sort=name&direction=asc", headers=admin).json()["users"]
+    assert users[0]["name"] in ("Patricia", "admin") or any(u["name"] == "Patricia" for u in users)
+    names = [u["name"] or u["email"] for u in users]
+    assert names == sorted(names, key=str.lower)
+
+    co = c.post("/api/admin/cohorts",
+                json={"name": "April intake", "notes": "week 1"},
+                headers=admin).json()
+    assert co["ok"] and co["name"] == "April intake"
+    cid = co["id"]
+    assert c.post(f"/api/admin/cohorts/{cid}/members",
+                  json={"uid": uid}, headers=admin).json()["ok"]
+    detail = c.get(f"/api/admin/cohorts/{cid}", headers=admin).json()
+    assert any(m["uid"] == uid and m["name"] == "Patricia" for m in detail["members"])
+    onboard = c.post(f"/api/admin/cohorts/{cid}/onboard",
+                     json={"email": "new@t.local", "name": "Nia",
+                           "role": "challenger"}, headers=admin).json()
+    assert onboard["ok"] and onboard["name"] == "Nia"
+    listed = c.get("/api/admin/cohorts?sort=members&direction=desc",
+                   headers=admin).json()["cohorts"]
+    assert listed[0]["id"] == cid and listed[0]["member_count"] == 2
+    assert c.delete(f"/api/admin/cohorts/{cid}/members/{uid}",
+                    headers=admin).json()["ok"]
+    assert len(c.get(f"/api/admin/cohorts/{cid}", headers=admin).json()["members"]) == 1
+
+
+def test_auth09_challenger_settings_byok(tmp_path, monkeypatch):
+    monkeypatch.setattr("sim.adapters.llm.groq_client.validate_groq_key", lambda k: None)
+    c = _fake(tmp_path)
+    ch = _h("c1", "challenger")
+    c.get("/api/auth/me", headers=ch)
+    me = c.get("/api/auth/me", headers=ch).json()
+    assert me["has_groq_key"] is False
+    assert "groq_key" not in me and "groq_key_enc" not in me
+    assert c.patch("/api/me", json={"name": "Casey"}, headers=ch).json()["name"] == "Casey"
+    saved = c.patch("/api/me", json={"groq_key": "gsk_secret_test"}, headers=ch)
+    assert saved.status_code == 200 and saved.json()["has_groq_key"] is True
+    assert "gsk_secret_test" not in str(saved.json())
+    me = c.get("/api/auth/me", headers=ch).json()
+    assert me["name"] == "Casey" and me["has_groq_key"] is True
+    assert "gsk_" not in str(me)
+    admin = _h("a1", "admin", "admin@t.local")
+    c.get("/api/auth/me", headers=admin)
+    users = c.get("/api/admin/users", headers=admin).json()["users"]
+    casey = next(u for u in users if u["email"] == "c1@t.local")
+    assert casey["has_groq_key"] is True
+    assert "groq_key_enc" not in casey and "groq_key" not in casey
+    assert c.patch("/api/admin/users/c1", json={"name": "Casey Lee"},
+                   headers=admin).json()["name"] == "Casey Lee"
+    assert c.get("/api/auth/me", headers=ch).json()["has_groq_key"] is True
+    assert c.patch("/api/me", json={"clear_groq_key": True},
+                   headers=ch).json()["has_groq_key"] is False
+    monkeypatch.setattr(
+        "sim.adapters.llm.groq_client.validate_groq_key",
+        lambda k: (_ for _ in ()).throw(RuntimeError("Groq rejected that key.")))
+    bad = c.patch("/api/me", json={"groq_key": "nope"}, headers=ch)
+    assert bad.status_code == 400
+    assert c.patch("/api/me", json={"name": "X"}).status_code == 401
+
+
+def test_auth09_password_mode_blocks_me_patch(tmp_path):
+    c, _h = _pw(tmp_path)
+    assert c.patch("/api/me", json={"name": "X"}).status_code == 400
+
+
+def test_auth10_admin_user_full_crud(tmp_path):
+    c = _fake(tmp_path)
+    admin = _h("a1", "admin", "admin@t.local")
+    ch = _h("c1", "challenger")
+    c.get("/api/auth/me", headers=admin)
+    created = c.post("/api/admin/users",
+                     json={"email": "sam@t.local", "name": "Sam",
+                           "role": "challenger", "password": "secret1"},
+                     headers=admin).json()
+    uid = created["uid"]
+    co = c.post("/api/admin/cohorts", json={"name": "Spring"},
+                headers=admin).json()
+    cid = co["id"]
+    patched = c.patch(f"/api/admin/users/{uid}",
+                      json={"name": "Samantha", "email": "samantha@t.local",
+                            "role": "instructor", "cohort_ids": [cid],
+                            "password": "secret2"},
+                      headers=admin).json()
+    assert patched["ok"] and patched["name"] == "Samantha"
+    assert patched["email"] == "samantha@t.local"
+    assert patched["role"] == "instructor"
+    assert patched["cohort_ids"] == [cid]
+    assert patched["password_set"] is True
+    assert "password" not in patched and "secret2" not in str(patched)
+    listed = c.get("/api/admin/users", headers=admin).json()["users"]
+    sam = next(u for u in listed if u["uid"] == uid)
+    assert sam["name"] == "Samantha" and cid in sam["cohort_ids"]
+    assert "password" not in sam
+    cleared = c.patch(f"/api/admin/users/{uid}",
+                      json={"cohort_ids": []}, headers=admin).json()
+    assert cleared["cohort_ids"] == []
+    reset = c.patch(f"/api/admin/users/{uid}",
+                    json={"send_reset": True}, headers=admin).json()
+    assert reset["ok"] and reset["reset_sent"] is True
+    assert c.patch(f"/api/admin/users/{uid}",
+                   json={"name": "Nope"}, headers=ch).status_code == 403
+    taken = c.patch(f"/api/admin/users/{uid}",
+                    json={"email": "admin@t.local"}, headers=admin)
+    assert taken.status_code == 400
