@@ -234,3 +234,28 @@ def test_auth10_admin_user_full_crud(tmp_path):
     taken = c.patch(f"/api/admin/users/{uid}",
                     json={"email": "admin@t.local"}, headers=admin)
     assert taken.status_code == 400
+
+
+def test_auth_claim01_unassigned_link_is_claimable(tmp_path):
+    """Instructor hands out a link with no assignee: the first challenger to open
+    it is 403 on the scenario, claims it, then has access. A second challenger
+    cannot take it over."""
+    c = _fake(tmp_path)
+    inst, ch, other = _h("i1", "instructor"), _h("c1", "challenger"), _h("c2", "challenger")
+    sid = c.post("/api/instructor/sessions",
+                 json={"scenario": "iv_url_shortener", "level": "senior"},
+                 headers=inst).json()["session_id"]
+    assert c.get(f"/api/session/{sid}/scenario", headers=ch).status_code == 403
+    assert c.post(f"/api/session/{sid}/claim", headers=ch).json()["ok"] is True
+    sc = c.get(f"/api/session/{sid}/scenario", headers=ch).json()
+    assert [p["key"] for p in sc["personas"]] == ["sia", "rowan"]
+    assert c.post(f"/api/session/{sid}/claim", headers=other).status_code == 403
+    assert c.get(f"/api/session/{sid}/scenario", headers=other).status_code == 403
+
+
+def test_auth_claim02_unknown_session_not_claimable(tmp_path):
+    """A session id nobody created (e.g. typed by hand) cannot be claimed."""
+    c = _fake(tmp_path)
+    ch = _h("c1", "challenger")
+    assert c.post("/api/session/s-madeup/claim", headers=ch).status_code == 403
+    assert c.get("/api/session/s-madeup/scenario", headers=ch).status_code == 403

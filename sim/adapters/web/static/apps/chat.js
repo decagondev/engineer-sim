@@ -184,9 +184,15 @@ SimApps.register({
     }
 
     (async function boot() {
-      const sc = ctx.scenario;
-      sc.personas.forEach(p => meta[p.key] = { name: p.name, role: p.role });
-      primaryKey = sc.personas[0].key;
+      const sc = ctx.scenario || {};
+      const personas = Array.isArray(sc.personas) ? sc.personas : [];
+      if (!personas.length) {
+        logEl.innerHTML = '<div class="sys">No one is online for this session. It may not be assigned to you — reopen it from your dashboard.</div>';
+        sendBtn.disabled = true; input.disabled = true;
+        return;
+      }
+      personas.forEach(p => meta[p.key] = { name: p.name, role: p.role });
+      primaryKey = personas[0].key;
       const history = await (await fetch(`/api/session/${sid}/transcript`)).json();
       ensureChannel(primaryKey, { replay: true });
       if (history.length === 0) {

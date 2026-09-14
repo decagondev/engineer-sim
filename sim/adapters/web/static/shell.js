@@ -6,8 +6,8 @@ window.SimApps = (function () {
   let current = null, handle = null;
 
   let sid = location.hash.slice(1);
-  if (!sid) { sid = "s-" + Math.random().toString(36).slice(2, 9); location.hash = sid; }
   const ctx = { sid, scenario: null };
+  const HOME = { admin: "/admin", instructor: "/instructor", challenger: "/challenger" };
 
   const $ = id => document.getElementById(id);
 
@@ -20,18 +20,59 @@ window.SimApps = (function () {
     }
   }
 
+  function blocked(title, msg) {
+    $("brand").textContent = title; $("hero").textContent = title; document.title = title;
+    const sub = document.querySelector("#desktop .sub");
+    if (sub) sub.textContent = msg;
+    $("dock").innerHTML = "";
+  }
+
   async function boot() {
+    let gated = false, me = null;
     try {
       const cfg = await (await fetch("/api/auth/config")).json();
-      if (cfg.auth_mode && cfg.auth_mode !== "password") {
-        if (!window.SimAuth || !SimAuth.token()) {
-          location.href = "/login?next=/" + location.hash;
-          return;
-        }
-      }
+      gated = !!(cfg.auth_mode && cfg.auth_mode !== "password");
     } catch (e) {}
-    try { ctx.scenario = await (await fetch(`/api/session/${sid}/scenario`, { headers: window.SimAuth ? SimAuth.headers() : {} })).json(); }
-    catch (e) { ctx.scenario = { title: "Workstation", personas: [] }; }
+    if (gated) {
+      if (!window.SimAuth || !SimAuth.token()) {
+        location.href = "/login?next=/" + location.hash;
+        return;
+      }
+      me = await SimAuth.me();
+      if (!me) { SimAuth.signOut("/login?next=/" + location.hash); return; }
+      if (!sid) {
+        // Hosted sessions are created by an instructor; never mint one here.
+        location.href = HOME[me.role] || "/challenger";
+        return;
+      }
+    } else if (!sid) {
+      sid = "s-" + Math.random().toString(36).slice(2, 9); location.hash = sid; ctx.sid = sid;
+    }
+    async function loadScenario() {
+      const r = await fetch(`/api/session/${sid}/scenario`);
+      return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
+    }
+    let res;
+    try {
+      res = await loadScenario();
+      if (res.status === 403 && me && me.role === "challenger") {
+        // An unassigned session link: claim it, then try again.
+        const c = await fetch(`/api/session/${sid}/claim`, { method: "POST" });
+        if (c.ok) res = await loadScenario();
+      }
+    } catch (e) { res = { ok: false, status: 0, body: {} }; }
+    if (!res.ok) {
+      const why = res.status === 403
+        ? "This session is not assigned to you. Open one from your dashboard, or ask your instructor for a link."
+        : res.status === 401
+          ? "Your sign-in has expired. Please sign in again."
+          : "Could not load this session. Check your connection and refresh.";
+      blocked("No access", why);
+      if (res.status === 401 && window.SimAuth) SimAuth.signOut("/login?next=/" + location.hash);
+      return;
+    }
+    ctx.scenario = res.body;
+    if (!Array.isArray(ctx.scenario.personas)) ctx.scenario.personas = [];
     const title = ctx.scenario.title || "Workstation";
     $("brand").textContent = title;
     $("hero").textContent = title;
