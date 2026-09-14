@@ -40,6 +40,10 @@ window.SimApps = (function () {
       }
       me = await SimAuth.me();
       if (!me) { SimAuth.signOut("/login?next=/" + location.hash); return; }
+      $("who").textContent = me.name || me.email || ""; $("who").hidden = false;
+      $("dash").href = HOME[me.role] || "/challenger"; $("dash").hidden = false;
+      $("signout").hidden = false;
+      $("signout").onclick = () => SimAuth.signOut("/login");
       if (!sid) {
         // Hosted sessions are created by an instructor; never mint one here.
         location.href = HOME[me.role] || "/challenger";

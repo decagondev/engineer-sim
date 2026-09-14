@@ -22,6 +22,9 @@
            background:rgba(16,19,26,.7);backdrop-filter:blur(12px);
            border-bottom:1px solid rgba(255,255,255,.06);font-size:13px;position:relative;z-index:5}
   #menubar .brand{font-weight:600}
+  #menubar .who{opacity:.7;margin-right:10px;font-size:12px}
+  #menubar .menubtn{font:inherit;font-size:12px;color:inherit;background:transparent;border:1px solid rgba(255,255,255,.25);border-radius:6px;padding:3px 10px;margin-right:10px;cursor:pointer;text-decoration:none;line-height:1.4}
+  #menubar .menubtn:hover{background:rgba(255,255,255,.08)}
   #menubar .app-name{color:var(--muted)}
   #menubar .spacer{flex:1}
   #menubar .clock{font-family:var(--mono);color:var(--muted);font-size:12px}
@@ -91,6 +94,9 @@
     <span class="brand" id="brand">Workstation</span>
     <span class="app-name" id="appname"></span>
     <span class="spacer"></span>
+    <span class="who" id="who" hidden></span>
+    <a class="menubtn" id="dash" href="/challenger" hidden>Dashboard</a>
+    <button class="menubtn" id="signout" type="button" hidden>Sign out</button>
     <span class="clock" id="clock"></span>
   </div>
   <div id="stage">
