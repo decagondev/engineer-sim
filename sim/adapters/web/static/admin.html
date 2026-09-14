@@ -19,9 +19,11 @@
   .side{width:200px;border-right:1px solid var(--line);padding:12px 10px}
   .nav{padding:10px 12px;border-radius:9px;cursor:pointer}
   .nav:hover,.nav.active{background:var(--panel-2)}
-  .content{flex:1;overflow:auto;padding:24px 28px}
+  .content{flex:1;min-width:0;overflow:auto;padding:32px max(28px,calc((100% - 1080px)/2)) 48px}
   .content h1{font-size:22px;margin:0 0 8px}
   .muted{color:var(--muted);font-size:13px}
+  .content a{color:var(--me);text-decoration:none}
+  .content a:hover{text-decoration:underline}
   .suspense{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;min-height:min(420px,calc(100vh - 140px));padding:24px}
   .spin-lg{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--me);border-radius:50%;animation:spin .7s linear infinite}
   input,select{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 10px;font:inherit}
@@ -48,6 +50,25 @@
   .fld input,.fld select{min-width:180px}
   .co-list{display:flex;flex-wrap:wrap;gap:10px 16px;margin:4px 0}
   .co-list label{display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px}
+  textarea{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:10px 12px;font:inherit;font-size:13px;line-height:1.5;width:100%;box-sizing:border-box;resize:vertical}
+  textarea:focus,input:focus,select:focus{outline:none;border-color:var(--me)}
+  .row .spacer{flex:1}
+  .bulk .head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
+  .bulk code{font-family:var(--mono);font-size:12px}
+  .bulk label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)}
+  .progress{display:flex;align-items:center;gap:12px;margin:10px 0}
+  .progress .track{flex:1;height:6px;background:var(--panel-2);border-radius:999px;overflow:hidden}
+  .progress .fill{height:100%;background:var(--me);width:0;transition:width .2s}
+  .bulk-sum{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 4px}
+  .bulk-sum .pill{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px}
+  .bulk-sum .pill.ok{border-color:rgba(55,214,122,.45);color:#37d67a}
+  .bulk-sum .pill.warn{border-color:rgba(224,169,74,.45);color:#e0a94a}
+  .bulk-sum .pill.bad{border-color:var(--bad);color:var(--bad)}
+  .bulk .status:empty{display:none}
+  .bulk .row{margin-bottom:0}
+  details.bulk-list{margin:6px 0;font-size:13px}
+  details.bulk-list summary{cursor:pointer;color:var(--muted)}
+  details.bulk-list ul{margin:6px 0 0 18px;padding:0}
 </style>
 </head>
 <body>
@@ -206,8 +227,10 @@ async function show(v){
         <select id="nu-role"><option>challenger</option><option>instructor</option><option>admin</option></select>
         <select id="nu-co"><option value="">no cohort</option>${cohorts.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
         <button class="primary" id="nu"><span class="spin"></span><span id="nu-label">Create</span></button>
+        <button id="nu-bulk">Bulk import…</button>
       </div>
       <p class="status muted" id="nu-status"></p>
+      <div id="bk-host" hidden></div>
       <table><thead><tr>
         ${sortHead([["name","Name"],["email","Email"],["role","Role"]], state.uSort, state.uDir)}
         <th>Cohorts</th><th>Disabled</th><th></th>
@@ -246,6 +269,12 @@ async function show(v){
         </div>
       </td></tr>`).join("")}</tbody></table>`;
     c.querySelectorAll("th.sort").forEach(th => th.onclick = () => { toggleSort("u", th.dataset.sort); show("users"); });
+    el("nu-bulk").onclick = () => {
+      const host = el("bk-host");
+      if (host.hidden) bulkPanel(host, {key:"users", view:"users", cohorts}); else { host.hidden = true; host.innerHTML = ""; }
+    };
+    if (state.bulk && state.bulk.key === "users") bulkPanel(el("bk-host"), {key:"users", view:"users", cohorts});
+
     el("nu").onclick = async () => {
       const email = el("nu-email").value.trim();
       const btn = el("nu");
@@ -494,6 +523,92 @@ async function show(v){
   }
 }
 
+// ---- bulk add people (Users page and each cohort page) ----
+const EMAIL_RE = /[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g;
+function countPeople(text){
+  const seen = new Set();
+  (text||"").split(/\r?\n/).forEach(l => (l.match(EMAIL_RE)||[]).forEach(e => seen.add(e.toLowerCase())));
+  return seen.size;
+}
+function bulkPanel(host, opts){
+  const key = opts.key;
+  const coSel = opts.cohorts ? `<select id="bk-co"><option value="">no cohort</option>${opts.cohorts.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>` : "";
+  host.hidden = false;
+  host.innerHTML = `<div class="editor-card bulk">
+    <div class="head"><b>Bulk add people</b><span class="muted">Paste one person per line: an email, <code>Name &lt;email&gt;</code>, or a row copied from a spreadsheet. Existing accounts are reused${opts.cohortId ? " and added to this cohort" : ""}.</span></div>
+    <textarea id="bk-text" rows="7" placeholder="amy@school.edu&#10;Ben Okoro <ben@school.edu>&#10;Cara Diaz, cara@school.edu"></textarea>
+    <div class="row">${coSel}
+      <select id="bk-role"><option value="challenger">challenger</option><option value="instructor">instructor</option></select>
+      <label class="chk"><input type="checkbox" id="bk-reset" checked/> Email each new account a set-password link</label>
+      <span class="spacer"></span>
+      <button class="primary" id="bk-go" disabled><span class="spin"></span><span id="bk-go-label">Add people</span></button>
+    </div>
+    <div class="progress" id="bk-prog" hidden><div class="track"><div class="fill" id="bk-fill"></div></div><span class="muted" id="bk-count"></span></div>
+    <p class="status muted" id="bk-status"></p>
+    <div id="bk-result"></div>
+  </div>`;
+  const ta = el("bk-text"), go = el("bk-go"), lab = el("bk-go-label");
+  ta.addEventListener("input", () => {
+    const n = countPeople(ta.value);
+    lab.textContent = n ? `Add ${n} ${n === 1 ? "person" : "people"}` : "Add people";
+    go.disabled = !n;
+  });
+  if (state.bulk && state.bulk.key === key) renderBulkResult(state.bulk.result);
+  go.onclick = async () => {
+    const lines = ta.value.split(/\r?\n/).filter(l => l.trim());
+    const total = countPeople(ta.value);
+    const body = { role: el("bk-role").value, send_reset: el("bk-reset").checked,
+                   cohort_id: opts.cohortId || (el("bk-co") ? el("bk-co").value : "") };
+    const sum = { created:[], existing:[], failed:[], invalid:[], cohort:null };
+    go.disabled = true; go.classList.add("busy"); ta.disabled = true;
+    el("bk-prog").hidden = false; el("bk-fill").style.width = "0%"; el("bk-result").innerHTML = "";
+    el("bk-status").className = "status muted";
+    el("bk-status").textContent = body.send_reset ? "Creating accounts and sending set-password emails…" : "Creating accounts…";
+    let done = 0;
+    try {
+      for (let i = 0; i < lines.length; i += 10) {
+        const chunk = lines.slice(i, i + 10);
+        const r = await fetch("/api/admin/users/bulk", {method:"POST", headers:h(), body: JSON.stringify({...body, text: chunk.join("\n")})});
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) { el("bk-status").className = "status err"; el("bk-status").textContent = errText(d, r, "Bulk add failed."); return; }
+        ["created","existing","failed","invalid"].forEach(k => sum[k].push(...(d[k]||[])));
+        sum.cohort = d.cohort || sum.cohort;
+        done += chunk.length;
+        el("bk-fill").style.width = Math.round(100 * done / lines.length) + "%";
+        el("bk-count").textContent = `${Math.min(sum.created.length + sum.existing.length + sum.failed.length, total)} / ${total}`;
+      }
+      state.bulk = { key, result: sum };
+      bustAdmin();
+      await show(opts.view);
+    } catch (e) {
+      el("bk-status").className = "status err";
+      el("bk-status").textContent = "Network error. People already processed were saved; paste the rest and try again.";
+    } finally {
+      if (el("bk-go")) { go.disabled = false; go.classList.remove("busy"); ta.disabled = false; }
+    }
+  };
+}
+function renderBulkResult(r){
+  const box = el("bk-result"); if (!box) return;
+  const who = u => esc(u.name ? `${u.name} <${u.email}>` : u.email);
+  const list = (title, items, fmt, open) => items.length
+    ? `<details class="bulk-list"${open ? " open" : ""}><summary>${title} (${items.length})</summary><ul>${items.map(fmt).join("")}</ul></details>` : "";
+  box.innerHTML = `
+    <div class="bulk-sum">
+      <span class="pill ok">Created ${r.created.length}</span>
+      <span class="pill">Already had an account ${r.existing.length}</span>
+      ${r.failed.length ? `<span class="pill bad">Could not create ${r.failed.length}</span>` : ""}
+      ${r.invalid.length ? `<span class="pill warn">Not an email ${r.invalid.length}</span>` : ""}
+      ${r.cohort ? `<span class="pill">added to ${esc(r.cohort.name)}</span>` : ""}
+      <span class="spacer"></span><button id="bk-clear">Clear</button>
+    </div>
+    ${list("Created", r.created, u => `<li>${who(u)}</li>`)}
+    ${list("Already had an account", r.existing, u => `<li>${who(u)} · ${esc(u.role)}</li>`)}
+    ${list("Could not create", r.failed, u => `<li>${who(u)} — ${esc(u.reason)}</li>`, true)}
+    ${list("Not an email", r.invalid, l => `<li>${esc(l)}</li>`, true)}`;
+  el("bk-clear").onclick = () => { state.bulk = null; box.innerHTML = ""; };
+}
+
 async function showCohort(c, cid, gen){
   const [detail, users] = await Promise.all([
     loadJson("/api/admin/cohorts/"+cid),
@@ -511,14 +626,7 @@ async function showCohort(c, cid, gen){
       <button id="co-save"><span class="spin"></span><span id="co-save-label">Save</span></button>
     </div>
     <p class="status muted" id="co-status"></p>
-    <h2 style="font-size:16px;margin:22px 0 8px">Onboard someone new</h2>
-    <div class="row">
-      <input id="on-name" placeholder="name"/>
-      <input id="on-email" placeholder="email"/>
-      <select id="on-role"><option>challenger</option><option>instructor</option><option>admin</option></select>
-      <button class="primary" id="on"><span class="spin"></span><span id="on-label">Onboard</span></button>
-    </div>
-    <p class="status muted" id="on-status"></p>
+    <div id="bk-host" style="margin-top:22px"></div>
     <h2 style="font-size:16px;margin:22px 0 8px">Members (${(detail.members||[]).length})</h2>
     <div class="row">
       <select id="add-uid" style="min-width:240px">
@@ -551,28 +659,7 @@ async function showCohort(c, cid, gen){
       setBusy(el("co-save"), false, "co-save-label", "Save", "Saving…");
     }
   };
-  el("on").onclick = async () => {
-    const email = el("on-email").value.trim();
-    if (!email) { el("on-status").className="status err"; el("on-status").textContent="Enter an email."; return; }
-    const btn = el("on");
-    setBusy(btn, true, "on-label", "Onboard", "Onboarding…");
-    ["on-name","on-email","on-role"].forEach(id => { if (el(id)) el(id).disabled = true; });
-    el("on-status").className="status muted";
-    el("on-status").textContent="Creating the account and sending a password-reset email…";
-    try {
-      const r = await fetch("/api/admin/cohorts/"+cid+"/onboard",{method:"POST",headers:h(),
-        body:JSON.stringify({email, name:el("on-name").value.trim(), role:el("on-role").value, send_reset:true})});
-      const d = await r.json().catch(()=>({}));
-      if (!r.ok) { el("on-status").className="status err"; el("on-status").textContent=errText(d,r,"Could not onboard."); return; }
-      bustAdmin();
-      await show("cohorts");
-    } finally {
-      if (el("on")) {
-        setBusy(el("on"), false, "on-label", "Onboard", "Onboarding…");
-        ["on-name","on-email","on-role"].forEach(id => { if (el(id)) el(id).disabled = false; });
-      }
-    }
-  };
+  bulkPanel(el("bk-host"), {key:"cohort:"+cid, view:"cohorts", cohortId:cid});
   el("add-m").onclick = async () => {
     const uid = el("add-uid").value;
     if (!uid) return;

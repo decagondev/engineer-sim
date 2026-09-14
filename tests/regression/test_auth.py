@@ -314,3 +314,45 @@ def test_auth_cohort01_batch_sessions_for_cohort(tmp_path):
     assert c.post(f"/api/instructor/cohorts/{co}/sessions", json={"scenario": "nope"}, headers=inst).status_code == 400
     assert c.post("/api/instructor/cohorts/co-missing/sessions", json={"scenario": "churn_dashboard"}, headers=inst).status_code == 404
     assert c.get("/api/instructor/cohorts", headers=_h("c9", "challenger")).status_code == 403
+
+
+def test_auth_bulk01_paste_emails_into_cohort(tmp_path):
+    """Admin pastes a messy list: bare emails, Name <email>, csv-ish rows,
+    a duplicate, an existing account and a junk line. Everyone valid ends up in
+    the cohort exactly once; nothing aborts the batch."""
+    c = _fake(tmp_path)
+    admin = _h("a1", "admin", "admin@t.local")
+    c.get("/api/auth/me", headers=admin)
+    co = c.post("/api/admin/cohorts", json={"name": "Oct intake"}, headers=admin).json()["id"]
+    old = c.post("/api/admin/users", json={"email": "old@t.local", "role": "challenger"}, headers=admin).json()
+    text = "\n".join([
+        "amy@t.local",
+        "Ben Okoro <ben@t.local>",
+        "Cara Diaz, cara@t.local",
+        "dan@t.local\tDan Two",
+        "AMY@t.local",                 # duplicate, different case
+        "old@t.local",                 # already exists
+        "not an email at all",
+        "",
+        "eve@t.local; fay@t.local",
+    ])
+    r = c.post("/api/admin/users/bulk",
+               json={"text": text, "cohort_id": co, "role": "challenger"}, headers=admin).json()
+    assert r["ok"] and r["cohort"]["id"] == co
+    assert sorted(u["email"] for u in r["created"]) == [
+        "amy@t.local", "ben@t.local", "cara@t.local", "dan@t.local", "eve@t.local", "fay@t.local"]
+    names = {u["email"]: u["name"] for u in r["created"]}
+    assert names["ben@t.local"] == "Ben Okoro" and names["cara@t.local"] == "Cara Diaz"
+    assert names["dan@t.local"] == "Dan Two" and names["amy@t.local"] == ""
+    assert [u["uid"] for u in r["existing"]] == [old["uid"]]
+    assert r["invalid"] == ["not an email at all"] and r["failed"] == []
+    members = c.get(f"/api/admin/cohorts/{co}", headers=admin).json()["members"]
+    assert len(members) == 7 and all(m["role"] == "challenger" for m in members)
+    # re-running is idempotent: nothing new, everyone reported as existing
+    again = c.post("/api/admin/users/bulk", json={"text": text, "cohort_id": co}, headers=admin).json()
+    assert again["created"] == [] and len(again["existing"]) == 7
+    assert len(c.get(f"/api/admin/cohorts/{co}", headers=admin).json()["members"]) == 7
+    # guards
+    assert c.post("/api/admin/users/bulk", json={"text": "x@t.local", "cohort_id": "co-nope"}, headers=admin).status_code == 404
+    assert c.post("/api/admin/users/bulk", json={"text": "x@t.local", "role": "god"}, headers=admin).status_code == 400
+    assert c.post("/api/admin/users/bulk", json={"text": "x@t.local"}, headers=_h("i1", "instructor")).status_code == 403

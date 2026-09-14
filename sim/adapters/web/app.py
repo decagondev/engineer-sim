@@ -1064,6 +1064,88 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"ok": True, "uid": rec.uid, "email": rec.email, "role": rec.role,
                 "name": rec.name}
 
+    _EMAIL_RE = _re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+
+    def _parse_people(text: str) -> tuple[list, list]:
+        """Turn pasted text into [(name, email)], plus the lines with no email.
+
+        Accepts one entry per line in any of: email · Name <email> ·
+        "Name, email" · "email, Name" · spreadsheet rows with tabs. Several
+        entries on one line separated by ; or , also work when they are bare
+        emails. Duplicates (case-insensitive) collapse to the first mention."""
+        people, bad, seen = [], [], set()
+        for raw in (text or "").splitlines():
+            line = raw.strip().strip(",;")
+            if not line:
+                continue
+            emails = _EMAIL_RE.findall(line)
+            if not emails:
+                bad.append(line)
+                continue
+            if len(emails) > 1:
+                # several bare emails on one line; no names to recover
+                for em in emails:
+                    if em.lower() not in seen:
+                        seen.add(em.lower()); people.append(("", em))
+                continue
+            em = emails[0]
+            name = line.replace(em, " ")
+            for ch in "<>,;	\"'":
+                name = name.replace(ch, " ")
+            name = " ".join(name.split())
+            if em.lower() in seen:
+                continue
+            seen.add(em.lower()); people.append((name, em))
+        return people, bad
+
+    @app.post("/api/admin/users/bulk")
+    def admin_bulk_users(payload: dict):
+        """Create many accounts from pasted text and optionally drop them all
+        into a cohort. Existing accounts are not recreated but are still added
+        to the cohort. Never aborts the batch on one bad row."""
+        from sim.core.ports.identity import ROLES
+        payload = payload or {}
+        role = payload.get("role") or "challenger"
+        if role not in ROLES:
+            return JSONResponse({"error": "invalid role"}, status_code=400)
+        people, invalid = _parse_people(str(payload.get("text") or ""))
+        cid = str(payload.get("cohort_id") or "").strip()
+        store = _cohorts()
+        cohort = store.get(cid) if (cid and store) else None
+        if cid and cohort is None:
+            return JSONResponse({"error": "cohort not found"}, status_code=404)
+        send_reset = payload.get("send_reset", True)
+        users = app.state.auth.users
+        created, existing, failed = [], [], []
+        for name, email in people:
+            rec = users.get_by_email(email) if users else None
+            if rec is not None:
+                if cohort is not None:
+                    store.add_member(cid, rec.uid)
+                existing.append({"uid": rec.uid, "email": rec.email,
+                                 "name": rec.name or "", "role": rec.role})
+                continue
+            rec, err = _create_directory_user({
+                "email": email, "name": name, "role": role,
+                "send_reset": bool(send_reset)})
+            if err:
+                try:
+                    reason = (err.body or b"").decode("utf-8")
+                    import json as _json
+                    reason = _json.loads(reason).get("error") or reason
+                except Exception:
+                    reason = "could not create"
+                failed.append({"email": email, "name": name, "reason": reason})
+                continue
+            if cohort is not None:
+                store.add_member(cid, rec.uid)
+            created.append({"uid": rec.uid, "email": rec.email,
+                            "name": rec.name or "", "role": rec.role})
+        return {"ok": True, "role": role,
+                "cohort": ({"id": cohort.id, "name": cohort.name} if cohort else None),
+                "created": created, "existing": existing, "failed": failed,
+                "invalid": invalid}
+
     def _sync_user_cohorts(uid: str, cohort_ids):
         store = _cohorts()
         if store is None:
