@@ -56,6 +56,19 @@
   .bulk .head{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
   .bulk code{font-family:var(--mono);font-size:12px}
   .bulk label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)}
+
+  .st{font:11px/1 var(--mono);border-radius:999px;padding:3px 8px;border:1px solid;white-space:nowrap}
+  .kc{display:inline-block;font:11px/1 var(--mono);border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--muted);margin-right:4px;white-space:nowrap}
+  .kc.on{color:#37d67a;border-color:rgba(55,214,122,.5);background:rgba(55,214,122,.08)}
+  .kc.on::before{content:"✓ "}
+  .rtable{width:100%;border-collapse:collapse;font-size:13px}
+  .rtable th{font:600 11px/1.3 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  .rtable td{padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .rtable tr.click{cursor:pointer}.rtable tr.click:hover td{background:var(--panel-2)}
+  .rtable .id{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  .rtable td.muted,.rtable td .muted{white-space:nowrap}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+  .filters input,.filters select{padding:7px 10px;font-size:13px}
   .progress{display:flex;align-items:center;gap:12px;margin:10px 0}
   .progress .track{flex:1;height:6px;background:var(--panel-2);border-radius:999px;overflow:hidden}
   .progress .fill{height:100%;background:var(--me);width:0;transition:width .2s}
@@ -78,7 +91,8 @@
     <button id="out">Sign out</button></div>
   <div class="shell">
     <nav class="side">
-      <div class="nav active" data-v="users">Users</div>
+      <div class="nav active" data-v="overview">Overview</div>
+      <div class="nav" data-v="users">Users</div>
       <div class="nav" data-v="cohorts">Cohorts</div>
       <div class="nav" data-v="sessions">Sessions</div>
       <div class="nav" data-v="scenarios">Scenarios</div>
@@ -92,16 +106,45 @@
     </div>
   </div>
 <script src="/static/auth.js"></script>
+<script src="/static/viz.js"></script>
 <script>
 const h = () => SimAuth.headers({"Content-Type":"application/json"});
 const el = id => document.getElementById(id);
 const state = {uSort:"name", uDir:"asc", cSort:"name", cDir:"asc", cohortId:""};
 let loadGen = 0;
 const titles = {
-  users: "Users", cohorts: "Cohorts", sessions: "All sessions",
+  overview: "Overview", users: "Users", cohorts: "Cohorts", sessions: "All sessions",
   scenarios: "Scenarios", settings: "Settings",
 };
 const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// ---- shared dashboard bits (state chips, relative time) ----
+const STATE_LABEL = {submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st){ const k = STATE_LABEL[st] ? st : "not_started"; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}</span>`; }
+function keyChips(u){
+  const g = u.has_groq_key, gh = u.has_github_token;
+  return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
+}
+function ago(ts){
+  if(!ts) return "—";
+  const d = new Date(ts); if (isNaN(d)) return String(ts).slice(0,16);
+  const s = (Date.now() - d.getTime())/1000;
+  if (s < 60) return "just now"; if (s < 3600) return Math.floor(s/60)+" min ago";
+  if (s < 86400) return Math.floor(s/3600)+" h ago"; if (s < 7*86400) return Math.floor(s/86400)+" d ago";
+  return d.toLocaleDateString();
+}
+function scenarioBars(stats){
+  return SimViz.hbars(stats.by_scenario.map(b=>({label:b.title, sub:b.key, value:b.total, parts:[
+    {value:b.submitted, color:STATE_COLOR.submitted, label:"submitted"},
+    {value:b.active, color:STATE_COLOR.active, label:"in progress"},
+    {value:b.not_started, color:STATE_COLOR.not_started, label:"not started"}]})), {empty:"No sessions yet."})
+    + SimViz.legend([{label:"submitted",color:STATE_COLOR.submitted},{label:"in progress",color:STATE_COLOR.active},{label:"not started",color:STATE_COLOR.not_started}]);
+}
+function levelBars(stats){
+  const lv = stats.by_level.filter(l=>l.count);
+  return SimViz.hbars(lv.map(l=>({label:l.level, value:l.count})), {empty:"No sessions yet."});
+}
+
 function sortHead(cols, cur, dir){
   return cols.map(([k,label]) => {
     const mark = cur===k ? (dir==="desc" ? " ↓" : " ↑") : "";
@@ -144,6 +187,7 @@ function peek(url){
 function peekAll(urls){ return urls.every(u => peek(u)); }
 function bustAdmin(){ cache.clear(); }
 function viewUrls(v){
+  if (v==="overview") return ["/api/admin/overview"];
   if (v==="users") return [
     `/api/admin/users?sort=${state.uSort}&direction=${state.uDir}`,
     "/api/admin/cohorts?sort=name&direction=asc",
@@ -190,7 +234,7 @@ function toggleSort(which, key){
       if (n.dataset.v === "cohorts") state.cohortId = "";
       show(n.dataset.v);
     });
-    show("users");
+    show("overview");
   } catch (e) {
     failPane("Admin", e.message || "Could not reach the server.", () => location.reload());
   }
@@ -199,6 +243,7 @@ function toggleSort(which, key){
 async function show(v){
   const c = el("content");
   const hints = {
+    overview: "Counting people, sessions and keys…",
     users: "Loading users and cohorts…",
     cohorts: state.cohortId ? "Loading this cohort…" : "Loading cohorts…",
     sessions: "Loading sessions…",
@@ -207,6 +252,42 @@ async function show(v){
   };
   const gen = peekAll(viewUrls(v)) ? ++loadGen : beginLoad(titles[v] || "Admin", hints[v] || "Loading…");
   try {
+  if (v==="overview") {
+    const d = await loadJson("/api/admin/overview", true);
+    if (!still(gen)) return;
+    const u = d.users, s = d.sessions, t = s.totals;
+    const auth = d.auth || {};
+    c.innerHTML = `<h1>Overview</h1>
+      <p class="muted">Auth <b>${esc(auth.auth_mode||"?")}</b> · store <b>${esc(auth.persistence||"sqlite")}</b> · project ${esc(auth.firebase_project_id||"(none)")} · ${esc(d.scenarios.enabled)} of ${esc(d.scenarios.total)} scenarios enabled</p>
+      ${SimViz.tiles([
+        {label:"People", value:u.total, sub:`${u.by_role.admin||0} admin · ${u.by_role.instructor||0} instructors · ${u.by_role.challenger||0} challengers${u.disabled?` · ${u.disabled} disabled`:""}`},
+        {label:"Cohorts", value:d.cohorts.count, sub:`${d.cohorts.members} memberships`},
+        {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
+        {label:"Submitted", value:t.submitted, sub:`${t.active} in progress · ${t.not_started} not started`, tone: t.submitted ? "good" : ""},
+      ])}
+      <div class="viz-grid">
+        ${SimViz.card("Personal keys", "Challengers who added their own key in Settings (their sessions skip the classroom limit)",
+          SimViz.meter(u.with_groq, u.challengers, "Groq API key") + SimViz.meter(u.with_github, u.challengers, "GitHub token") +
+          `<p class="muted" style="margin:8px 0 0">${u.with_both} have both. The Users tab can filter to who is missing one.</p>`)}
+        ${SimViz.card("Activity, last 14 days", "Sessions with their latest message on each day", SimViz.columns(s.activity.map(a=>({day:a.day, value:a.active})), {unit:"sessions"}))}
+      </div>
+      <div class="viz-grid">
+        ${SimViz.card("Sessions by scenario", "Where the class is, per scenario", scenarioBars(s))}
+        ${SimViz.card("Sessions by engineer level", "", levelBars(s))}
+      </div>
+      <div class="viz-grid">
+        ${SimViz.card("Cohorts", "Members per cohort", SimViz.hbars((d.cohorts.list||[]).map(x=>({label:x.name, value:x.members})), {empty:"No cohorts yet."}))}
+        ${SimViz.card("Scenario library", "By track", SimViz.hbars([
+          {label:"Interview assessment", value:d.scenarios.by_track.interview||0},
+          {label:"Systems design", value:d.scenarios.by_track.systems||0},
+          {label:"Product engineering", value:d.scenarios.by_track.product||0}]))}
+      </div>
+      ${SimViz.card("Recent sessions", "Most recently active first",
+        `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
+          (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
+          `<tr><td colspan="6" class="muted">No sessions yet.</td></tr>`}</tbody></table>`)}`;
+    c.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => { location.href = "/instructor#replay=" + tr.dataset.sid; });
+  }
   if (v==="users") {
     const [ud, cd] = await Promise.all([
       loadJson(`/api/admin/users?sort=${state.uSort}&direction=${state.uDir}`),
@@ -229,24 +310,39 @@ async function show(v){
         <select id="nu-co"><option value="">no cohort</option>${cohorts.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
         <button class="primary" id="nu"><span class="spin"></span><span id="nu-label">Create</span></button>
         <button id="nu-bulk">Bulk import…</button>
+        <span class="spacer"></span>
+        <label class="muted" style="display:flex;align-items:center;gap:6px">Show
+          <select id="u-keys">
+            <option value="all" ${(state.uKeys||"all")==="all"?"selected":""}>everyone</option>
+            <option value="no_groq" ${state.uKeys==="no_groq"?"selected":""}>challengers missing a Groq key</option>
+            <option value="no_github" ${state.uKeys==="no_github"?"selected":""}>challengers missing a GitHub token</option>
+            <option value="both" ${state.uKeys==="both"?"selected":""}>people with both keys</option>
+          </select></label>
       </div>
       <p class="status muted" id="nu-status"></p>
       <div id="bk-host" hidden></div>
       <table><thead><tr>
         ${sortHead([["name","Name"],["email","Email"],["role","Role"]], state.uSort, state.uDir)}
-        <th>Cohorts</th><th>Disabled</th><th></th>
+        <th>Keys</th><th>Cohorts</th><th>Disabled</th><th></th>
       </tr></thead>
-      <tbody>${(ud.users||[]).map(u=>`
+      <tbody>${(ud.users||[]).filter(u => {
+        const f = state.uKeys || "all";
+        if (f==="no_groq") return u.role==="challenger" && !u.has_groq_key;
+        if (f==="no_github") return u.role==="challenger" && !u.has_github_token;
+        if (f==="both") return u.has_groq_key && u.has_github_token;
+        return true;
+      }).map(u=>`
       <tr>
         <td>${esc(u.name)||"<span class='muted'>—</span>"}</td>
         <td>${esc(u.email)}<div class="muted">${esc(u.uid)}</div></td>
         <td>${esc(u.role)}</td>
+        <td>${u.role==="challenger" ? keyChips(u) : `<span class="muted">—</span>`}</td>
         <td>${(u.cohort_ids||[]).map(id=>`<span class="chip">${esc(cname[id]||id)}</span>`).join("") || `<span class="muted">—</span>`}</td>
         <td>${u.disabled?"yes":""}</td>
         <td><button data-edit="${esc(u.uid)}">Edit</button>
             <button data-del="${esc(u.uid)}" class="danger">Delete</button></td>
       </tr>
-      <tr class="editor" data-for="${esc(u.uid)}"><td colspan="6">
+      <tr class="editor" data-for="${esc(u.uid)}"><td colspan="7">
         <div class="editor-card">
           <div class="row">
             <label class="fld">Name<input id="ed-name-${esc(u.uid)}" value="${esc(u.name)}" maxlength="80"/></label>
@@ -270,6 +366,7 @@ async function show(v){
         </div>
       </td></tr>`).join("")}</tbody></table>`;
     c.querySelectorAll("th.sort").forEach(th => th.onclick = () => { toggleSort("u", th.dataset.sort); show("users"); });
+    const ks = el("u-keys"); if (ks) ks.onchange = () => { state.uKeys = ks.value; show("users"); };
     el("nu-bulk").onclick = () => {
       const host = el("bk-host");
       if (host.hidden) bulkPanel(host, {key:"users", view:"users", cohorts}); else { host.hidden = true; host.innerHTML = ""; }
@@ -665,13 +762,14 @@ async function showCohort(c, cid, gen){
       </select>
       <button id="add-m"><span class="spin"></span><span id="add-m-label">Add</span></button>
     </div>
-    <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+    <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Keys</th><th></th></tr></thead>
     <tbody>${(detail.members||[]).map(m=>`<tr>
       <td>${esc(m.name)||"<span class='muted'>—</span>"}</td>
       <td>${esc(m.email)}</td>
       <td>${esc(m.role)}</td>
+      <td>${m.role==="challenger" ? keyChips(m) : `<span class="muted">—</span>`}</td>
       <td><button class="danger" data-rm="${esc(m.uid)}">Remove</button></td>
-    </tr>`).join("") || `<tr><td colspan="4" class="muted">Nobody in this cohort yet.</td></tr>`}</tbody></table>`;
+    </tr>`).join("") || `<tr><td colspan="5" class="muted">Nobody in this cohort yet.</td></tr>`}</tbody></table>`;
   el("back-co").onclick = e => { e.preventDefault(); state.cohortId=""; show("cohorts"); };
   el("co-save").onclick = async () => {
     const status = el("co-status");

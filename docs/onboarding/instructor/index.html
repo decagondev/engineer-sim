@@ -29,7 +29,7 @@
   <aside class="brief">
     <h3>What you work with</h3>
     <dl>
-      <dt>Dashboard</dt><dd><code>/instructor</code>: New session, Cohort, Sessions, Settings</dd>
+      <dt>Dashboard</dt><dd><code>/instructor</code>: Overview, New session, Cohort, Sessions, Settings</dd>
       <dt>Interview library</dt><dd>20 <code>iv_*</code> scenarios (rate limiter, URL shortener, chat, parking …)</dd>
       <dt>Per session</dt><dd>one scenario, one engineer level, one challenger</dd>
       <dt>Review</dt><dd>replay with filters, Grade, Export to markdown</dd>
@@ -64,6 +64,7 @@
           </tbody>
         </table></div>
         <p>First visit shows a one-question welcome: the <b>default engineer level</b>. Pick <i>senior</i> unless your cohort is early-career; you can change it per session and later in Settings.</p>
+        <p>You then land on <b>Overview</b>: four counters (sessions, submitted, in progress, not started), a 14-day activity chart, sessions by scenario and by level, a <i>Needs attention</i> list of submissions waiting for review, and the most recent sessions. Every row opens its replay.</p>
       </div>
     </section>
 
@@ -117,7 +118,7 @@
           <li>Press <b>Create sessions</b>. A progress bar counts the sessions as they are created (a few at a time), so a class of forty takes a visible half-minute rather than looking stuck. If the connection drops part-way, press the button again: members who already have the scenario are skipped.</li>
           <li>Use <b>Copy all links</b> for a message to the group, or <b>Download CSV</b> for your own records. Each row also has its own <b>Copy link</b> and <b>Replay</b>.</li>
         </ol>
-        <p>Members see their new session on their dashboard immediately, so on a hosted server you may not need to send links at all.</p>
+        <p>Members see their new session on their dashboard immediately, so on a hosted server you may not need to send links at all. The member list also shows <b>Groq</b> and <b>GitHub</b> chips per person, green with a tick when they have saved their own key, so you can see before class who will be sharing the classroom limit.</p>
       </div>
     </section>
 
@@ -146,7 +147,7 @@
         <label class="check"><input type="checkbox"/> Done</label>
       </div>
       <div class="body">
-        <p>The Sessions tab lists every session you own with its scenario, engineer level, event count and last activity. Open one to get the replay:</p>
+        <p>The Sessions tab lists every session you own with its scenario, engineer level, challenger, state (<i>submitted</i>, <i>in progress</i>, <i>not started</i>), event count and last activity. Search by id, name or scenario, and filter by state or scenario. Click a row to get the replay:</p>
         <ul>
           <li><b>▶ Play</b> and the scrubber step through the transcript in order; the counter shows where you are.</li>
           <li>Filter chips: <b>Chat</b>, <b>Mail</b>, <b>Tickets</b>, <b>Signals</b>. Signals are the simulator's own lines: reveal-ladder unlocks, the assessor joining, submissions. They are the fastest way to see whether discovery happened.</li>

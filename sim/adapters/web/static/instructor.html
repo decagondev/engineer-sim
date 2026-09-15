@@ -51,6 +51,19 @@
   .match.ok{background:rgba(55,214,122,.1);border:1px solid rgba(55,214,122,.3);color:var(--ok)}
   .match.warn{background:rgba(224,169,74,.1);border:1px solid rgba(224,169,74,.3);color:var(--warn)}
   .match.bad{background:rgba(224,101,92,.1);border:1px solid rgba(224,101,92,.3);color:var(--bad)}
+
+  .st{font:11px/1 var(--mono);border-radius:999px;padding:3px 8px;border:1px solid;white-space:nowrap}
+  .kc{display:inline-block;font:11px/1 var(--mono);border-radius:999px;padding:3px 8px;border:1px solid var(--line);color:var(--muted);margin-right:4px;white-space:nowrap}
+  .kc.on{color:#37d67a;border-color:rgba(55,214,122,.5);background:rgba(55,214,122,.08)}
+  .kc.on::before{content:"✓ "}
+  .rtable{width:100%;border-collapse:collapse;font-size:13px}
+  .rtable th{font:600 11px/1.3 var(--ui);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  .rtable td{padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .rtable tr.click{cursor:pointer}.rtable tr.click:hover td{background:var(--panel-2)}
+  .rtable .id{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  .rtable td.muted,.rtable td .muted{white-space:nowrap}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+  .filters input,.filters select{padding:7px 10px;font-size:13px}
   .linkbox{display:flex;gap:8px;margin-top:12px}
   .prog{margin-top:14px}
   .prog .lab{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px}
@@ -148,7 +161,8 @@
   </div>
   <div class="shell hidden" id="shell">
     <nav class="side">
-      <div class="nav active" data-view="new">New session</div>
+      <div class="nav active" data-view="overview">Overview</div>
+      <div class="nav" data-view="new">New session</div>
       <div class="nav" data-view="cohort">Cohort</div>
       <div class="nav" data-view="sessions">Sessions</div>
       <div class="nav" data-view="settings">Settings</div>
@@ -157,6 +171,7 @@
   </div>
 
 <script src="/static/md.js"></script>
+<script src="/static/viz.js"></script>
 <script src="/static/vendor/mermaid/mermaid.min.js"></script>
 <script src="/static/diagram.js"></script>
 <script src="/static/auth.js"></script>
@@ -217,14 +232,48 @@ el("ob-save").onclick = async ()=>{
   el("onboard").classList.add("hidden"); enterDashboard();
 };
 
-function enterDashboard(){ el("shell").classList.remove("hidden"); switchView("new"); }
+function enterDashboard(){
+  el("shell").classList.remove("hidden");
+  const m = location.hash.match(/^#replay=(.+)$/);
+  if (m) { history.replaceState(null, "", location.pathname); switchView("sessions"); openReplay(m[1]); return; }
+  switchView("overview");
+}
+// ---- shared dashboard bits (state chips, relative time) ----
+const STATE_LABEL = {submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st){ const k = STATE_LABEL[st] ? st : "not_started"; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}</span>`; }
+function keyChips(u){
+  const g = u.has_groq_key, gh = u.has_github_token;
+  return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
+}
+function ago(ts){
+  if(!ts) return "—";
+  const d = new Date(ts); if (isNaN(d)) return String(ts).slice(0,16);
+  const s = (Date.now() - d.getTime())/1000;
+  if (s < 60) return "just now"; if (s < 3600) return Math.floor(s/60)+" min ago";
+  if (s < 86400) return Math.floor(s/3600)+" h ago"; if (s < 7*86400) return Math.floor(s/86400)+" d ago";
+  return d.toLocaleDateString();
+}
+function scenarioBars(stats){
+  return SimViz.hbars(stats.by_scenario.map(b=>({label:b.title, sub:b.key, value:b.total, parts:[
+    {value:b.submitted, color:STATE_COLOR.submitted, label:"submitted"},
+    {value:b.active, color:STATE_COLOR.active, label:"in progress"},
+    {value:b.not_started, color:STATE_COLOR.not_started, label:"not started"}]})), {empty:"No sessions yet."})
+    + SimViz.legend([{label:"submitted",color:STATE_COLOR.submitted},{label:"in progress",color:STATE_COLOR.active},{label:"not started",color:STATE_COLOR.not_started}]);
+}
+function levelBars(stats){
+  const lv = stats.by_level.filter(l=>l.count);
+  return SimViz.hbars(lv.map(l=>({label:l.level, value:l.count})), {empty:"No sessions yet."});
+}
+
 
 // ---- nav ----
 document.querySelectorAll(".side .nav").forEach(n=> n.onclick = ()=> switchView(n.dataset.view));
 function switchView(v){
   document.querySelectorAll(".side .nav").forEach(n=> n.classList.toggle("active", n.dataset.view===v));
   el("content").classList.remove("wide");
-  if(v==="new") renderNew();
+  if(v==="overview") renderOverview();
+  else if(v==="new") renderNew();
   else if(v==="cohort") renderCohort();
   else if(v==="sessions") renderSessions();
   else if(v==="settings") renderSettings();
@@ -315,7 +364,7 @@ async function renderCohort(){
   if(match) scSel.value = match.key;
   lvSel.value = settings.default_level;
   let members = [];
-  const who = m => m.name ? `<span>${esc(m.name)}</span><span class="muted">${esc(m.email)}</span>` : `<span>${esc(m.email || m.uid)}</span>`;
+  const who = m => (m.name ? `<span>${esc(m.name)}</span><span class="muted">${esc(m.email)}</span>` : `<span>${esc(m.email || m.uid)}</span>`) + (m.role==="challenger" && ("has_groq_key" in m) ? `<span>${keyChips(m)}</span>` : "");
   async function loadMembers(){
     el("co-members").innerHTML = `<div class="muted">Loading members…</div>`;
     const d = await (await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}?scenario=${encodeURIComponent(scSel.value)}`,{headers:hdr()})).json();
@@ -402,21 +451,68 @@ async function renderCohort(){
   };
 }
 
+// ---- overview ----
+async function renderOverview(){
+  el("content").classList.add("wide");
+  el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance.</p><div class="muted">Loading…</div>`;
+  let d;
+  try { d = await (await fetch("/api/instructor/overview",{headers:hdr()})).json(); }
+  catch(e){ el("content").innerHTML = `<h1>Overview</h1><p class="match bad">Could not load the overview.</p>`; return; }
+  const s = d.stats, t = s.totals;
+  el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance. Open Sessions for the full list, or click a row below.</p>
+    ${SimViz.tiles([
+      {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
+      {label:"Submitted", value:t.submitted, sub:"ready to grade", tone: t.submitted ? "good" : ""},
+      {label:"In progress", value:t.active, sub:"started, nothing submitted yet"},
+      {label:"Not started", value:t.not_started, sub:"link sent, no messages yet", tone: t.not_started && t.sessions ? "warn" : ""},
+    ])}
+    <div class="viz-grid">
+      ${SimViz.card("Activity, last 14 days", "Sessions with their latest message on each day", SimViz.columns(s.activity.map(a=>({day:a.day, value:a.active})), {unit:"sessions"}))}
+      ${SimViz.card("Sessions by scenario", "Submitted, in progress and not started", scenarioBars(s))}
+    </div>
+    <div class="viz-grid">
+      ${SimViz.card("Sessions by engineer level", "", levelBars(s))}
+      ${SimViz.card("Needs attention", "Submitted but not yet reviewed, newest first",
+        (d.recent||[]).filter(r=>r.state==="submitted").length
+          ? `<table class="rtable"><tbody>${(d.recent||[]).filter(r=>r.state==="submitted").map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${esc(r.title)}</td><td class="muted">${ago(r.submitted_ts||r.last_ts)}</td></tr>`).join("")}</tbody></table>`
+          : `<div class="viz-empty">Nothing waiting. Submissions show up here as they land.</div>`)}
+    </div>
+    ${SimViz.card("Recent sessions", "Most recently active first",
+      `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
+        (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${levelLabel(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
+        `<tr><td colspan="6" class="muted">No sessions yet. Create one under New session or Cohort.</td></tr>`}</tbody></table>`)}`;
+  el("content").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openReplay(tr.dataset.sid));
+}
+
 // ---- sessions ----
+let sessCache = [];
 async function renderSessions(){
-  el("content").innerHTML = `<h1>Sessions</h1><p class="sub">Recorded runs. Click to replay.</p><div id="slist"></div>`;
+  el("content").classList.add("wide");
+  el("content").innerHTML = `<h1>Sessions</h1><p class="sub">Every session you own. Click a row to replay it.</p>
+    <div class="filters">
+      <input id="s-q" placeholder="Search id, challenger, scenario…" style="min-width:240px"/>
+      <select id="s-state"><option value="">Any state</option><option value="submitted">Submitted</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
+      <select id="s-sc"><option value="">Any scenario</option></select>
+      <span class="muted" id="s-count"></span>
+    </div>
+    <div id="slist"><div class="muted">Loading…</div></div>`;
   const data = await (await fetch("/api/instructor/sessions",{headers:hdr()})).json();
-  const box = el("slist");
-  if(!data.sessions || !data.sessions.length){ box.innerHTML = `<div class="muted">No sessions recorded yet.</div>`; return; }
-  box.innerHTML = "";
-  data.sessions.forEach(s=>{
-    const row = document.createElement("div"); row.className="srow";
-    row.innerHTML = `<span class="id">${s.session_id}</span>
-      <span class="tags"><span class="badge">${s.scenario||"—"}</span><span class="badge">${levelLabel(s.level)}</span></span>
-      <span class="meta">${s.count} events<br/>${fmtDate(s.last_ts)}</span>`;
-    row.onclick = ()=> openReplay(s.session_id);
-    box.appendChild(row);
-  });
+  sessCache = data.sessions || [];
+  const scs = [...new Set(sessCache.map(s=>s.scenario))].sort();
+  el("s-sc").innerHTML = `<option value="">Any scenario</option>` + scs.map(k=>`<option value="${esc(k)}">${esc((sessCache.find(s=>s.scenario===k)||{}).title||k)}</option>`).join("");
+  const draw = ()=>{
+    const q = el("s-q").value.trim().toLowerCase(), st = el("s-state").value, sc = el("s-sc").value;
+    const rows = sessCache.filter(s => (!st || s.state===st) && (!sc || s.scenario===sc) &&
+      (!q || [s.session_id, s.assignee, s.title, s.scenario].some(v => String(v||"").toLowerCase().includes(q))));
+    el("s-count").textContent = `${rows.length} of ${sessCache.length}`;
+    const box = el("slist");
+    if(!rows.length){ box.innerHTML = `<div class="muted">${sessCache.length ? "No sessions match." : "No sessions recorded yet."}</div>`; return; }
+    box.innerHTML = `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
+      rows.map(s=>`<tr class="click" data-sid="${esc(s.session_id)}"><td class="id">${esc(s.session_id)}</td><td>${esc(s.title||s.scenario||"—")}<div class="muted">${levelLabel(s.level)}</div></td><td>${esc(s.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(s.state)}</td><td>${s.count||0}</td><td title="${esc(s.last_ts||"")}">${ago(s.last_ts)}</td></tr>`).join("")}</tbody></table>`;
+    box.querySelectorAll("tr.click").forEach(tr => tr.onclick = ()=> openReplay(tr.dataset.sid));
+  };
+  el("s-q").oninput = draw; el("s-state").onchange = draw; el("s-sc").onchange = draw;
+  draw();
 }
 
 // ---- replay ----

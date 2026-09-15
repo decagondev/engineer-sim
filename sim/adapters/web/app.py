@@ -935,7 +935,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                             "disabled": False})
             else:
                 out.append({"uid": u.uid, "email": u.email, "name": u.name or "",
-                            "role": u.role, "disabled": u.disabled})
+                            "role": u.role, "disabled": u.disabled,
+                            "has_groq_key": bool(getattr(u, "groq_key_enc", "")),
+                            "has_github_token": bool(getattr(u, "github_token_enc", ""))})
         out.sort(key=lambda m: (m["name"] or m["email"] or m["uid"]).lower())
         return out
 
@@ -1141,11 +1143,86 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             s["level"] = _session_level(sid)
         return sessions
 
-    @app.get("/api/instructor/sessions")
-    def instructor_sessions(request: Request,
-                            x_instructor_token: str = Header(default="")):
-        if not _instr_ok(x_instructor_token):
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
+    def _parse_ts(ts: str):
+        from datetime import datetime, timezone
+        if not ts:
+            return None
+        try:
+            d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+    def _enrich_sessions(rows: list) -> list:
+        """Add what a dashboard row needs: scenario title/track, assignee label,
+        whether anything was submitted, and a one-word state."""
+        subs = app.state.submissions
+        for s in rows:
+            sc = manager.registry.get(s.get("scenario") or "")
+            s["title"] = sc.title if sc else (s.get("scenario") or "")
+            s["track"] = sc.track if sc else "product"
+            s["assignee"] = _uid_label(s.get("assignee_uid") or "")
+            s["owner"] = _uid_label(s.get("owner_uid") or "")
+            sub = None
+            try:
+                sub = subs.latest(s["session_id"]) if subs is not None else None
+            except Exception:
+                sub = None
+            s["submitted"] = sub is not None
+            s["submitted_ts"] = sub.ts if sub else ""
+            s["state"] = ("submitted" if sub else
+                          "active" if (s.get("count") or 0) > 0 else "not_started")
+        return rows
+
+    def _session_stats(rows: list) -> dict:
+        """Aggregates for the overview pages. Cheap: one pass over the rows."""
+        from datetime import datetime, timedelta, timezone
+        from sim.core.levels import LEVEL_ORDER
+        now = datetime.now(timezone.utc)
+        days = [(now - timedelta(days=i)).date() for i in range(13, -1, -1)]
+        active = {d.isoformat(): 0 for d in days}
+        created = {d.isoformat(): 0 for d in days}
+        by_sc: dict = {}
+        by_level = {lvl: 0 for lvl in LEVEL_ORDER}
+        by_track = {"interview": 0, "systems": 0, "product": 0}
+        states = {"not_started": 0, "active": 0, "submitted": 0}
+        active_24h = 0
+        for s in rows:
+            key = s.get("scenario") or ""
+            b = by_sc.setdefault(key, {"key": key, "title": s.get("title") or key,
+                                       "track": s.get("track") or "product",
+                                       "total": 0, "active": 0, "submitted": 0,
+                                       "not_started": 0})
+            b["total"] += 1
+            b[s.get("state") or "not_started"] += 1
+            states[s.get("state") or "not_started"] += 1
+            by_track[s.get("track") or "product"] = by_track.get(s.get("track") or "product", 0) + 1
+            lvl = s.get("level") or ""
+            if lvl in by_level:
+                by_level[lvl] += 1
+            last = _parse_ts(s.get("last_ts") or "")
+            first = _parse_ts(s.get("first_ts") or "")
+            if last and (s.get("count") or 0) > 0:
+                if (now - last) <= timedelta(hours=24):
+                    active_24h += 1
+                k = last.date().isoformat()
+                if k in active:
+                    active[k] += 1
+            if first:
+                k = first.date().isoformat()
+                if k in created:
+                    created[k] += 1
+        scen = sorted(by_sc.values(), key=lambda b: (-b["total"], b["title"]))
+        return {
+            "totals": {"sessions": len(rows), "active_24h": active_24h, **states},
+            "by_scenario": scen,
+            "by_level": [{"level": k, "count": v} for k, v in by_level.items()],
+            "by_track": by_track,
+            "activity": [{"day": d.isoformat(), "active": active[d.isoformat()],
+                          "created": created[d.isoformat()]} for d in days],
+        }
+
+    def _instructor_rows(request: Request) -> list:
         auth = app.state.auth
         p = _actor(request)
         all_reg = (not auth.gated) or p.role == "admin"
@@ -1153,7 +1230,23 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if auth.gated and p.role == "instructor":
             sessions = [s for s in sessions
                         if s.get("owner_uid", p.uid) in ("", p.uid)]
-        return {"sessions": sessions}
+        return _enrich_sessions(sessions)
+
+    @app.get("/api/instructor/sessions")
+    def instructor_sessions(request: Request,
+                            x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        return {"sessions": _instructor_rows(request)}
+
+    @app.get("/api/instructor/overview")
+    def instructor_overview(request: Request,
+                            x_instructor_token: str = Header(default="")):
+        """Numbers and charts for the instructor's landing page."""
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        rows = _instructor_rows(request)
+        return {"stats": _session_stats(rows), "recent": rows[:8]}
 
     @app.get("/api/instructor/session/{sid}")
     def instructor_session(sid: str, x_instructor_token: str = Header(default="")):
@@ -1659,6 +1752,48 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         users = app.state.auth.users
         rec = users.get(uid) if users else None
         return rec.email if rec else uid
+
+    @app.get("/api/admin/overview")
+    def admin_overview():
+        """Deployment-wide numbers: people, keys, cohorts, scenarios, sessions."""
+        auth = app.state.auth
+        users = list(auth.users.list()) if auth.users else []
+        by_role = {"admin": 0, "instructor": 0, "challenger": 0}
+        disabled = 0
+        chall = [u for u in users if u.role == "challenger"]
+        for u in users:
+            by_role[u.role] = by_role.get(u.role, 0) + 1
+            if u.disabled:
+                disabled += 1
+        groq = sum(1 for u in chall if getattr(u, "groq_key_enc", ""))
+        gh = sum(1 for u in chall if getattr(u, "github_token_enc", ""))
+        both = sum(1 for u in chall if getattr(u, "groq_key_enc", "") and getattr(u, "github_token_enc", ""))
+        store = _cohorts()
+        cohorts = list(store.list()) if store else []
+        members = sum(len(list(store.members(c.id))) for c in cohorts) if store else 0
+        reg = manager.registry
+        enabled = sum(1 for k in reg if app.state.settings.get_scenario_enabled(k))
+        tracks = {"interview": 0, "systems": 0, "product": 0}
+        for sc in reg.values():
+            tracks[sc.track] = tracks.get(sc.track, 0) + 1
+        rows = _enrich_sessions(_merge_known_sessions(all_registered=True))
+        try:
+            status = admin_auth_status()
+        except Exception:
+            status = {}
+        return {
+            "users": {"total": len(users), "by_role": by_role, "disabled": disabled,
+                      "challengers": len(chall), "with_groq": groq, "with_github": gh,
+                      "with_both": both},
+            "cohorts": {"count": len(cohorts), "members": members,
+                        "list": [{"id": c.id, "name": c.name,
+                                  "members": len(list(store.members(c.id)))}
+                                 for c in cohorts]},
+            "scenarios": {"total": len(reg), "enabled": enabled, "by_track": tracks},
+            "sessions": _session_stats(rows),
+            "recent": rows[:8],
+            "auth": status,
+        }
 
     @app.get("/api/admin/sessions")
     def admin_list_sessions():

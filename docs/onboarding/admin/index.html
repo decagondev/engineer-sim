@@ -29,7 +29,7 @@
   <aside class="brief">
     <h3>What an admin controls</h3>
     <dl>
-      <dt>Dashboard</dt><dd><code>/admin</code>: Users, Cohorts, Sessions, Scenarios, Settings</dd>
+      <dt>Dashboard</dt><dd><code>/admin</code>: Overview, Users, Cohorts, Sessions, Scenarios, Settings</dd>
       <dt>Roles</dt><dd>admin &gt; instructor &gt; challenger; admins see everything</dd>
       <dt>Identity</dt><dd>Firebase Authentication, email + password</dd>
       <dt>Storage</dt><dd>Firestore when hosted, SQLite locally</dd>
@@ -62,6 +62,7 @@
           <li>Create a Firebase user with the same email in the Firebase console (Authentication → Users → Add user), or sign in once through the app's sign-in page after the account exists.</li>
           <li>Sign in at <code>/login</code>. The first sign-in with that email, while no admin exists yet, makes you admin. The menu bar then shows <b>Dashboard</b>, which goes to <code>/admin</code>.</li>
         </ol>
+        <p>The dashboard opens on <b>Overview</b>: people by role, cohorts, sessions with how many are active, submitted, in progress or not started, coverage meters for personal Groq keys and GitHub tokens, a 14-day activity chart, sessions by scenario and level, and the most recent sessions.</p>
         <div class="note"><span class="lab">Only the first admin needs this</span>Further admins are created from the Users tab like anyone else, with the role set to <i>admin</i>. Remove the bootstrap variable afterwards if you like; it only acts while no admin exists.</div>
       </div>
     </section>
@@ -104,6 +105,7 @@
           <li><b>Challengers</b> get a dashboard listing the sessions assigned to them and a Settings page for their name and personal keys.</li>
           <li><b>Edit</b> changes name, email, password, role, or cohorts. <b>Delete</b> removes the account from both the directory and Firebase.</li>
         </ul>
+        <p>The <b>Keys</b> column shows, for each challenger, whether they have saved a personal Groq key and GitHub token (green with a tick). The <i>Show</i> filter above the table narrows the list to challengers missing one, which is the list to chase before a class.</p>
         <h3>Bulk import</h3>
         <p><b>Bulk import…</b> takes a pasted list, one person per line: an email, <code>Name &lt;email&gt;</code>, or rows copied straight from a spreadsheet. Existing accounts are reused. Keep <i>Email each new account a set-password link</i> ticked so people can sign in without you handing out passwords.</p>
         <div class="warn"><span class="lab">Firebase's email quota</span>Set-password emails are sent by Firebase, which allows <b>150 per project per day</b> on the free (Spark) plan and 10,000 with a billing instrument attached (Blaze). Test sends, resends and "Forgot password?" all count. Past the limit, rows fail with <i>QUOTA_EXCEEDED : Email quota exceeded</i>; the Firebase account is created but the person is not saved in the simulator's directory, so delete them under Authentication → Users in the Firebase console and import them again once the quota resets or after moving to Blaze. Current usage is under Google Cloud console → IAM &amp; Admin → Quotas, filtered on "Identity Toolkit". For a class of more than a hundred, attach billing before import day.</div>
@@ -183,7 +185,7 @@
             <tr><td>GitHub (build scenarios)</td><td><code>GITHUB_TOKEN</code></td><td>Settings → GitHub token</td><td><a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>, see <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">GitHub's guide</a>. No scopes needed.</td></tr>
           </tbody>
         </table></div>
-        <p>For an interview-only season the Groq key is the one that matters: every persona reply, reveal judgment, diagram, and grade is a model call, and a class submitting together is the peak. Ask challengers to add their own key before the day; the challenger guide walks them through it.</p>
+        <p>For an interview-only season the Groq key is the one that matters: every persona reply, reveal judgment, diagram, and grade is a model call, and a class submitting together is the peak. Ask challengers to add their own key before the day; the challenger guide walks them through it. The Overview's coverage meters and the Users tab's <i>Show</i> filter tell you who still has not.</p>
       </div>
     </section>
 
