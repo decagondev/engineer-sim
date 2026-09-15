@@ -344,4 +344,5 @@ def build_app(config: Config | None = None):
         instructor_password=config.instructor_password,
         github_observer=GitHostBuildObserver(token=config.github_token),
         auth=build_auth(config, manager),
+        public_base_url=config.public_base_url,
     )

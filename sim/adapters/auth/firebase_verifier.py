@@ -92,11 +92,14 @@ class FirebaseVerifier:
             raise IdentityError(str(msg), status=400)
         return data.get("localId") or ""
 
-    def send_password_reset(self, email: str) -> None:
-        r = self._http.post(
-            f"{_OOB}?key={self._key}",
-            json={"requestType": "PASSWORD_RESET", "email": email},
-        )
+    def send_password_reset(self, email: str, continue_url: str = "") -> None:
+        """Email a set/reset-password link. With continue_url, Firebase's reset
+        page shows a Continue button back to that address once the password is
+        saved; the host must be in the project's authorized domains."""
+        body = {"requestType": "PASSWORD_RESET", "email": email}
+        if continue_url:
+            body["continueUrl"] = continue_url
+        r = self._http.post(f"{_OOB}?key={self._key}", json=body)
         if r.status_code != 200:
             data = r.json() or {}
             msg = (data.get("error") or {}).get("message") or "reset failed"

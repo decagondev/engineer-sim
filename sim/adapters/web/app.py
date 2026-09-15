@@ -16,7 +16,8 @@ _STATIC = Path(__file__).parent / "static"
 def create_web_app(manager, grader, grader_calibrated: bool = False,
                    build_observer=None, workspace_reader=None,
                    instructor_password: str = "", github_observer=None,
-                   auth=None) -> FastAPI:
+                   auth=None,
+                   public_base_url: str = "") -> FastAPI:
     """Web adapter. Resolves each session to a per-scenario bundle via the manager;
     grader / build observer / file reader / settings are app-global.
     """
@@ -35,6 +36,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         from sim.adapters.auth.services import AuthServices
         auth = AuthServices("password", password=instructor_password)
     app.state.auth = auth
+    app.state.public_base_url = public_base_url or ""
+    app.state.public_base_url_fixed = bool(public_base_url)
 
     def b(session_id):
         return manager.for_session(session_id)
@@ -62,9 +65,17 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         p = getattr(getattr(request, "state", None), "principal", None)
         return p or _local_instructor()
 
+    def _login_url() -> str:
+        base = getattr(app.state, "public_base_url", "") or ""
+        return f"{base}/login" if base else ""
+
     @app.middleware("http")
     async def auth_gate(request: Request, call_next):
         auth = app.state.auth
+        if not getattr(app.state, "public_base_url_fixed", False):
+            host = request.headers.get("host", "")
+            if host:
+                app.state.public_base_url = f"{request.url.scheme}://{host}"
         if not auth.gated:
             return await call_next(request)
         path = request.url.path
@@ -1026,7 +1037,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             try:
                 uid = auth.firebase.create_email_user(email, password)
                 if send_reset:
-                    auth.firebase.send_password_reset(email)
+                    auth.firebase.send_password_reset(email, continue_url=_login_url())
             except IdentityError as e:
                 return None, JSONResponse({"error": e.detail}, status_code=e.status)
         uid = uid or ("u-" + secrets.token_hex(8))
@@ -1219,7 +1230,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 if fb is None:
                     pass
                 else:
-                    fb.send_password_reset(email)
+                    fb.send_password_reset(email, continue_url=_login_url())
         except IdentityError as e:
             return JSONResponse({"error": e.detail}, status_code=e.status)
         rec = auth.users.upsert(UserRecord(

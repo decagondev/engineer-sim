@@ -148,6 +148,8 @@ FIREBASE_CREDENTIALS_JSON={"type":"service_account",...}
   # a file path or GOOGLE_APPLICATION_CREDENTIALS also work
 LLM_PROVIDER=groq
 GROQ_API_KEY=...          # operator key until H2
+PUBLIC_BASE_URL=https://worksim.decadev.co.uk   # optional; set-password emails
+  # link back here. Omitted, the app uses the host of incoming requests.
 ```
 
 Do not set `AUTH_MODE=password` on Railway.

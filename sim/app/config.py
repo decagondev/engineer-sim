@@ -34,6 +34,7 @@ class Config:
     bootstrap_admin_email: str = ""
     persistence: str = "sqlite"             # sqlite | firestore
     byok_secret: str = ""                   # Fernet secret for per-user Groq keys
+    public_base_url: str = ""               # e.g. https://worksim.example.com; else derived from requests
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -62,4 +63,5 @@ class Config:
             bootstrap_admin_email=os.environ.get("AUTH_BOOTSTRAP_ADMIN_EMAIL", ""),
             persistence=os.environ.get("PERSISTENCE", "sqlite").lower(),
             byok_secret=os.environ.get("BYOK_SECRET", ""),
+            public_base_url=os.environ.get("PUBLIC_BASE_URL", "").rstrip("/"),
         )

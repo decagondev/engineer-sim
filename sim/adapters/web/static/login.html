@@ -174,7 +174,7 @@ async function withLoad(msg, fn){
       await after(cred);
     });
     el("reset").onclick = () => withLoad("Sending reset email…", async () => {
-      await auth.sendPasswordResetEmail(el("email").value);
+      await auth.sendPasswordResetEmail(el("email").value, { url: location.origin + "/login" });
       el("err").textContent = "Reset email sent (if that account exists).";
       hideLoad();
     });
