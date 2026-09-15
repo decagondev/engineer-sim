@@ -193,7 +193,7 @@
   function fenceHtml(lang, code) {
     const key = String(lang || "").trim().split(/\s+/)[0];
     const label = LANG_LABEL[key.toLowerCase()] || key || "code";
-    return `<div class="md-code"><div class="md-code-bar"><span class="md-code-lang">${esc(label)}</span>` +
+    return `<div class="md-code" data-lang="${esc(key.toLowerCase())}"><div class="md-code-bar"><span class="md-code-lang">${esc(label)}</span>` +
       `<button type="button" class="md-copy">Copy</button></div>` +
       `<pre><code>${highlight(code.replace(/\n$/, ""), key)}</code></pre></div>`;
   }

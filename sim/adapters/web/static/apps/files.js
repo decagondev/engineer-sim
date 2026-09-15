@@ -200,6 +200,7 @@ SimApps.register({
       const t = active && tabs.get(active);
       preview.innerHTML = t && window.SimMD ? SimMD.render(t.text) : "";
       if (window.SimMD) SimMD.hydrate(preview);
+      if (window.SimDiagram) SimDiagram.hydrate(preview);
     }
     pvBtn.onclick = () => {
       previewOn = !previewOn;

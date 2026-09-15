@@ -85,6 +85,7 @@ SimApps.register({
           peopleEl = q(".people"), peerEl = q(".peer"), gradeOut = q(".grade"),
           diagramEl = q(".diagram");
     if (window.SimMD) SimMD.hydrate(log);
+    if (window.SimDiagram) SimDiagram.hydrate(log);   // ```mermaid fences in replies become drawings
     const sid = ctx.sid;
     const interview = ctx.scenario && ctx.scenario.track === "interview";
     if (interview) q(".ticketsToggle").hidden = false;
@@ -220,6 +221,7 @@ SimApps.register({
         const d = await (await fetch(`/api/session/${sid}/diagram`)).json();
         if (!d.mermaid) return;
         diagramEl.style.display = "block";
+        if (window.SimDiagram) { await SimDiagram.render(diagramEl, d.mermaid, "Design diagram, drawn from your DESIGN.md"); return; }
         const src = "```mermaid\n" + d.mermaid + "\n```";
         if (window.SimMD) diagramEl.innerHTML = "<div class='muted' style='margin-bottom:6px'>Design diagram</div>" + SimMD.render(src);
         else diagramEl.textContent = d.mermaid;

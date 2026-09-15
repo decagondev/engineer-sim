@@ -157,6 +157,8 @@
   </div>
 
 <script src="/static/md.js"></script>
+<script src="/static/vendor/mermaid/mermaid.min.js"></script>
+<script src="/static/diagram.js"></script>
 <script src="/static/auth.js"></script>
 <script>
 let token = "", settings = null, authMode = "password";
@@ -442,6 +444,8 @@ async function openReplay(sid){
         <div class="timeline" id="timeline"></div>
       </div>
       <div class="replay-side">
+        <div class="head"><b>Design</b><span style="flex:1"></span><button id="diagramBtn" type="button">Refresh</button></div>
+        <div class="body" id="diagrambody"><div class="muted">Loading the submitted design…</div></div>
         <div class="head"><b>Assessment</b><span style="flex:1"></span>
           <label><input type="checkbox" id="includeTickets"/> Tickets extra credit</label>
           <button id="gradeBtn">Grade</button>
@@ -451,7 +455,17 @@ async function openReplay(sid){
     </div>`;
   el("content").querySelector(".back").onclick = ()=> switchView("sessions");
   wireReplay();
+  loadDiagram();
+  el("diagramBtn").onclick = loadDiagram;
   applyFilter(); idx = filtered.length; syncScrub(); renderTimeline();
+}
+async function loadDiagram(){
+  const box = el("diagrambody"); if(!box || !curSid) return;
+  let d = null;
+  try { d = await (await fetch(`/api/session/${curSid}/diagram`,{headers:hdr()})).json(); } catch(e){}
+  if(!d || !d.mermaid){ box.innerHTML = `<div class="muted">No design submitted yet. The diagram is drawn from DESIGN.md when the challenger submits.</div>`; return; }
+  if(window.SimDiagram){ box.innerHTML = ""; const h = document.createElement("div"); box.appendChild(h); await SimDiagram.render(h, d.mermaid, "Drawn from the submitted DESIGN.md"); }
+  else box.innerHTML = window.SimMD ? SimMD.render("```mermaid\n"+d.mermaid+"\n```") : `<pre>${esc(d.mermaid)}</pre>`;
 }
 function surfaceOf(m){ return m.kind==="email"?"mail":m.kind==="ticket"?"ticket":m.kind==="event"?"sig":"chat"; }
 function applyFilter(){ filtered = rows.filter(m=> filters[surfaceOf(m)]); }
@@ -475,6 +489,7 @@ function renderEv(m){
 function syncScrub(){ const sc=el("scrub"); sc.max=filtered.length; sc.value=idx; el("pos").textContent=`${idx} / ${filtered.length}`; }
 function wireReplay(){
   if (window.SimMD) SimMD.hydrate(el("timeline"));
+  if (window.SimDiagram) SimDiagram.hydrate(el("timeline"));
   el("scrub").addEventListener("input", e=>{ idx=+e.target.value; renderTimeline(); });
   el("play").onclick = ()=>{
     if(playTimer){ stopPlay(); return; }

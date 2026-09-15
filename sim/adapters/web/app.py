@@ -93,10 +93,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if not auth.gated:
             return await call_next(request)
         path = request.url.path
-        if (path.startswith("/static") or path in {
-            "/health", "/api/auth/config", "/", "/instructor", "/login",
-            "/challenger", "/admin",
-        }):
+        if path.startswith("/static") or path.startswith("/onboarding"):
+            # always revalidate scripts and pages so a deploy is picked up on
+            # the next load (ETags keep the revalidation cheap)
+            resp = await call_next(request)
+            resp.headers.setdefault("Cache-Control", "no-cache")
+            return resp
+        if path in {"/health", "/api/auth/config", "/", "/instructor", "/login",
+                    "/challenger", "/admin"}:
             return await call_next(request)
         if not path.startswith("/api/"):
             return await call_next(request)
