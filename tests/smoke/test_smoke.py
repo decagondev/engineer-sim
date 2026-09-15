@@ -439,3 +439,15 @@ def test_smk19_github_submission(tmp_path):
     assert c.post("/api/session/s1/submit-repo", json={"url": "https://github.com/owner/good"}).json()["ok"]
     subs = c.get("/api/session/s1/submissions").json()["submissions"]
     assert subs[-1]["kind"] == "repo"
+
+
+def test_smk_onboarding_guides_are_served(tmp_path):
+    from fastapi.testclient import TestClient
+    from sim.app.composition_root import build_app
+    from sim.app.config import Config
+    c = TestClient(build_app(Config(llm_provider="fake", db_path=str(tmp_path / "s.db"),
+                                    sandbox_root=str(tmp_path / "b"))))
+    for role in ("challenger", "instructor", "admin"):
+        r = c.get(f"/onboarding/{role}/")
+        assert r.status_code == 200 and "guide.js" in r.text, role
+    assert c.get("/onboarding/").status_code == 200

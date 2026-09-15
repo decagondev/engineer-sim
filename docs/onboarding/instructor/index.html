@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Instructor Onboarding</title>
+<link rel="stylesheet" href="guide.css"/>
+</head>
+<body data-guide="instructor">
+<div class="wrap">
+
+<header class="mast">
+  <a class="brand" href="../index.html">Engineering Flight Simulator</a>
+  <span class="role">Instructor</span>
+  <span class="sp"></span>
+  <nav class="other" aria-label="Other guides">
+    <a href="../challenger/index.html">Challenger guide</a>
+    <a href="../admin/index.html">Admin guide</a>
+  </nav>
+  <button class="theme" type="button">Dark theme</button>
+</header>
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">Running system-design interviews for a class</div>
+    <h1>From a list of names to twenty graded interviews in an afternoon</h1>
+    <p class="lede">You pick the scenario and the engineer level, create a session per challenger, send links, then watch replays and grade. This guide follows that order and explains every setting you will meet on the way.</p>
+  </div>
+  <aside class="brief">
+    <h3>What you work with</h3>
+    <dl>
+      <dt>Dashboard</dt><dd><code>/instructor</code>: New session, Cohort, Sessions, Settings</dd>
+      <dt>Interview library</dt><dd>20 <code>iv_*</code> scenarios (rate limiter, URL shortener, chat, parking …)</dd>
+      <dt>Per session</dt><dd>one scenario, one engineer level, one challenger</dd>
+      <dt>Review</dt><dd>replay with filters, Grade, Export to markdown</dd>
+      <dt>Your access</dt><dd>an instructor account (hosted) or the instructor password (local)</dd>
+    </dl>
+  </aside>
+</section>
+
+<div class="grid">
+  <aside class="rail" aria-label="Steps">
+    <div class="prog">Progress <span>0 / 0</span></div>
+    <div class="bar"><i></i></div>
+    <ol></ol>
+    <button class="reset" type="button">Reset checklist</button>
+  </aside>
+
+  <main class="steps">
+
+    <section class="step" id="access" data-short="Get access">
+      <div class="head">
+        <div class="num">01</div>
+        <div class="t"><h2>Get into the instructor dashboard</h2><span class="where">Where: <code>/instructor</code></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>There are two ways in, depending on how the server is run.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Server</th><th>How you sign in</th><th>Who sets it up</th></tr></thead>
+          <tbody>
+            <tr><td>Hosted (the class URL)</td><td>An admin creates an <b>instructor</b> account for your email. You get a set-password email, choose a password, and sign in at <code>/login</code>. The dashboard link is in the menu bar.</td><td>The admin (see the admin guide)</td></tr>
+            <tr><td>Local or classroom LAN</td><td>The dashboard asks for the instructor password. It is the <code>INSTRUCTOR_PASSWORD</code> value the server was started with.</td><td>Whoever runs the server</td></tr>
+          </tbody>
+        </table></div>
+        <p>First visit shows a one-question welcome: the <b>default engineer level</b>. Pick <i>senior</i> unless your cohort is early-career; you can change it per session and later in Settings.</p>
+      </div>
+    </section>
+
+    <section class="step" id="scenarios" data-short="Know the interviews">
+      <div class="head">
+        <div class="num">02</div>
+        <div class="t"><h2>Understand what an interview scenario contains</h2><span class="where">Where: <b>Settings → Scenario library</b>, and <code>sim/scenarios/iv_*/scenario.yaml</code> if you are curious</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Every <code>iv_*</code> scenario has the same moving parts. Knowing them makes the replays much easier to read.</p>
+        <div class="parts">
+          <div class="part"><span class="k">Persona</span><b>The interviewer</b>Posts a one-line brief at session start and answers only what is asked, with facts, never architecture. Holds hidden constraints behind a <i>reveal ladder</i>: each rung unlocks when the challenger asks the right kind of question.</div>
+          <div class="part"><span class="k">Persona</span><b>The assessor</b>Silent until the challenger submits <code>DESIGN.md</code>. Then asks one probing question at a time about a decision the challenger wrote. Never proposes a better design.</div>
+          <div class="part"><span class="k">Starter</span><b>DESIGN.md and TICKETS.md</b>A templated design document (problem, questions, requirements, capacity, API, architecture, data model, trade-offs) and an empty tickets file, edited in the browser.</div>
+          <div class="part"><span class="k">Rubric</span><b>Four criteria plus extra credit</b>Discovery 2.0, scoping 2.0, stakeholders 1.0, communication 2.0. Tickets are graded only when you turn the extra-credit toggle on.</div>
+          <div class="part"><span class="k">Level</span><b>Engineer level</b>Intern through distinguished. It changes persona posture (how much is volunteered, how hard the assessor pushes) and the grader's expectation.</div>
+          <div class="part"><span class="k">Timebox</span><b>About 20 minutes</b>Stated in the brief. The simulator does not enforce it; you do, or the cohort schedule does.</div>
+        </div>
+        <div class="note"><span class="lab">Interview scenarios do not need GitHub</span>Challengers write and submit inside the browser on every deployment. The starter-URL field in the scenario library is only for <i>build</i> scenarios (the product ones), where hosted learners fork a repo. Leave it blank for <code>iv_*</code>.</div>
+      </div>
+    </section>
+
+    <section class="step" id="single" data-short="One session">
+      <div class="head">
+        <div class="num">03</div>
+        <div class="t"><h2>Create one session and send the link</h2><span class="where">Where: <b>New session</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <ol>
+          <li><b>Scenario.</b> Pick an interview, for example <i>Interview: parking garage occupancy</i>. Disabled scenarios do not appear.</li>
+          <li><b>Engineer level.</b> Defaults to your setting. Match it to the challenger, not to the problem.</li>
+          <li><b>Assign to challenger (email, optional).</b> On a hosted server this is what lets that person, and only that person, open the link from their dashboard. Leave it blank on a local server, or to hand out an unassigned link that the first signed-in challenger claims.</li>
+          <li>Press <b>Create session &amp; get link</b>. Copy the trainee link and send it however you like. <b>Open replay for this session</b> takes you straight to the live view.</li>
+        </ol>
+        <div class="tip"><span class="lab">Assign by email on hosted servers</span>An assigned session shows up under <i>Your sessions</i> on the challenger's dashboard, so they never need the raw link. It also stops one person opening another's interview.</div>
+      </div>
+    </section>
+
+    <section class="step" id="cohort" data-short="Whole cohort">
+      <div class="head">
+        <div class="num">04</div>
+        <div class="t"><h2>Create sessions for a whole cohort at once</h2><span class="where">Where: <b>Cohort</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Cohorts are groups of challenger accounts that an admin sets up (or that you ask them to create from a pasted class list). With one in place:</p>
+        <ol>
+          <li>Choose the <b>Cohort</b>, the <b>Scenario</b>, and the <b>Engineer level</b>.</li>
+          <li>Press <b>Create sessions</b>. One session per member is created and assigned to them.</li>
+          <li>Use <b>Copy all links</b> for a message to the group, or <b>Download CSV</b> for your own records. Each row also has its own <b>Copy link</b> and <b>Replay</b>.</li>
+        </ol>
+        <p>Members see their new session on their dashboard immediately, so on a hosted server you may not need to send links at all.</p>
+      </div>
+    </section>
+
+    <section class="step" id="challenger" data-short="What they see">
+      <div class="head">
+        <div class="num">05</div>
+        <div class="t"><h2>Know what the challenger sees</h2><span class="where">Read the <a href="../challenger/index.html">challenger guide</a>; the short version is here</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Sign in, set a display name, optionally add their own Groq key.</li>
+          <li>Open the session: a desktop with Team Chat, Files, Submit, Tickets, Mail.</li>
+          <li>Read the brief, ask the interviewer questions, write <code>DESIGN.md</code> in the Files editor.</li>
+          <li>Press <b>Submit DESIGN.md</b>. The assessor joins and probes their decisions.</li>
+          <li>Press <b>Grade run</b> for directional feedback.</li>
+        </ol>
+        <p>Point them at the challenger guide before the day. It covers how to get a Groq key from <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> and, for build scenarios, a GitHub token from <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>.</p>
+      </div>
+    </section>
+
+    <section class="step" id="watch" data-short="Watch and replay">
+      <div class="head">
+        <div class="num">06</div>
+        <div class="t"><h2>Watch sessions live or replay them</h2><span class="where">Where: <b>Sessions</b> → a row → the replay view</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The Sessions tab lists every session you own with scenario, level, status, and message count. Open one to get the replay:</p>
+        <ul>
+          <li><b>▶ Play</b> and the scrubber step through the transcript in order; the counter shows where you are.</li>
+          <li>Filter chips: <b>Chat</b>, <b>Mail</b>, <b>Tickets</b>, <b>Signals</b>. Signals are the simulator's own lines: reveal-ladder unlocks, the assessor joining, submissions. They are the fastest way to see whether discovery happened.</li>
+          <li>The design diagram the simulator drew from their <code>DESIGN.md</code> is shown with the submission.</li>
+        </ul>
+        <h3>Reading an interview replay</h3>
+        <ul>
+          <li>Count the <i>opened up (rung n)</i> signals in the interviewer's channel. Three rungs unlocked means the challenger extracted the hidden constraints; none means they designed blind.</li>
+          <li>Look for <i>Submitted work: DESIGN.md</i> and then the assessor's first question. Everything after it is the defense.</li>
+          <li>Answers that cite the document by section are the strongest signal of authorship.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="step" id="grade" data-short="Grade and export">
+      <div class="head">
+        <div class="num">07</div>
+        <div class="t"><h2>Grade, add extra credit, export</h2><span class="where">Where: the replay view → <b>Grade</b>, <b>Export</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p><b>Grade</b> runs the rubric over the transcript, the submitted design, its diagram and, with the <b>Tickets extra credit</b> box ticked, the tickets. Each criterion comes back with a score and cited evidence; extra credit is shown separately and adds up to 15 points to the base total.</p>
+        <p><b>Export</b> downloads a markdown audit of the session: transcript, submissions, and the grade, ready for your own records or a feedback email.</p>
+        <div class="warn"><span class="lab">The grader is directional until calibrated</span>Every grade carries a caveat until the grader has been checked against human scores on this server. Treat it as a first read and let the replay decide. The calibration harness is described in <code>calibration/README.md</code> for whoever runs the server.</div>
+      </div>
+    </section>
+
+    <section class="step" id="settings" data-short="Settings">
+      <div class="head">
+        <div class="num">08</div>
+        <div class="t"><h2>Settings and the scenario library</h2><span class="where">Where: <b>Settings</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <div class="tablewrap"><table>
+          <thead><tr><th>Setting</th><th>Meaning</th><th>Interview advice</th></tr></thead>
+          <tbody>
+            <tr><td>Default engineer level</td><td>Used when a session has no level of its own.</td><td>Set it to your cohort's typical level.</td></tr>
+            <tr><td>Reset onboarding</td><td>Shows the welcome question again next time.</td><td>Harmless.</td></tr>
+            <tr><td>Scenario library: starter URL</td><td>The public GitHub repo hosted learners fork for a <i>build</i> scenario.</td><td>Leave blank for <code>iv_*</code>; they are written in the browser.</td></tr>
+            <tr><td>Scenario library: enabled</td><td>Whether the scenario appears in the New session list. Admins control this.</td><td>Ask an admin to hide scenarios you are not running, so the list stays short.</td></tr>
+          </tbody>
+        </table></div>
+        <p>You can also change a running session's <b>level</b> or <b>scenario</b> from the replay view. Changing the scenario after the challenger has started resets what they see, so do it before they open the link.</p>
+      </div>
+    </section>
+
+    <section class="step" id="keys" data-short="Keys and limits">
+      <div class="head">
+        <div class="num">09</div>
+        <div class="t"><h2>Model keys, rate limits, and why challengers can bring their own</h2><span class="where">Where: the server's environment (admin) and each challenger's Settings</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Two shared resources can bottleneck a class:</p>
+        <ul>
+          <li><b>The language model.</b> On a hosted server it is Groq with a classroom key (<code>GROQ_API_KEY</code>). Every persona reply, reveal-ladder judgment, diagram, and grade is a model call. When twenty people submit at once, the shared key's rate limit is the queue they all wait in.</li>
+          <li><b>GitHub reads</b>, for build scenarios only. The classroom token (<code>GITHUB_TOKEN</code>) has one rate limit for everyone.</li>
+        </ul>
+        <p>Challengers can store their <b>own</b> Groq key and GitHub token in Settings. Both are encrypted, never shown again, and used automatically for that person's sessions. Ask the class to do it before the day; the challenger guide has the steps and links.</p>
+        <div class="links">
+          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API keys<span>Free account, one click to create a key</span><span class="h">console.groq.com/keys</span></a>
+          <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">GitHub personal access tokens<span>No scopes needed; it only raises the read limit</span><span class="h">docs.github.com</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="step" id="dayof" data-short="Day-of checklist">
+      <div class="head">
+        <div class="num">10</div>
+        <div class="t"><h2>Day-of checklist</h2><span class="where">Ten minutes before the first interview</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Sign in to <code>/instructor</code>; confirm the Sessions tab loads.</li>
+          <li>Create one throwaway session, open the link yourself, ask the interviewer one question, and check a reply arrives. That proves the model key is live.</li>
+          <li>Create the cohort's sessions. Copy all links or tell the group to open their dashboards.</li>
+          <li>Remind everyone: ask first, write second, submit before talking to the assessor, save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
+          <li>Keep the Sessions tab open. Message counts tick up as people work; a session stuck at the start signal means someone cannot get in.</li>
+          <li>Afterwards, grade with the extra-credit toggle if you asked for tickets, then export.</li>
+        </ol>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>Engineering Flight Simulator · instructor onboarding</span>
+  <a href="../challenger/index.html">Challenger guide</a>
+  <a href="../admin/index.html">Admin guide</a>
+  <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API keys</a>
+</footer>
+
+</div>
+<script src="guide.js"></script>
+</body>
+</html>

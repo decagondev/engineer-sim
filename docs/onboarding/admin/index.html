@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Admin Onboarding</title>
+<link rel="stylesheet" href="guide.css"/>
+</head>
+<body data-guide="admin">
+<div class="wrap">
+
+<header class="mast">
+  <a class="brand" href="../index.html">Engineering Flight Simulator</a>
+  <span class="role">Admin</span>
+  <span class="sp"></span>
+  <nav class="other" aria-label="Other guides">
+    <a href="../instructor/index.html">Instructor guide</a>
+    <a href="../challenger/index.html">Challenger guide</a>
+  </nav>
+  <button class="theme" type="button">Dark theme</button>
+</header>
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">Standing up the hosted simulator for interview season</div>
+    <h1>Keys in, accounts made, cohorts ready, and nothing shared that should be private</h1>
+    <p class="lede">The admin owns the deployment and the people in it. This guide goes from the environment variables that make the interviews work, through creating instructors and challenger cohorts, to the dashboard tabs you will use every week.</p>
+  </div>
+  <aside class="brief">
+    <h3>What an admin controls</h3>
+    <dl>
+      <dt>Dashboard</dt><dd><code>/admin</code>: Users, Cohorts, Sessions, Scenarios, Settings</dd>
+      <dt>Roles</dt><dd>admin &gt; instructor &gt; challenger; admins see everything</dd>
+      <dt>Identity</dt><dd>Firebase Authentication, email + password</dd>
+      <dt>Storage</dt><dd>Firestore when hosted, SQLite locally</dd>
+      <dt>Hosting</dt><dd>Railway, single replica, deploys on push to <code>main</code></dd>
+    </dl>
+  </aside>
+</section>
+
+<div class="grid">
+  <aside class="rail" aria-label="Steps">
+    <div class="prog">Progress <span>0 / 0</span></div>
+    <div class="bar"><i></i></div>
+    <ol></ol>
+    <button class="reset" type="button">Reset checklist</button>
+  </aside>
+
+  <main class="steps">
+
+    <section class="step" id="first" data-short="First admin">
+      <div class="head">
+        <div class="num">01</div>
+        <div class="t"><h2>Become the first admin</h2><span class="where">Where: the server's environment, then <code>/login</code></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Accounts live in Firebase Authentication; roles live in the simulator's own user directory. The very first admin is promoted by email at boot:</p>
+        <div class="cmd">AUTH_BOOTSTRAP_ADMIN_EMAIL=you@yourschool.edu</div>
+        <ol>
+          <li>Set that variable on the deployment (Railway → your service → Variables) and redeploy.</li>
+          <li>Create a Firebase user with the same email in the Firebase console (Authentication → Users → Add user), or sign in once through the app's sign-in page after the account exists.</li>
+          <li>Sign in at <code>/login</code>. The first sign-in with that email, while no admin exists yet, makes you admin. The menu bar then shows <b>Dashboard</b>, which goes to <code>/admin</code>.</li>
+        </ol>
+        <div class="note"><span class="lab">Only the first admin needs this</span>Further admins are created from the Users tab like anyone else, with the role set to <i>admin</i>. Remove the bootstrap variable afterwards if you like; it only acts while no admin exists.</div>
+      </div>
+    </section>
+
+    <section class="step" id="env" data-short="Environment">
+      <div class="head">
+        <div class="num">02</div>
+        <div class="t"><h2>Set the environment variables that make interviews work</h2><span class="where">Where: Railway → Variables. The full list is in <code>docs/HOSTING.md</code> and <code>DEPLOYMENT-PLAN.md</code></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Grouped by what breaks if they are missing.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Variable</th><th>What it is for</th><th>Interview season</th></tr></thead>
+          <tbody>
+            <tr><td>LLM_PROVIDER<br/><span class="w">GROQ_API_KEY</span></td><td>Which language model runs the personas and the grader, and the classroom key for it. Groq is the hosted default: fast and cheap.</td><td>Required. Create the key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> (a paid tier avoids the free rate limit for a whole class).</td></tr>
+            <tr><td>BYOK_SECRET</td><td>Fernet secret that encrypts challengers' own Groq keys and GitHub tokens at rest. Any long random string.</td><td>Required before anyone saves a key. Changing it later invalidates every stored key.</td></tr>
+            <tr><td>AUTH_MODE<br/><span class="w">FIREBASE_PROJECT_ID, FIREBASE_WEB_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_CREDENTIALS_JSON</span></td><td><code>firebase</code> turns on sign-in. The web key verifies tokens; the service-account JSON lets the server create users and send set-password emails.</td><td>Required. Paste the service-account JSON as the variable's value or mount it as a file.</td></tr>
+            <tr><td>PERSISTENCE</td><td><code>firestore</code> when hosted. Sessions, transcripts, submissions, browser-edited files and user records all live there.</td><td>Required. SQLite is for local runs only; never add a third database.</td></tr>
+            <tr><td>PUBLIC_BASE_URL</td><td>The public origin, so set-password emails link back to the right <code>/login</code>.</td><td>Set it to the class URL.</td></tr>
+            <tr><td>WORK_MODE</td><td><code>auto</code> infers hosted mode from the Firebase and Firestore settings. Hosted mode hides the local dev-box path for build scenarios.</td><td>Leave on <code>auto</code>. Interview scenarios behave the same either way.</td></tr>
+            <tr><td>GITHUB_TOKEN</td><td>Classroom-wide token for reading learners' public repos in build scenarios. No scopes needed.</td><td>Optional for interviews. Set it anyway; it costs nothing.</td></tr>
+            <tr><td>GRADER_CALIBRATED</td><td>Removes the "directional" caveat from grades once the grader has been checked against human scores.</td><td>Leave unset until someone has run the calibration harness with real instructor scores.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="warn"><span class="lab">Keep secrets out of git</span><code>*-firebase-adminsdk-*.json</code>, <code>sim.db</code>, and <code>.sandboxes/</code> are git-ignored on purpose. Paste secrets into Railway, never into the repository.</div>
+      </div>
+    </section>
+
+    <section class="step" id="users" data-short="Users">
+      <div class="head">
+        <div class="num">03</div>
+        <div class="t"><h2>Create instructors and challengers</h2><span class="where">Where: <b>Users</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>One form creates an account: <b>name</b>, <b>email</b>, an optional <b>password</b>, a <b>role</b> (challenger, instructor, admin), and optionally a <b>cohort</b>. Leave the password blank and the person receives a <b>set-password email</b> with a link to choose their own; that is the normal path.</p>
+        <ul>
+          <li><b>Instructors</b> get the instructor dashboard and see only the sessions they create.</li>
+          <li><b>Challengers</b> get a dashboard listing the sessions assigned to them and a Settings page for their name and personal keys.</li>
+          <li><b>Edit</b> changes name, email, password, role, or cohorts. <b>Delete</b> removes the account from both the directory and Firebase.</li>
+        </ul>
+        <h3>Bulk import</h3>
+        <p><b>Bulk import…</b> takes a pasted list, one person per line: an email, <code>Name &lt;email&gt;</code>, or rows copied straight from a spreadsheet. Existing accounts are reused. Keep <i>Email each new account a set-password link</i> ticked so people can sign in without you handing out passwords.</p>
+        <div class="tip"><span class="lab">Create instructors first</span>Cohort sessions are created by an instructor, so at least one instructor account must exist before class day. Make yourself one if you are also teaching; an admin can use the instructor dashboard directly.</div>
+      </div>
+    </section>
+
+    <section class="step" id="cohorts" data-short="Cohorts">
+      <div class="head">
+        <div class="num">04</div>
+        <div class="t"><h2>Group challengers into cohorts</h2><span class="where">Where: <b>Cohorts</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>A cohort is the unit instructors schedule against: one click creates an interview session for every member. Two ways to build one:</p>
+        <ol>
+          <li><b>New cohort from a pasted list…</b> Name the cohort, paste the class list, and the accounts are created (or reused) and added in one go. This is the fastest route from a roster to a ready class.</li>
+          <li>Create an empty cohort, then <b>Open</b> it and add members from the directory, or use the bulk box on the cohort page.</li>
+        </ol>
+        <p>Inside a cohort you see the member list with <b>Remove</b> per person. Deleting a cohort does not delete its people.</p>
+      </div>
+    </section>
+
+    <section class="step" id="scenarios" data-short="Scenarios">
+      <div class="head">
+        <div class="num">05</div>
+        <div class="t"><h2>Curate the scenario list</h2><span class="where">Where: <b>Scenarios</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Every scenario folder in the repo appears here with two controls:</p>
+        <ul>
+          <li><b>enabled</b>: untick to hide a scenario from instructors' New session lists. For interview season, keep the twenty <code>iv_*</code> scenarios on and hide the rest so the list stays short.</li>
+          <li><b>starter URL</b>: the public GitHub repo hosted learners fork for a <i>build</i> scenario. <b>Interview scenarios leave this blank</b>; they are edited and submitted in the browser. The instructor publishing steps are in <code>docs/PUBLISH-SCENARIOS.md</code>.</li>
+        </ul>
+        <p>Scenarios are data. Adding one is a new folder with a <code>scenario.yaml</code> and a <code>starter/</code>; the <code>iv_*</code> set is generated by <code>tools/write_interview_scenarios.py</code>, so edit the script rather than the YAML.</p>
+      </div>
+    </section>
+
+    <section class="step" id="sessions" data-short="Sessions">
+      <div class="head">
+        <div class="num">06</div>
+        <div class="t"><h2>See every session, and clean up</h2><span class="where">Where: <b>Sessions</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The admin list shows all sessions across all instructors: owner, assignee, scenario, level, status, message count, last activity. <b>Replay via instructor</b> opens the same replay view instructors use. <b>Delete</b> removes the session and everything attached to it: transcript, unlock state, mail, tickets, submissions, browser-edited files, and its workspace folder.</p>
+        <div class="warn"><span class="lab">Delete is permanent</span>There is no undo and no archive. Export the session from the instructor replay first if you want a record.</div>
+      </div>
+    </section>
+
+    <section class="step" id="settings" data-short="Settings">
+      <div class="head">
+        <div class="num">07</div>
+        <div class="t"><h2>Settings: a health line and one default</h2><span class="where">Where: <b>Settings</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The header line confirms what the server is running: auth mode, store, Firebase project, and the user count. If it says <i>password</i> or <i>sqlite</i> on the hosted URL, the environment variables from step 2 are not being read.</p>
+        <p><b>Default level</b> is the engineer level a session gets when the instructor sets none. <i>senior</i> is the usual choice.</p>
+      </div>
+    </section>
+
+    <section class="step" id="keys" data-short="Keys and rate limits">
+      <div class="head">
+        <div class="num">08</div>
+        <div class="t"><h2>Keys, rate limits, and letting people bring their own</h2><span class="where">Where: Railway variables, plus each person's Settings</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The server has one classroom key per external service. Each challenger can add their own in Settings; the simulator then uses that person's key for their sessions and falls back to the classroom key for everyone else. Keys are validated on save, encrypted with <code>BYOK_SECRET</code>, and never displayed again.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Service</th><th>Classroom key</th><th>Personal key</th><th>Get one</th></tr></thead>
+          <tbody>
+            <tr><td>Groq (language model)</td><td><code>GROQ_API_KEY</code></td><td>Settings → Groq API key</td><td><a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a></td></tr>
+            <tr><td>GitHub (build scenarios)</td><td><code>GITHUB_TOKEN</code></td><td>Settings → GitHub token</td><td><a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>, see <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">GitHub's guide</a>. No scopes needed.</td></tr>
+          </tbody>
+        </table></div>
+        <p>For an interview-only season the Groq key is the one that matters: every persona reply, reveal judgment, diagram, and grade is a model call, and a class submitting together is the peak. Ask challengers to add their own key before the day; the Users tab shows who has (the user payload carries <i>has_groq_key</i> and <i>has_github_token</i>).</p>
+      </div>
+    </section>
+
+    <section class="step" id="email" data-short="Emails">
+      <div class="head">
+        <div class="num">09</div>
+        <div class="t"><h2>Make the set-password emails read like yours</h2><span class="where">Where: a terminal with the service account, or the Firebase console</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>New accounts get Firebase's password-reset email. A small tool reads and updates its sender name and subject:</p>
+        <div class="cmd">python tools/email_templates.py show
+python tools/email_templates.py apply --app-name "Your course name"</div>
+        <p>Firebase only honours a custom message <i>body</i> once a sending domain is verified under Authentication → Templates in the <a href="https://console.firebase.google.com" target="_blank" rel="noopener">Firebase console</a>; until then the stock body is used and the tool says so. The link inside always returns people to your <code>/login</code> because of <code>PUBLIC_BASE_URL</code>.</p>
+      </div>
+    </section>
+
+    <section class="step" id="season" data-short="Season checklist">
+      <div class="head">
+        <div class="num">10</div>
+        <div class="t"><h2>Before the season: a checklist</h2><span class="where">Run through once, a week before the first cohort</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <ol>
+          <li>Settings header shows <i>firebase</i> and <i>firestore</i>; the project id is yours.</li>
+          <li>Create a test challenger with your own alternate email; confirm the set-password email arrives and the link lands on <code>/login</code>.</li>
+          <li>Create one instructor account and sign in as them; create an interview session; open it as the test challenger; ask one question and see a reply.</li>
+          <li>Save a personal Groq key on the test account and confirm it is accepted; remove it.</li>
+          <li>Hide the scenarios you are not running.</li>
+          <li>Build the cohorts from the rosters with <i>New cohort from a pasted list</i>.</li>
+          <li>Send the <a href="../instructor/index.html">instructor guide</a> to instructors and the <a href="../challenger/index.html">challenger guide</a> to the class.</li>
+        </ol>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>Engineering Flight Simulator · admin onboarding</span>
+  <a href="../instructor/index.html">Instructor guide</a>
+  <a href="../challenger/index.html">Challenger guide</a>
+  <a href="https://console.firebase.google.com" target="_blank" rel="noopener">Firebase console</a>
+  <a href="https://railway.app" target="_blank" rel="noopener">Railway</a>
+</footer>
+
+</div>
+<script src="guide.js"></script>
+</body>
+</html>

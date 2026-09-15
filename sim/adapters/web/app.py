@@ -1827,4 +1827,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     if _STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
+    onboarding = Path(__file__).resolve().parents[3] / "docs" / "onboarding"
+    if onboarding.exists():
+        # role onboarding guides (docs/onboarding/<role>/), public like /login
+        app.mount("/onboarding", StaticFiles(directory=str(onboarding), html=True),
+                  name="onboarding")
     return app

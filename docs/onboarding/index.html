@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Onboarding Guides</title>
+<link rel="stylesheet" href="challenger/guide.css"/>
+<style>
+  .roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; padding-block: 10px 60px; }
+  .roles a { display: flex; flex-direction: column; gap: 10px; text-decoration: none; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 20px; color: var(--text); box-shadow: var(--shadow); }
+  .roles a:hover { border-color: var(--accent); }
+  .roles a .role { align-self: flex-start; }
+  .roles a h2 { font-size: 22px; }
+  .roles a p { color: var(--muted); font-size: 15px; }
+  .roles a .go { color: var(--accent); font-weight: 600; font-size: 14px; margin-top: auto; }
+</style>
+</head>
+<body data-guide="index">
+<div class="wrap">
+<header class="mast">
+  <span class="brand">Engineering Flight Simulator</span>
+  <span class="sp"></span>
+  <button class="theme" type="button">Dark theme</button>
+</header>
+<section class="hero">
+  <div>
+    <div class="eyebrow">Onboarding</div>
+    <h1>Pick your seat</h1>
+    <p class="lede">Three guides, one for each role, all following the system-design interview scenarios from first sign-in to a graded session.</p>
+  </div>
+</section>
+<nav class="roles" aria-label="Guides">
+  <a href="challenger/index.html"><span class="role">Challenger</span><h2>Take an interview</h2><p>Sign in, set your keys, ask the interviewer the right questions, write DESIGN.md in the browser, submit, and defend it.</p><span class="go">Open the challenger guide →</span></a>
+  <a href="instructor/index.html"><span class="role">Instructor</span><h2>Run a cohort</h2><p>Create sessions one at a time or for a whole cohort, send links, watch replays, grade with extra credit, export.</p><span class="go">Open the instructor guide →</span></a>
+  <a href="admin/index.html"><span class="role">Admin</span><h2>Own the deployment</h2><p>Environment variables, the first admin, users and cohorts, scenario curation, keys and rate limits, emails.</p><span class="go">Open the admin guide →</span></a>
+</nav>
+<footer class="foot"><span>Engineering Flight Simulator · onboarding</span></footer>
+</div>
+<script src="challenger/guide.js"></script>
+</body>
+</html>

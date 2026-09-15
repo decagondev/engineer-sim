@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Challenger Onboarding</title>
+<link rel="stylesheet" href="guide.css"/>
+</head>
+<body data-guide="challenger">
+<div class="wrap">
+
+<header class="mast">
+  <a class="brand" href="../index.html">Engineering Flight Simulator</a>
+  <span class="role">Challenger</span>
+  <span class="sp"></span>
+  <nav class="other" aria-label="Other guides">
+    <a href="../instructor/index.html">Instructor guide</a>
+    <a href="../admin/index.html">Admin guide</a>
+  </nav>
+  <button class="theme" type="button">Dark theme</button>
+</header>
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">Your first system-design interview</div>
+    <h1>Twenty minutes, one design, and an assessor who has read it</h1>
+    <p class="lede">You will be given a vague product brief by an interviewer who answers only what you ask, write a design document in the browser, submit it, and then defend your own decisions. This guide walks the whole session, app by app.</p>
+  </div>
+  <aside class="brief">
+    <h3>The shape of a session</h3>
+    <dl>
+      <dt>Timebox</dt><dd>about 20 minutes from brief to submitted design</dd>
+      <dt>People</dt><dd>an interviewer (facts only) and an assessor (questions only)</dd>
+      <dt>You produce</dt><dd><code>DESIGN.md</code>, optionally <code>TICKETS.md</code></dd>
+      <dt>Graded on</dt><dd>discovery, scoping, stakeholders, communication</dd>
+      <dt>Extra credit</dt><dd>implementation tickets an engineer could build from</dd>
+    </dl>
+  </aside>
+</section>
+
+<div class="grid">
+  <aside class="rail" aria-label="Steps">
+    <div class="prog">Progress <span>0 / 0</span></div>
+    <div class="bar"><i></i></div>
+    <ol></ol>
+    <button class="reset" type="button">Reset checklist</button>
+  </aside>
+
+  <main class="steps">
+
+    <section class="step" id="signin" data-short="Sign in">
+      <div class="head">
+        <div class="num">01</div>
+        <div class="t"><h2>Sign in with the email your instructor gave you</h2><span class="where">Where: the <code>/login</code> page, from the link in your welcome email</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Your instructor or admin creates your account. You receive a <b>set-password email</b> from the simulator; follow its link, choose a password, and you land back on the sign-in page. Sign in with that email and password.</p>
+        <ul>
+          <li><b>No email arrived?</b> Check spam, then ask your instructor to resend it. They can do that from the admin dashboard.</li>
+          <li><b>Forgot your password?</b> Use <i>Forgot password?</i> on the sign-in page. A reset link goes to the same email.</li>
+          <li><b>See "Create challenger account"?</b> Only use it if your instructor told you to self-register. Otherwise sign in with the account they made, so your sessions are assigned to the right person.</li>
+        </ul>
+        <div class="note"><span class="lab">Where you land</span>After signing in you see <b>Your sessions</b>: the challenges assigned to you. Nothing there yet means your instructor has not created a session for you. There is nothing for you to set up on your own machine for an interview scenario.</div>
+      </div>
+    </section>
+
+    <section class="step" id="settings" data-short="Settings">
+      <div class="head">
+        <div class="num">02</div>
+        <div class="t"><h2>Settings: your name and, optionally, your own keys</h2><span class="where">Where: <b>Settings</b> on your dashboard</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Three cards. Only the first is required.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Card</th><th>What it does</th><th>Do you need it?</th></tr></thead>
+          <tbody>
+            <tr><td>Display name</td><td>How instructors see you in the directory and in replays.</td><td>Yes. Set it once.</td></tr>
+            <tr><td>Groq API key</td><td>The personas and the grader run on a language model. The classroom has a shared key; if you add your own, your sessions use yours instead, so a busy class never slows you down.</td><td>Optional. Recommended if your instructor asks, or if replies feel slow.</td></tr>
+            <tr><td>GitHub token</td><td>Only used by <i>build</i> scenarios that read a repo you pushed. Interview scenarios never touch GitHub.</td><td>Not for interviews. Skip it unless you are later assigned a build scenario.</td></tr>
+          </tbody>
+        </table></div>
+        <h3>Getting a Groq key</h3>
+        <ol>
+          <li>Open <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> and sign in (free account).</li>
+          <li>Press <b>Create API Key</b>, give it a name such as <i>flight-sim</i>, and copy the key. It starts with <code>gsk_</code> and is shown once.</li>
+          <li>Back in Settings, paste it into <b>Groq API key</b> and press <b>Save key</b>. The simulator checks it against Groq immediately, then stores it encrypted. It is never displayed again; <b>Remove key</b> deletes it.</li>
+        </ol>
+        <h3>Getting a GitHub token (build scenarios only)</h3>
+        <ol>
+          <li>Open <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>. GitHub's own walkthrough is at <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">Managing your personal access tokens</a>.</li>
+          <li>Create a token. <b>No scopes or permissions are needed</b>: the simulator only reads public repos, the token just raises your API rate limit. A 90-day expiry is fine.</li>
+          <li>Paste it into <b>GitHub token</b> and press <b>Save token</b>. Same treatment as the Groq key: checked, encrypted, never shown again.</li>
+        </ol>
+        <div class="tip"><span class="lab">Why keys are per person</span>Language-model and GitHub calls are rate-limited per key. When everyone in a class shares one key, the slowest moment is the whole class submitting at once. Your own key gives your sessions their own lane.</div>
+      </div>
+    </section>
+
+    <section class="step" id="open" data-short="Open the workstation">
+      <div class="head">
+        <div class="num">03</div>
+        <div class="t"><h2>Open your session and meet the workstation</h2><span class="where">Where: <b>Your sessions</b> → <b>Open</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Each assigned session has an <b>Open</b> button. It takes you to the workstation: a desktop with a dock of apps along the bottom. The desktop's subtitle tells you which kind of scenario you are in. For an interview it reads: <i>ask the interviewer clarifying questions, write DESIGN.md in Files, Submit it, then defend your decisions with the assessor.</i></p>
+        <div class="parts">
+          <div class="part"><span class="k">Dock</span><b>Team Chat</b>The interview happens here. A people rail on the left: the interviewer first, the assessor appears later.</div>
+          <div class="part"><span class="k">Dock</span><b>Files</b>Your workspace with a code editor. <code>DESIGN.md</code> and <code>TICKETS.md</code> are already there, plus a brief in <code>docs/</code>.</div>
+          <div class="part"><span class="k">Dock</span><b>Submit</b>One button: <b>Submit DESIGN.md</b>. It sends the file exactly as it is in Files.</div>
+          <div class="part"><span class="k">Dock</span><b>Tickets</b>A board with one seeded ticket: the extra-credit ask to write implementation tickets.</div>
+          <div class="part"><span class="k">Dock</span><b>Mail</b>Threaded email with the cast. Interview scenarios rarely use it; build scenarios do.</div>
+          <div class="part hidden-part"><span class="k">Not shown</span><b>Workspace</b>Hidden for interviews. Your folder is created automatically the first time you open Files.</div>
+        </div>
+        <div class="note"><span class="lab">If the page says "This session is not assigned to you"</span>You opened a link made for someone else, or your instructor has not assigned it yet. Go back to your dashboard and open a session from the list, or ask for a fresh link.</div>
+      </div>
+    </section>
+
+    <section class="step" id="brief" data-short="Read the brief">
+      <div class="head">
+        <div class="num">04</div>
+        <div class="t"><h2>Read the brief in Team Chat, and notice how little it says</h2><span class="where">Where: <b>Team Chat</b>, the interviewer's conversation</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The moment the session starts, the interviewer posts the problem. It is deliberately short. Here is the one from the parking-garage interview:</p>
+        <div class="chat">
+          <div class="m"><span class="who">Sol</span><span>A garage wants a display and an API: how many spaces are free, and which floor. Design the system. Twenty minutes.</span></div>
+          <div class="sig">Session started. Online: Sol, Rowan.</div>
+        </div>
+        <p>Everything you need to design well is missing on purpose: how big, how fresh, what happens when sensors fail, who reads the numbers. The interviewer has those facts and will hand them over only when you ask the right question. That is the first thing you are graded on.</p>
+      </div>
+    </section>
+
+    <section class="step" id="ask" data-short="Ask questions">
+      <div class="head">
+        <div class="num">05</div>
+        <div class="t"><h2>Ask clarifying questions until the constraints are on the table</h2><span class="where">Where: <b>Team Chat</b>, about the first 5 minutes</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The interviewer answers with facts and never with architecture. Ask about scale, freshness, failure, and who consumes the output. Each good question unlocks a little more; the chat shows a signal line when that happens.</p>
+        <div class="chat">
+          <div class="m"><span class="who you">You</span><span>How many spaces are we talking about, and how is occupancy sensed?</span></div>
+          <div class="m"><span class="who">Sol</span><span>A few hundred spaces over a handful of floors. Loop sensors on the ramps. They are not perfect.</span></div>
+          <div class="sig">[reveal] Sol opened up (rung 1).</div>
+          <div class="m"><span class="who you">You</span><span>How fresh does the lobby display need to be?</span></div>
+          <div class="m"><span class="who">Sol</span><span>Half a minute behind is fine. People are not racing F1.</span></div>
+        </div>
+        <h3>Questions that usually pay</h3>
+        <ul>
+          <li><b>Scale.</b> How many users, items, events per second? Peak versus average?</li>
+          <li><b>Freshness and consistency.</b> How stale can a read be? Does anyone need exactly-once?</li>
+          <li><b>Failure.</b> What breaks in the real world (sensors lie, networks drop, clients retry)?</li>
+          <li><b>Consumers and reports.</b> Who reads this, on what schedule, and what do they do with it?</li>
+          <li><b>Non-goals.</b> What is explicitly out of v1?</li>
+        </ul>
+        <div class="warn"><span class="lab">What does not work</span>Asking "what architecture do you want?" or "should I use a queue?" The interviewer will say it is your call. Asking nothing and designing from the brief alone leaves the discovery score near zero, however elegant the design.</div>
+      </div>
+    </section>
+
+    <section class="step" id="write" data-short="Write DESIGN.md">
+      <div class="head">
+        <div class="num">06</div>
+        <div class="t"><h2>Write DESIGN.md in the Files editor</h2><span class="where">Where: <b>Files</b>. Save with <kbd>Ctrl</kbd>+<kbd>S</kbd> (<kbd>⌘</kbd>+<kbd>S</kbd> on a Mac); it also autosaves</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Open <b>Files</b>. <code>DESIGN.md</code> opens automatically in an editor with syntax highlighting. It already carries the section headings the assessor and grader expect; fill them in, in your own words, from the facts you extracted.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Section</th><th>What goes there</th></tr></thead>
+          <tbody>
+            <tr><td>1. Problem</td><td>The brief restated in your words, with the constraints you uncovered.</td></tr>
+            <tr><td>2. Clarifying questions</td><td>What you asked and the answers you are designing against.</td></tr>
+            <tr><td>3. Requirements</td><td>Functional, non-functional (scale, latency, consistency, availability), and non-goals for v1.</td></tr>
+            <tr><td>4. Capacity sketch</td><td>Rough numbers: QPS, storage, payload size. Show the arithmetic.</td></tr>
+            <tr><td>5. API</td><td>Endpoints or messages, with shapes.</td></tr>
+            <tr><td>6. High-level architecture</td><td>Components and how a request flows. The simulator draws a diagram from this section.</td></tr>
+            <tr><td>7. Data model</td><td>Tables, keys, indexes, retention.</td></tr>
+            <tr><td>8. Key decisions and trade-offs</td><td>Each decision, the alternative you rejected, and why. This is what the assessor will probe.</td></tr>
+          </tbody>
+        </table></div>
+        <ul>
+          <li>The <b>Preview</b> button renders the markdown so you can read it as the assessor will.</li>
+          <li>A gold dot on the tab means unsaved changes. <b>Save</b> writes to your workspace; the server also keeps a copy, so a refresh or a dropped connection does not lose your work.</li>
+          <li>The status line at the bottom confirms each save and shows the workspace revision.</li>
+        </ul>
+        <div class="tip"><span class="lab">Design for the facts you extracted</span>In the garage example, the sensors double-count and drop events. A design that treats them as a perfect counter scores low on <i>stakeholders</i> however clean it looks. Reconciliation paths, overrides, and staleness budgets are where the marks are.</div>
+      </div>
+    </section>
+
+    <section class="step" id="tickets" data-short="Tickets (extra credit)">
+      <div class="head">
+        <div class="num">07</div>
+        <div class="t"><h2>Optional: write implementation tickets for extra credit</h2><span class="where">Where: <code>TICKETS.md</code> in <b>Files</b>, or the <b>Tickets</b> board</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The Tickets board is seeded with one ask: <i>write tickets so an engineer who has only the tickets, not DESIGN.md, could implement this system.</i> If you have time after the design, do it in <code>TICKETS.md</code> or as tickets on the board. Each ticket needs context, the interface or data shape, and acceptance criteria.</p>
+        <p>Extra credit is scored separately and can lift your total by up to 15 percentage points. It never lowers it. Whoever grades chooses whether to include it with the <i>tickets extra credit</i> toggle.</p>
+      </div>
+    </section>
+
+    <section class="step" id="submit" data-short="Submit">
+      <div class="head">
+        <div class="num">08</div>
+        <div class="t"><h2>Submit DESIGN.md</h2><span class="where">Where: <b>Submit</b> → <b>Submit DESIGN.md</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>The Submit app has one button for interview scenarios. It reads <code>DESIGN.md</code> (and <code>TICKETS.md</code> if you wrote one) from your workspace as they are right now, records the submission, and draws a diagram of <i>your</i> architecture. Save first if the tab still shows a gold dot.</p>
+        <ul>
+          <li>You can submit again after edits; the latest submission is the one the assessor and grader read.</li>
+          <li>"DESIGN.md is empty" means the file has no content yet. Write it in Files first.</li>
+          <li>Telling the interviewer "I'm done" in chat is fine, but it does not submit. Only the Submit button does.</li>
+        </ul>
+        <p>The moment the submission lands, the assessor joins Team Chat.</p>
+      </div>
+    </section>
+
+    <section class="step" id="defend" data-short="Defend it">
+      <div class="head">
+        <div class="num">09</div>
+        <div class="t"><h2>Defend your decisions with the assessor</h2><span class="where">Where: <b>Team Chat</b>, the assessor's conversation (unread badge)</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <div class="chat">
+          <div class="sig">[reveal] Rowan is here to assess your design.</div>
+          <div class="m"><span class="who">Rowan</span><span>In section 8 you chose per-floor counters in Redis and reconcile against the ramp sensors every minute. Walk me through what happens when a sensor double-counts for an hour.</span></div>
+        </div>
+        <p>The assessor has read your document and asks <b>one probing question at a time about something you wrote</b>. They do not propose a better design, teach the textbook answer, or reveal constraints you never asked about. They are checking two things: that you made the decision, and that you can defend it.</p>
+        <ul>
+          <li>Answer from your document. "In section 4 I estimated …" is a strong opening.</li>
+          <li>A defensible alternative is fine. "I chose X over Y because Z" beats guessing what they want.</li>
+          <li>If you realise something is wrong, say so and say what you would change. That is graded as communication, not as failure.</li>
+          <li>Vague answers get "point me at where your document covers that." Have it open in Files while you talk.</li>
+        </ul>
+        <div class="note"><span class="lab">Before you submit, the assessor stays silent</span>Messaging them early gets a short reply that they join after you submit. That is expected.</div>
+      </div>
+    </section>
+
+    <section class="step" id="grade" data-short="Grade run">
+      <div class="head">
+        <div class="num">10</div>
+        <div class="t"><h2>Grade the run and read the feedback</h2><span class="where">Where: <b>Team Chat</b> → <b>Grade run</b> (top right)</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Grading reads the whole transcript (your questions and the defense), your submitted design, the diagram, and the tickets if the toggle is on. It scores four criteria and cites evidence for each.</p>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Criterion</th><th>Weight</th><th>What it measures</th></tr></thead>
+          <tbody>
+            <tr><td>Discovery</td><td>2.0</td><td>Did your questions extract the real constraints without being fed the answer?</td></tr>
+            <tr><td>Scoping</td><td>2.0</td><td>Detail, correctness, and whether a staff engineer could understand the document.</td></tr>
+            <tr><td>Stakeholders</td><td>1.0</td><td>Did you treat it as a real system: API, data, scale, consistency, failure, a v1 cut?</td></tr>
+            <tr><td>Communication</td><td>2.0</td><td>Do the assessment answers show you wrote and can defend <i>this</i> design?</td></tr>
+            <tr><td>Tickets</td><td>extra</td><td>Could an engineer implement from the tickets alone? Up to +15 points on top.</td></tr>
+          </tbody>
+        </table></div>
+        <p>The engineer level your instructor set (intern through distinguished) changes how demanding the personas are and how the criteria are weighted. A senior-level session expects a v1 cut and explicit trade-offs; an intern-level one rewards asking and clear thinking.</p>
+        <div class="warn"><span class="lab">Read the caveat</span>Until the grader has been calibrated against instructor scores, the grade is marked <i>directional</i>. Your instructor's review of the replay is the grade that counts.</div>
+      </div>
+    </section>
+
+    <section class="step" id="trouble" data-short="Troubleshooting">
+      <div class="head">
+        <div class="num">11</div>
+        <div class="t"><h2>When something looks wrong</h2><span class="where">Quick fixes before you ask for help</span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <details><summary>Team Chat shows "Disconnected" or replies never arrive</summary><div class="in">
+          <p>Refresh the page. The chat reconnects and replays the transcript. If replies are slow but arriving, the classroom key is busy; adding your own Groq key in Settings gives your session its own lane.</p></div></details>
+        <details><summary>The assessor will not talk to me</summary><div class="in">
+          <p>They join only after a submission. Open Submit and press <b>Submit DESIGN.md</b>; if it reports the file is empty, write it in Files first.</p></div></details>
+        <details><summary>Save failed in Files</summary><div class="in">
+          <p>Your text is still in the editor. Check the status line for the reason (a very large file is refused, and paths inside <code>.git</code> are managed for you), then save again. The tab keeps its gold dot until a save succeeds.</p></div></details>
+        <details><summary>Files says "No workspace yet"</summary><div class="in">
+          <p>That message belongs to build scenarios. For an interview the workspace appears on its own; if it does not, refresh and open Files again. If it still fails, the server could not create your folder and your instructor needs to look at it.</p></div></details>
+        <details><summary>"Your sign-in has expired"</summary><div class="in">
+          <p>Sign in again from <code>/login</code>; you return to the same session. Nothing you saved is lost.</p></div></details>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <span>Engineering Flight Simulator · challenger onboarding</span>
+  <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API keys</a>
+  <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub tokens</a>
+  <a href="../instructor/index.html">Instructor guide</a>
+  <a href="../admin/index.html">Admin guide</a>
+</footer>
+
+</div>
+<script src="guide.js"></script>
+</body>
+</html>
