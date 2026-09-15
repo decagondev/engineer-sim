@@ -108,6 +108,13 @@ class SqliteSettingsStore:
             (scenario_key, url))
         self._conn.commit()
 
+    def all_scenario_config(self) -> dict:
+        out = {}
+        for r in self._conn.execute("SELECT scenario_key, starter_url, enabled FROM scenario_config"):
+            out[r["scenario_key"]] = {"starter_url": r["starter_url"] or None,
+                                      "enabled": bool(r["enabled"]) if r["enabled"] is not None else True}
+        return out
+
     def get_scenario_enabled(self, scenario_key: str) -> bool:
         r = self._conn.execute(
             "SELECT enabled FROM scenario_config WHERE scenario_key=?",

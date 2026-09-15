@@ -54,6 +54,17 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def b(session_id):
         return manager.for_session(session_id)
 
+    def _scenario_config() -> dict:
+        """Starter URLs and enabled flags for every scenario, one store read."""
+        s = app.state.settings
+        fn = getattr(s, "all_scenario_config", None) if s is not None else None
+        if fn is None:
+            return {}
+        try:
+            return fn() or {}
+        except Exception:
+            return {}
+
     def _workflow(session_id):
         return resolve_workflow(b(session_id).scenario.track, app.state.hosted)
 
@@ -159,10 +170,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     @app.get("/api/scenarios")
     def scenarios():
         out = []
+        cfg = _scenario_config()
         for m in manager.scenarios_meta():
             m = dict(m)
-            m["starter_url"] = (app.state.settings.get_scenario_starter_url(m["key"])
-                                if app.state.settings else None)
+            m["starter_url"] = (cfg.get(m["key"]) or {}).get("starter_url")
             m["workflow"] = resolve_workflow(m.get("track", "product"), app.state.hosted).as_dict()
             out.append(m)
         return {"scenarios": out, "default": manager.default_scenario_key(),
@@ -1098,9 +1109,12 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         from sim.core.levels import levels_meta
         s = app.state.settings.get_instructor()
+        cfg = _scenario_config()
         scs = []
         for m in manager.scenarios_meta():
-            m = dict(m); m["starter_url"] = app.state.settings.get_scenario_starter_url(m["key"])
+            m = dict(m)
+            m["starter_url"] = (cfg.get(m["key"]) or {}).get("starter_url")
+            m["enabled"] = (cfg.get(m["key"]) or {}).get("enabled", True)
             scs.append(m)
         return {"onboarded": s.onboarded, "default_level": s.default_level,
                 "levels": levels_meta(), "scenarios": scs}
@@ -1900,7 +1914,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         cohorts = list(store.list()) if store else []
         members = sum(len(list(store.members(c.id))) for c in cohorts) if store else 0
         reg = manager.registry
-        enabled = sum(1 for k in reg if app.state.settings.get_scenario_enabled(k))
+        cfg = _scenario_config()
+        enabled = sum(1 for k in reg if (cfg.get(k) or {}).get("enabled", True))
         tracks = {"interview": 0, "systems": 0, "product": 0}
         for sc in reg.values():
             tracks[sc.track] = tracks.get(sc.track, 0) + 1
@@ -2019,10 +2034,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     @app.get("/api/admin/scenarios")
     def admin_scenarios():
         out = []
+        cfg = _scenario_config()
         for m in manager.scenarios_meta():
             m = dict(m)
-            m["starter_url"] = app.state.settings.get_scenario_starter_url(m["key"])
-            m["enabled"] = app.state.settings.get_scenario_enabled(m["key"])
+            m["starter_url"] = (cfg.get(m["key"]) or {}).get("starter_url")
+            m["enabled"] = (cfg.get(m["key"]) or {}).get("enabled", True)
             out.append(m)
         return {"scenarios": out}
 

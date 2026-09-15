@@ -43,6 +43,9 @@ class InMemorySettingsStore:
     def set_scenario_starter_url(self, scenario_key: str, url: str) -> None:
         self._starter_urls[scenario_key] = url
 
+    def all_scenario_config(self) -> dict:
+        return {k: {"starter_url": v, "enabled": True} for k, v in self._starter_urls.items()}
+
     def get_scenario_enabled(self, scenario_key: str) -> bool:
         return True
 

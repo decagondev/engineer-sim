@@ -124,6 +124,10 @@
   .muted{color:var(--muted);font-size:13px}
 
   /* overlays */
+  .suspense{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:12px;min-height:min(420px,calc(100vh - 140px));padding:24px;color:var(--muted);font-size:13px}
+  .spin-lg{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--me);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spin-lg{animation:none;border-top-color:var(--line)}}
   .overlay{position:fixed;inset:0;background:var(--ink);display:flex;align-items:center;justify-content:center;z-index:10}
   .overlay .box{width:360px;display:flex;flex-direction:column;gap:14px;text-align:center}
   .overlay h1{font-size:19px;margin:0}
@@ -167,7 +171,7 @@
       <div class="nav" data-view="sessions">Sessions</div>
       <div class="nav" data-view="settings">Settings</div>
     </nav>
-    <div class="content" id="content"></div>
+    <div class="content" id="content"><div class="suspense" aria-busy="true" aria-live="polite"><div class="spin-lg" aria-hidden="true"></div><p>Checking your account…</p></div></div>
   </div>
 
 <script src="/static/md.js"></script>
@@ -189,6 +193,7 @@ const hdr = () => {
 };
 const fmt = ts => { const d=new Date(ts); return isNaN(d)?"":d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}); };
 const fmtDate = ts => { const d=new Date(ts); return isNaN(d)?"":d.toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}); };
+const suspense = msg => `<div class="suspense" aria-busy="true" aria-live="polite"><div class="spin-lg" aria-hidden="true"></div><p>${esc(msg)}</p></div>`;
 const rankOf = k => (settings.levels.findIndex(l=>l.key===k));
 const levelLabel = k => (settings.levels.find(l=>l.key===k)||{}).label || k;
 
@@ -198,6 +203,7 @@ async function login(){
   const r = await (await fetch("/api/instructor/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw})})).json();
   if(!r.ok){ el("loginerr").textContent="Incorrect password."; return; }
   token = pw; el("login").classList.add("hidden");
+  el("shell").classList.remove("hidden"); el("content").innerHTML = suspense("Loading your dashboard…");
   settings = await (await fetch("/api/instructor/settings",{headers:hdr()})).json();
   el("scname").textContent = "";
   if(!settings.onboarded){ showOnboarding(); } else { enterDashboard(); }
@@ -212,11 +218,17 @@ el("signout").onclick = () => { token = ""; if (window.SimAuth) SimAuth.signOut(
   el("login").classList.add("hidden");
   el("signout").classList.remove("hidden");
   if (!SimAuth.token()) { location.href = "/login?next=/instructor"; return; }
-  const me = await SimAuth.me();
+  // the shell is visible immediately with a spinner; identity and settings load together
+  el("shell").classList.remove("hidden"); el("content").innerHTML = suspense("Loading your dashboard…");
+  const [me, st] = await Promise.all([
+    SimAuth.me().catch(() => null),
+    fetch("/api/instructor/settings",{headers:hdr()}).then(r => r.ok ? r.json() : null).catch(() => null),
+  ]);
   if (!me || (me.role !== "instructor" && me.role !== "admin")) {
     location.href = "/login?next=/instructor"; return;
   }
-  settings = await (await fetch("/api/instructor/settings",{headers:hdr()})).json();
+  settings = st;
+  if (!settings) { el("content").innerHTML = `<h1>Instructor</h1><p class="match bad">Could not load your settings. <a href="#" onclick="location.reload();return false;">Try again</a></p>`; return; }
   if(!settings.onboarded){ showOnboarding(); } else { enterDashboard(); }
 })();
 
@@ -341,7 +353,7 @@ function renderNew(){
 
 // ---- cohort batch ----
 async function renderCohort(){
-  el("content").innerHTML = `<h1>Cohort</h1><p class="sub">Create one session per challenger in a cohort, all on the same scenario and level.</p><div id="co-body"><div class="muted">Loading cohorts…</div></div>`;
+  el("content").innerHTML = `<h1>Cohort</h1><p class="sub">Create one session per challenger in a cohort, all on the same scenario and level.</p><div id="co-body">${suspense("Loading cohorts…")}</div>`;
   const data = await (await fetch("/api/instructor/cohorts",{headers:hdr()})).json();
   const cohorts = data.cohorts || [];
   const body = el("co-body");
@@ -367,7 +379,7 @@ async function renderCohort(){
   let members = [];
   const who = m => (m.name ? `<span>${esc(m.name)}</span><span class="muted">${esc(m.email)}</span>` : `<span>${esc(m.email || m.uid)}</span>`) + (m.role==="challenger" && ("has_groq_key" in m) ? `<span>${keyChips(m)}</span>` : "");
   async function loadMembers(){
-    el("co-members").innerHTML = `<div class="muted">Loading members…</div>`;
+    el("co-members").innerHTML = suspense("Loading members…");
     const d = await (await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}?scenario=${encodeURIComponent(scSel.value)}`,{headers:hdr()})).json();
     members = d.members || [];
     renderMembers();
@@ -456,7 +468,7 @@ async function renderCohort(){
 let ovFresh = false;
 async function renderOverview(){
   el("content").classList.add("wide");
-  el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance.</p><div class="muted">Loading…</div>`;
+  el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance.</p>${suspense("Counting sessions, submissions and grades…")}`;
   let d;
   try { d = await (await fetch("/api/instructor/overview" + (ovFresh ? "?fresh=1" : ""),{headers:hdr()})).json(); ovFresh = false; }
   catch(e){ el("content").innerHTML = `<h1>Overview</h1><p class="match bad">Could not load the overview.</p>`; return; }
@@ -499,7 +511,7 @@ async function renderSessions(){
       <select id="s-sc"><option value="">Any scenario</option></select>
       <span class="muted" id="s-count"></span>
     </div>
-    <div id="slist"><div class="muted">Loading…</div></div>`;
+    <div id="slist">${suspense("Loading sessions…")}</div>`;
   const data = await (await fetch("/api/instructor/sessions",{headers:hdr()})).json();
   sessCache = data.sessions || [];
   const scs = [...new Set(sessCache.map(s=>s.scenario))].sort();

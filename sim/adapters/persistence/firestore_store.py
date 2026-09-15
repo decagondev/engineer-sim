@@ -308,6 +308,15 @@ class FirestoreSettingsStore:
         self._db.collection("scenario_config").document(scenario_key).set(
             {"starter_url": url}, merge=True)
 
+    def all_scenario_config(self) -> dict:
+        out = {}
+        for snap in self._db.collection("scenario_config").stream():
+            d = _data(snap)
+            val = d.get("enabled")
+            out[snap.id] = {"starter_url": d.get("starter_url") or None,
+                            "enabled": True if val is None else bool(val)}
+        return out
+
     def get_scenario_enabled(self, scenario_key: str) -> bool:
         snap = self._db.collection("scenario_config").document(scenario_key).get()
         if not snap.exists:
