@@ -32,6 +32,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.settings = manager.settings
     app.state.repo = manager.repo
     app.state.submissions = manager.submissions
+    app.state.grades = getattr(manager, "grades", None)
     app.state.github_observer = github_observer
     if auth is None:
         from sim.adapters.auth.services import AuthServices
@@ -367,14 +368,53 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         # doc (and sandbox without a submission): the workspace's own git history
         return _sandbox_record(session_id)
 
+    def _grade_payload(g) -> dict:
+        body = dict(g.body or {})
+        body.update({"graded_at": g.ts, "graded_by": g.graded_by, "stored": True,
+                     "total": g.total, "level": g.level,
+                     "include_tickets": g.include_tickets, "calibrated": g.calibrated})
+        return body
+
+    def _store_grade(session_id: str, body: dict, request: Request | None) -> dict:
+        """Persist the grade so dashboards and exports show it without
+        re-running the grader; a regrade replaces the previous one."""
+        from datetime import datetime, timezone
+        from sim.core.ports.grades import StoredGrade
+        store = app.state.grades
+        if store is None or body.get("error"):
+            return body
+        actor = _actor(request)
+        ts = datetime.now(timezone.utc).isoformat()
+        g = StoredGrade(session_id=session_id, total=float(body.get("total") or 0),
+                        level=body.get("level") or "", ts=ts,
+                        graded_by=actor.email or actor.uid,
+                        include_tickets=bool(body.get("include_tickets")),
+                        calibrated=bool(body.get("calibrated")), body=body)
+        try:
+            store.save(g)
+        except Exception as e:
+            log.warning("could not store grade for %s: %s", session_id, e)
+            return body
+        return _grade_payload(g)
+
     @app.post("/api/session/{session_id}/grade")
-    async def grade(session_id: str, payload: dict | None = None):
+    async def grade(session_id: str, request: Request, payload: dict | None = None):
         build_record = (payload or {}).get("build_record", "")
         if not build_record:
             build_record = await run_in_threadpool(_build_record_for, session_id)
         body = await run_in_threadpool(
             _grade_body, session_id, payload, build_record)
+        body = await run_in_threadpool(_store_grade, session_id, body, request)
         return JSONResponse(body)
+
+    @app.get("/api/session/{session_id}/grade")
+    def stored_grade(session_id: str):
+        """The last stored grade for this session, or 404 when never graded."""
+        store = app.state.grades
+        g = store.get(session_id) if store is not None else None
+        if g is None:
+            return JSONResponse({"error": "not graded yet"}, status_code=404)
+        return JSONResponse(_grade_payload(g))
 
     @app.get("/api/session/{session_id}/diagram")
     def get_diagram(session_id: str):
@@ -1170,7 +1210,19 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 sub = None
             s["submitted"] = sub is not None
             s["submitted_ts"] = sub.ts if sub else ""
-            s["state"] = ("submitted" if sub else
+            g = None
+            try:
+                g = app.state.grades.get(s["session_id"]) if app.state.grades is not None else None
+            except Exception:
+                g = None
+            s["graded"] = g is not None
+            s["graded_ts"] = g.ts if g else ""
+            s["grade_total"] = g.total if g else None
+            s["graded_by"] = g.graded_by if g else ""
+            # a submission newer than the grade needs another look
+            current = g is not None and (not sub or (g.ts >= sub.ts))
+            s["state"] = ("graded" if current else
+                          "submitted" if sub else
                           "active" if (s.get("count") or 0) > 0 else "not_started")
         return rows
 
@@ -1185,14 +1237,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         by_sc: dict = {}
         by_level = {lvl: 0 for lvl in LEVEL_ORDER}
         by_track = {"interview": 0, "systems": 0, "product": 0}
-        states = {"not_started": 0, "active": 0, "submitted": 0}
+        states = {"not_started": 0, "active": 0, "submitted": 0, "graded": 0}
         active_24h = 0
         for s in rows:
             key = s.get("scenario") or ""
             b = by_sc.setdefault(key, {"key": key, "title": s.get("title") or key,
                                        "track": s.get("track") or "product",
                                        "total": 0, "active": 0, "submitted": 0,
-                                       "not_started": 0})
+                                       "not_started": 0, "graded": 0})
             b["total"] += 1
             b[s.get("state") or "not_started"] += 1
             states[s.get("state") or "not_started"] += 1
@@ -1284,17 +1336,15 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         from sim.core.session.audit_export import build_audit_markdown
         bundle = b(sid)
         svc = bundle.session_service
-        build_record = ""
-        if app.state.submissions is not None:
-            sub = app.state.submissions.latest(sid)
-            if sub:
-                build_record = f"SUBMITTED PATCH ({sub.filename}):\n{sub.content}"
-        if not svc.design_text(sid) and build_record:
-            svc.remember_design(sid, build_record)
-        try:
-            grade = _grade_body(sid, {"include_tickets": include_tickets}, build_record)
-        except Exception:
-            grade = None
+        stored = app.state.grades.get(sid) if app.state.grades is not None else None
+        if stored is not None:
+            grade = _grade_payload(stored)      # the grade the instructor saw
+        else:
+            build_record = _build_record_for(sid)
+            try:
+                grade = _grade_body(sid, {"include_tickets": include_tickets}, build_record)
+            except Exception:
+                grade = None
         lvl = _session_level(sid)
         mermaid = svc.diagram_text(sid)
         md = build_audit_markdown(
@@ -1320,7 +1370,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def _cascade_delete_session(sid: str) -> None:
         auth = app.state.auth
         for store in (app.state.repo, manager.unlock, manager.mailstore,
-                      manager.ticketstore, manager.submissions, app.state.settings):
+                      manager.ticketstore, manager.submissions, app.state.settings,
+                      getattr(manager, "grades", None)):
+            if store is None:
+                continue
             fn = getattr(store, "delete_for_session", None) or getattr(
                 store, "delete_session_settings", None)
             if callable(fn):

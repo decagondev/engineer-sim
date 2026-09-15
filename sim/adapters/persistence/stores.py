@@ -16,6 +16,7 @@ class Stores:
     session_registry: object
     cohorts: object
     session_files: object = None
+    grades: object = None
 
 
 def build_stores(config) -> Stores:
@@ -27,7 +28,7 @@ def build_stores(config) -> Stores:
             FirestoreSessionRegistry, FirestoreSettingsStore,
             FirestoreSubmissionStore, FirestoreTicketStore,
             FirestoreCohortDirectory, FirestoreUnlockStore, FirestoreUserDirectory,
-            FirestoreSessionFileStore,
+            FirestoreSessionFileStore, FirestoreGradeStore,
         )
         db = make_firestore_client(config)
         return Stores(
@@ -41,6 +42,7 @@ def build_stores(config) -> Stores:
             session_registry=FirestoreSessionRegistry(db),
             cohorts=FirestoreCohortDirectory(db),
             session_files=FirestoreSessionFileStore(db),
+            grades=FirestoreGradeStore(db),
         )
     if mode != "sqlite":
         raise ValueError(f"unknown PERSISTENCE: {mode!r}")
@@ -54,6 +56,7 @@ def build_stores(config) -> Stores:
     from sim.adapters.persistence.sqlite_cohorts import SqliteCohortDirectory
     from sim.adapters.persistence.sqlite_users import SqliteUserDirectory
     from sim.adapters.persistence.sqlite_session_files import SqliteSessionFileStore
+    from sim.adapters.persistence.sqlite_grades import SqliteGradeStore
     path = config.db_path
     return Stores(
         repo=SqliteMessageRepository(path),
@@ -66,4 +69,5 @@ def build_stores(config) -> Stores:
         session_registry=SqliteSessionRegistry(path),
         cohorts=SqliteCohortDirectory(path),
         session_files=SqliteSessionFileStore(path),
+        grades=SqliteGradeStore(path),
     )

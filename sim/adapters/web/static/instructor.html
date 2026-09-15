@@ -239,9 +239,9 @@ function enterDashboard(){
   switchView("overview");
 }
 // ---- shared dashboard bits (state chips, relative time) ----
-const STATE_LABEL = {submitted:"submitted", active:"in progress", not_started:"not started"};
-const STATE_COLOR = {submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
-function stateChip(st){ const k = STATE_LABEL[st] ? st : "not_started"; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}</span>`; }
+const STATE_LABEL = {graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = (k==="graded" && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
 function keyChips(u){
   const g = u.has_groq_key, gh = u.has_github_token;
   return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
@@ -256,10 +256,11 @@ function ago(ts){
 }
 function scenarioBars(stats){
   return SimViz.hbars(stats.by_scenario.map(b=>({label:b.title, sub:b.key, value:b.total, parts:[
+    {value:b.graded||0, color:STATE_COLOR.graded, label:"graded"},
     {value:b.submitted, color:STATE_COLOR.submitted, label:"submitted"},
     {value:b.active, color:STATE_COLOR.active, label:"in progress"},
     {value:b.not_started, color:STATE_COLOR.not_started, label:"not started"}]})), {empty:"No sessions yet."})
-    + SimViz.legend([{label:"submitted",color:STATE_COLOR.submitted},{label:"in progress",color:STATE_COLOR.active},{label:"not started",color:STATE_COLOR.not_started}]);
+    + SimViz.legend([{label:"graded",color:STATE_COLOR.graded},{label:"submitted",color:STATE_COLOR.submitted},{label:"in progress",color:STATE_COLOR.active},{label:"not started",color:STATE_COLOR.not_started}]);
 }
 function levelBars(stats){
   const lv = stats.by_level.filter(l=>l.count);
@@ -462,7 +463,8 @@ async function renderOverview(){
   el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance. Open Sessions for the full list, or click a row below.</p>
     ${SimViz.tiles([
       {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
-      {label:"Submitted", value:t.submitted, sub:"ready to grade", tone: t.submitted ? "good" : ""},
+      {label:"Submitted", value:t.submitted, sub:"awaiting your review", tone: t.submitted ? "good" : ""},
+      {label:"Graded", value:t.graded||0, sub:"grade saved; regrade any time"},
       {label:"In progress", value:t.active, sub:"started, nothing submitted yet"},
       {label:"Not started", value:t.not_started, sub:"link sent, no messages yet", tone: t.not_started && t.sessions ? "warn" : ""},
     ])}
@@ -479,7 +481,7 @@ async function renderOverview(){
     </div>
     ${SimViz.card("Recent sessions", "Most recently active first",
       `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
-        (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${levelLabel(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
+        (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${levelLabel(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state, r.grade_total)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
         `<tr><td colspan="6" class="muted">No sessions yet. Create one under New session or Cohort.</td></tr>`}</tbody></table>`)}`;
   el("content").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openReplay(tr.dataset.sid));
 }
@@ -491,7 +493,7 @@ async function renderSessions(){
   el("content").innerHTML = `<h1>Sessions</h1><p class="sub">Every session you own. Click a row to replay it.</p>
     <div class="filters">
       <input id="s-q" placeholder="Search id, challenger, scenario…" style="min-width:240px"/>
-      <select id="s-state"><option value="">Any state</option><option value="submitted">Submitted</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
+      <select id="s-state"><option value="">Any state</option><option value="submitted">Submitted, awaiting review</option><option value="graded">Graded</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
       <select id="s-sc"><option value="">Any scenario</option></select>
       <span class="muted" id="s-count"></span>
     </div>
@@ -508,7 +510,7 @@ async function renderSessions(){
     const box = el("slist");
     if(!rows.length){ box.innerHTML = `<div class="muted">${sessCache.length ? "No sessions match." : "No sessions recorded yet."}</div>`; return; }
     box.innerHTML = `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
-      rows.map(s=>`<tr class="click" data-sid="${esc(s.session_id)}"><td class="id">${esc(s.session_id)}</td><td>${esc(s.title||s.scenario||"—")}<div class="muted">${levelLabel(s.level)}</div></td><td>${esc(s.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(s.state)}</td><td>${s.count||0}</td><td title="${esc(s.last_ts||"")}">${ago(s.last_ts)}</td></tr>`).join("")}</tbody></table>`;
+      rows.map(s=>`<tr class="click" data-sid="${esc(s.session_id)}"><td class="id">${esc(s.session_id)}</td><td>${esc(s.title||s.scenario||"—")}<div class="muted">${levelLabel(s.level)}</div></td><td>${esc(s.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(s.state, s.grade_total)}</td><td>${s.count||0}</td><td title="${esc(s.last_ts||"")}">${ago(s.last_ts)}</td></tr>`).join("")}</tbody></table>`;
     box.querySelectorAll("tr.click").forEach(tr => tr.onclick = ()=> openReplay(tr.dataset.sid));
   };
   el("s-q").oninput = draw; el("s-state").onchange = draw; el("s-sc").onchange = draw;
@@ -552,6 +554,7 @@ async function openReplay(sid){
   el("content").querySelector(".back").onclick = ()=> switchView("sessions");
   wireReplay();
   loadDiagram();
+  loadStoredGrade();
   el("diagramBtn").onclick = loadDiagram;
   applyFilter(); idx = filtered.length; syncScrub(); renderTimeline();
 }
@@ -602,17 +605,30 @@ function wireReplay(){
   el("exportBtn").onclick = doExport;
 }
 function stopPlay(){ clearInterval(playTimer); playTimer=null; const p=el("play"); if(p) p.textContent="▶ Play"; }
+function renderGrade(g){
+  const scores = (g.scores||[]).slice();
+  if (g.tickets_extra) scores.push({key:"tickets (extra credit)", score:g.tickets_extra.score, evidence:g.tickets_extra.evidence});
+  const crits = scores.map(s=>`<div class="crit"><div class="k"><span>${s.key}</span><span>${(s.score*100|0)}%</span></div><div class="barx"><i style="width:${(s.score*100|0)}%"></i></div><div class="evd">${esc(s.evidence)}</div></div>`).join("");
+  const caveat = g.calibrated ? "" : `<div class="caveat">${esc(g.caveat||"grader not calibrated")}</div>`;
+  const extraNote = g.include_tickets ? ` · base ${(g.total_base*100|0)}% + tickets extra credit` : "";
+  const when = g.graded_at ? `<div class="muted" style="margin-top:4px">Saved ${ago(g.graded_at)}${g.graded_by ? " by " + esc(g.graded_by) : ""}. Press Regrade to replace it.</div>` : "";
+  el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%</div><div class="muted">graded at ${levelLabel(g.level)} expectations${extraNote}</div>${when}${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}</div>`;
+  el("gradeBtn").textContent = "Regrade";
+  if (el("includeTickets")) el("includeTickets").checked = !!g.include_tickets;
+}
+async function loadStoredGrade(){
+  try {
+    const r = await fetch(`/api/session/${curSid}/grade`,{headers:hdr()});
+    if (!r.ok) { el("gradeBtn").textContent = "Grade"; return; }
+    renderGrade(await r.json());
+  } catch(e) {}
+}
 async function doGrade(){
   el("gradebody").innerHTML = `<div class="muted">Grading…</div>`;
   const includeTickets = !!(el("includeTickets") && el("includeTickets").checked);
   const g = await (await fetch(`/api/session/${curSid}/grade`,{method:"POST",headers:{"Content-Type":"application/json",...hdr()},body:JSON.stringify({include_tickets:includeTickets})})).json();
   if(g.error){ el("gradebody").innerHTML=`<div class="muted">Grade error: ${g.error}</div>`; return; }
-  const scores = g.scores.slice();
-  if (g.tickets_extra) scores.push({key:"tickets (extra credit)", score:g.tickets_extra.score, evidence:g.tickets_extra.evidence});
-  const crits = scores.map(s=>`<div class="crit"><div class="k"><span>${s.key}</span><span>${(s.score*100|0)}%</span></div><div class="barx"><i style="width:${(s.score*100|0)}%"></i></div><div class="evd">${esc(s.evidence)}</div></div>`).join("");
-  const caveat = g.calibrated ? "" : `<div class="caveat">${esc(g.caveat||"grader not calibrated")}</div>`;
-  const extraNote = g.include_tickets ? ` · base ${(g.total_base*100|0)}% + tickets extra credit` : "";
-  el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%</div><div class="muted">graded at ${levelLabel(g.level)} expectations${extraNote}</div>${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}</div>`;
+  renderGrade(g);
 }
 async function doExport(){
   const includeTickets = !!(el("includeTickets") && el("includeTickets").checked);

@@ -7,6 +7,7 @@ from typing import Optional, Sequence
 
 from sim.adapters.persistence.firestore_client import session_doc
 from sim.core.ports.cohorts import CohortRecord
+from sim.core.ports.grades import StoredGrade
 from sim.core.ports.mail import MailThread
 from sim.core.ports.repository import StoredMessage
 from sim.core.ports.session_registry import SessionRecord
@@ -336,6 +337,40 @@ class FirestoreSessionFileStore:
         col = self._col(session_id)
         for snap in list(col.stream()):
             col.document(snap.id).delete()
+
+
+class FirestoreGradeStore:
+    """sessions/{sid}/grades/latest: the last grade; a regrade overwrites it."""
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    def _doc(self, session_id: str):
+        return session_doc(self._db, session_id).collection("grades").document("latest")
+
+    def save(self, grade: StoredGrade) -> StoredGrade:
+        self._doc(grade.session_id).set({
+            "session_id": grade.session_id, "total": float(grade.total),
+            "level": grade.level, "ts": grade.ts, "graded_by": grade.graded_by,
+            "include_tickets": bool(grade.include_tickets),
+            "calibrated": bool(grade.calibrated), "body": grade.body,
+        })
+        session_doc(self._db, grade.session_id).set(
+            {"graded_ts": grade.ts, "grade_total": float(grade.total)}, merge=True)
+        return grade
+
+    def get(self, session_id: str) -> Optional[StoredGrade]:
+        d = _data(self._doc(session_id).get())
+        if not d:
+            return None
+        return StoredGrade(session_id=session_id, total=float(d.get("total") or 0),
+                           level=d.get("level") or "", ts=d.get("ts") or "",
+                           graded_by=d.get("graded_by") or "",
+                           include_tickets=bool(d.get("include_tickets")),
+                           calibrated=bool(d.get("calibrated")), body=d.get("body") or {})
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._doc(session_id).delete()
 
 
 class FirestoreSubmissionStore:

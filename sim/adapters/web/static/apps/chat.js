@@ -246,6 +246,18 @@ SimApps.register({
       refreshDiagram();
     });
 
+    (async () => {
+      // the last saved grade, if this run was graded before
+      try {
+        const r = await fetch(`/api/session/${sid}/grade`);
+        if (!r.ok) return;
+        const g = await r.json();
+        const rows = (g.scores || []).map(s => `  ${s.key.padEnd(14)} ${String((s.score * 100 | 0) + "%").padStart(4)}   ${s.evidence}`).join("\n");
+        const when = g.graded_at ? new Date(g.graded_at).toLocaleString() : "";
+        gradeOut.textContent = `LAST GRADE ${(g.total * 100 | 0)}%${when ? "  (" + when + ")" : ""}\n${rows}\n\n${g.summary || ""}`;
+      } catch (e) {}
+    })();
+
     async function pollTranscript() {
       if (closed) return;
       try {

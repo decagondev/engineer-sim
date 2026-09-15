@@ -118,9 +118,9 @@ const titles = {
 };
 const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 // ---- shared dashboard bits (state chips, relative time) ----
-const STATE_LABEL = {submitted:"submitted", active:"in progress", not_started:"not started"};
-const STATE_COLOR = {submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
-function stateChip(st){ const k = STATE_LABEL[st] ? st : "not_started"; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}</span>`; }
+const STATE_LABEL = {graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = (k==="graded" && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
 function keyChips(u){
   const g = u.has_groq_key, gh = u.has_github_token;
   return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
@@ -135,10 +135,11 @@ function ago(ts){
 }
 function scenarioBars(stats){
   return SimViz.hbars(stats.by_scenario.map(b=>({label:b.title, sub:b.key, value:b.total, parts:[
+    {value:b.graded||0, color:STATE_COLOR.graded, label:"graded"},
     {value:b.submitted, color:STATE_COLOR.submitted, label:"submitted"},
     {value:b.active, color:STATE_COLOR.active, label:"in progress"},
     {value:b.not_started, color:STATE_COLOR.not_started, label:"not started"}]})), {empty:"No sessions yet."})
-    + SimViz.legend([{label:"submitted",color:STATE_COLOR.submitted},{label:"in progress",color:STATE_COLOR.active},{label:"not started",color:STATE_COLOR.not_started}]);
+    + SimViz.legend([{label:"graded",color:STATE_COLOR.graded},{label:"submitted",color:STATE_COLOR.submitted},{label:"in progress",color:STATE_COLOR.active},{label:"not started",color:STATE_COLOR.not_started}]);
 }
 function levelBars(stats){
   const lv = stats.by_level.filter(l=>l.count);
@@ -263,7 +264,8 @@ async function show(v){
         {label:"People", value:u.total, sub:`${u.by_role.admin||0} admin · ${u.by_role.instructor||0} instructors · ${u.by_role.challenger||0} challengers${u.disabled?` · ${u.disabled} disabled`:""}`},
         {label:"Cohorts", value:d.cohorts.count, sub:`${d.cohorts.members} memberships`},
         {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
-        {label:"Submitted", value:t.submitted, sub:`${t.active} in progress · ${t.not_started} not started`, tone: t.submitted ? "good" : ""},
+        {label:"Submitted", value:t.submitted, sub:"awaiting review", tone: t.submitted ? "good" : ""},
+        {label:"Graded", value:t.graded||0, sub:`${t.active} in progress · ${t.not_started} not started`},
       ])}
       <div class="viz-grid">
         ${SimViz.card("Personal keys", "Challengers who added their own key in Settings (their sessions skip the classroom limit)",
@@ -284,7 +286,7 @@ async function show(v){
       </div>
       ${SimViz.card("Recent sessions", "Most recently active first",
         `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
-          (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
+          (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state, r.grade_total)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
           `<tr><td colspan="6" class="muted">No sessions yet.</td></tr>`}</tbody></table>`)}`;
     c.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => { location.href = "/instructor#replay=" + tr.dataset.sid; });
   }
