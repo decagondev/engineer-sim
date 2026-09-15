@@ -25,7 +25,8 @@ class SqliteUserDirectory:
                 created_at TEXT NOT NULL,
                 last_login TEXT NOT NULL DEFAULT '',
                 name TEXT NOT NULL DEFAULT '',
-                groq_key_enc TEXT NOT NULL DEFAULT ''
+                groq_key_enc TEXT NOT NULL DEFAULT '',
+                github_token_enc TEXT NOT NULL DEFAULT ''
             )
             """
         )
@@ -40,6 +41,9 @@ class SqliteUserDirectory:
         if "groq_key_enc" not in cols:
             self._conn.execute(
                 "ALTER TABLE users ADD COLUMN groq_key_enc TEXT NOT NULL DEFAULT ''")
+        if "github_token_enc" not in cols:
+            self._conn.execute(
+                "ALTER TABLE users ADD COLUMN github_token_enc TEXT NOT NULL DEFAULT ''")
 
     def get(self, uid: str) -> Optional[UserRecord]:
         r = self._conn.execute(
@@ -63,15 +67,17 @@ class SqliteUserDirectory:
         last = user.last_login or (existing.last_login if existing else "")
         name = user.name
         enc = user.groq_key_enc
+        gh = user.github_token_enc
         self._conn.execute(
-            "INSERT INTO users (uid, email, role, disabled, created_at, last_login, name, groq_key_enc) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO users (uid, email, role, disabled, created_at, last_login, name, "
+            "groq_key_enc, github_token_enc) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(uid) DO UPDATE SET "
             "email=excluded.email, role=excluded.role, disabled=excluded.disabled, "
             "last_login=excluded.last_login, name=excluded.name, "
-            "groq_key_enc=excluded.groq_key_enc",
+            "groq_key_enc=excluded.groq_key_enc, github_token_enc=excluded.github_token_enc",
             (user.uid, user.email, user.role, 1 if user.disabled else 0,
-             created, last, name, enc),
+             created, last, name, enc, gh),
         )
         self._conn.commit()
         return self.get(user.uid)
@@ -101,6 +107,7 @@ class SqliteUserDirectory:
             last_login=r["last_login"] or "",
             name=r["name"] if "name" in keys else "",
             groq_key_enc=r["groq_key_enc"] if "groq_key_enc" in keys else "",
+            github_token_enc=r["github_token_enc"] if "github_token_enc" in keys else "",
         )
 
 

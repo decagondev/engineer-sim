@@ -296,9 +296,11 @@ var), `DEPLOYMENT-PLAN.md` (record `WORK_MODE`). Delete the stray
   loses only the commit timeline of a design doc, which the interview rubric does not weight.
 - **Firestore 1 MB per document.** One document per edited file; refuse writes over ~900 KB
   with a message. Design docs are kilobytes.
-- **Rate limits.** Repo browsing multiplies GitHub reads. `GITHUB_TOKEN` is already
-  supported and should be set on Railway; the tree cache keeps it to one call per refresh
-  plus one per opened file.
+- **Rate limits.** Repo browsing multiplies GitHub reads. `GITHUB_TOKEN` is the classroom
+  bucket and should be set on Railway; the tree cache keeps it to one call per refresh plus
+  one per opened file. Challengers can also store their own GitHub token in Settings (same
+  BYOK mechanism as the Groq key); every GitHub call made inside their request then uses
+  their token, so the limit scales with the class.
 - **Should systems scenarios also allow a repo?** Not in v1. Their starters are documents,
   and the design-review triggers read the submitted text, so `doc` fits. Revisit if an
   instructor wants code in a systems scenario.

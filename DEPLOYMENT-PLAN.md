@@ -149,7 +149,8 @@ FIREBASE_CREDENTIALS_JSON={"type":"service_account",...}
 LLM_PROVIDER=groq
 GROQ_API_KEY=...          # operator key until H2
 PUBLIC_BASE_URL=https://worksim.decadev.co.uk   # optional; set-password emails
-GITHUB_TOKEN=ghp_...            # read-only; raises the GitHub API limit for repo browsing
+GITHUB_TOKEN=ghp_...            # read-only; classroom-wide GitHub API limit for repo browsing
+                                # (challengers can store their own token in Settings, BYOK-style)
 WORK_MODE=auto                  # auto|local|hosted; auto = hosted when Firebase/Firestore is on
   # link back here. Omitted, the app uses the host of incoming requests.
 ```

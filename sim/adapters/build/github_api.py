@@ -29,10 +29,11 @@ def parse_repo(url: str) -> tuple[str, str]:
     raise ValueError("that doesn't look like a GitHub repo URL")
 
 
-def _default_fetch(token: str) -> Callable[[str], object]:
+def _default_fetch(resolve_token: Callable[[], str]) -> Callable[[str], object]:
     def fetch(path: str):
         headers = {"Accept": "application/vnd.github+json",
                    "User-Agent": "flight-sim"}
+        token = (resolve_token() or "").strip()
         if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request("https://api.github.com" + path, headers=headers)
@@ -52,11 +53,56 @@ def _default_fetch(token: str) -> Callable[[str], object]:
     return fetch
 
 
+def validate_token(token: str) -> None:
+    """One cheap authenticated call so a bad token fails in Settings, not mid-browse."""
+    tok = (token or "").strip()
+    if not tok:
+        raise RuntimeError("Paste a GitHub token.")
+    req = urllib.request.Request(
+        "https://api.github.com/rate_limit",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "flight-sim",
+                 "Authorization": f"Bearer {tok}"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            r.read()
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise RuntimeError("GitHub rejected that token. Create a new one at "
+                               "github.com/settings/tokens (no scopes needed).")
+        raise RuntimeError(f"GitHub returned {e.code}")
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Could not reach GitHub: {e.reason}")
+
+
+def user_token_resolver(users, secret: str, server_token: str = "") -> Callable[[], str]:
+    """The signed-in user's own GitHub token when they stored one, else the
+    server's. Same shape as the Groq BYOK resolver: spreads API rate limits
+    across the class instead of one shared bucket."""
+    def resolve() -> str:
+        from sim.adapters.llm.request_context import current_uid
+        from sim.adapters.auth.secretbox import decrypt_secret
+        uid = current_uid.get()
+        if uid and users is not None:
+            rec = users.get(uid)
+            enc = getattr(rec, "github_token_enc", "") if rec else ""
+            if enc:
+                try:
+                    tok = decrypt_secret(secret, enc)
+                    if tok:
+                        return tok
+                except ValueError:
+                    pass
+        return server_token or ""
+    return resolve
+
+
 class GitHubApi:
     def __init__(self, token: Optional[str] = None,
-                 fetch: Optional[Callable[[str], object]] = None) -> None:
+                 fetch: Optional[Callable[[str], object]] = None,
+                 resolve_token: Optional[Callable[[], str]] = None) -> None:
         self._token = token or os.environ.get("GITHUB_TOKEN") or ""
-        self._fetch = fetch or _default_fetch(self._token)
+        self._resolve = resolve_token or (lambda: self._token)
+        self._fetch = fetch or _default_fetch(self._resolve)
 
     def get(self, path: str):
         return self._fetch(path)

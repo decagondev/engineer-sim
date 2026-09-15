@@ -187,9 +187,6 @@ def build_manager(config: Config, llm=None, judge_llm=None, repo_files=None):
     from sim.app.manager import SessionManager
     registry = build_registry(config)
     default_key = "churn_dashboard" if "churn_dashboard" in registry else next(iter(registry))
-    if repo_files is None:
-        from sim.adapters.build.github_observer import GitHostBuildObserver
-        repo_files = GitHostBuildObserver(token=config.github_token)
     return SessionManager(config, registry, default_key,
                           llm or build_llm(config), judge_llm or build_llm(config),
                           repo_files=repo_files)
@@ -338,9 +335,16 @@ def build_app(config: Config | None = None):
     from sim.adapters.build.git_observer import GitBuildObserver
     from sim.adapters.build.github_observer import GitHostBuildObserver
     from sim.adapters.workspace.github_files import GitHubWorkspaceFiles
+    from sim.adapters.build.github_api import GitHubApi, user_token_resolver
+    from sim.adapters.auth.secretbox import secret_from_config
     config = config or Config.from_env()
-    github = GitHostBuildObserver(token=config.github_token)
-    manager = build_manager(config, repo_files=github)
+    manager = build_manager(config)
+    # GitHub reads use the signed-in user's own token when they stored one
+    # (Settings), else GITHUB_TOKEN: rate limits spread across the class.
+    api = GitHubApi(token=config.github_token, resolve_token=user_token_resolver(
+        manager.users, secret_from_config(config), config.github_token))
+    github = GitHostBuildObserver(api=api)
+    manager.repo_files = github
     return create_web_app(
         manager=manager,
         grader=build_grader(config, users=manager.users),

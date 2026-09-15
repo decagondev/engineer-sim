@@ -100,9 +100,14 @@ function renderSettings(){
     : `No personal key yet — the classroom key is used until you add yours.`;
   const clearBtn = me.has_groq_key
     ? `<button class="danger" id="clear-key" type="button">Remove key</button>` : "";
+  const ghNote = me.has_github_token
+    ? `Your GitHub token is saved. Repo browsing and grading will use your own rate limit.`
+    : `No personal token yet — the classroom token (or the anonymous limit) is used until you add yours.`;
+  const clearGh = me.has_github_token
+    ? `<button class="danger" id="clear-gh" type="button">Remove token</button>` : "";
   return `
     <h1 style="font-size:18px;margin:0 0 6px">Settings</h1>
-    <p class="muted">Your name is visible to instructors. Your Groq key is stored encrypted and never shown again.</p>
+    <p class="muted">Your name is visible to instructors. Your Groq key and GitHub token are stored encrypted and never shown again.</p>
     <div class="card">
       <h2>Display name</h2>
       <label for="disp-name">How you appear in the directory</label>
@@ -123,6 +128,18 @@ function renderSettings(){
         ${clearBtn}
       </div>
       <p class="status" id="key-status"></p>
+    </div>
+    <div class="card">
+      <h2>Your GitHub token</h2>
+      <p class="muted">${esc(ghNote)}</p>
+      <p class="muted">The simulator reads your public repo through the GitHub API, which is rate-limited per token. Create a token at <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> (no scopes needed) and paste it here so your sessions use your own limit.</p>
+      <label for="gh-token">GitHub token</label>
+      <input id="gh-token" type="password" autocomplete="off" placeholder="ghp_… or github_pat_…"/>
+      <div class="row">
+        <button class="primary" id="save-gh" type="button"><span class="spin"></span><span id="save-gh-lab">Save token</span></button>
+        ${clearGh}
+      </div>
+      <p class="status" id="gh-status"></p>
     </div>`;
 }
 
@@ -137,6 +154,50 @@ function showSettings(){
   el("save-key").onclick = saveKey;
   const clear = el("clear-key");
   if (clear) clear.onclick = clearKey;
+  el("save-gh").onclick = saveGh;
+  const clearG = el("clear-gh");
+  if (clearG) clearG.onclick = clearGh;
+}
+
+async function saveGh(){
+  const btn = el("save-gh");
+  const status = el("gh-status");
+  const raw = el("gh-token").value.trim();
+  status.className = "status";
+  status.textContent = "";
+  if (!raw) { status.className = "status err"; status.textContent = "Paste a GitHub token first."; return; }
+  setBusy(btn, true, "save-gh-lab", "Save token", "Checking token…");
+  try {
+    const r = await fetch("/api/me", {
+      method: "PATCH", headers: h(),
+      body: JSON.stringify({github_token: raw}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+    me.has_github_token = !!d.has_github_token;
+    el("gh-token").value = "";
+    showSettings();
+    el("gh-status").className = "status ok";
+    el("gh-status").textContent = "Token saved. Repo browsing will use your GitHub limit.";
+  } finally {
+    const still = el("save-gh");
+    setBusy(still, false, "save-gh-lab", "Save token", "Checking token…");
+  }
+}
+
+async function clearGh(){
+  const status = el("gh-status");
+  status.className = "status";
+  const r = await fetch("/api/me", {
+    method: "PATCH", headers: h(),
+    body: JSON.stringify({clear_github_token: true}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+  me.has_github_token = false;
+  showSettings();
+  el("gh-status").className = "status ok";
+  el("gh-status").textContent = "Token removed. The classroom token will be used.";
 }
 
 async function saveName(){

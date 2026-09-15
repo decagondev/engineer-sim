@@ -795,14 +795,15 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if not app.state.auth.gated:
             p = _local_instructor()
             return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
-                    "name": "", "has_groq_key": False}
+                    "name": "", "has_groq_key": False, "has_github_token": False}
         p = getattr(request.state, "principal", None)
         if p is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         rec = app.state.auth.users.get(p.uid) if app.state.auth.users else None
         return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
                 "name": rec.name if rec else "",
-                "has_groq_key": bool(rec.groq_key_enc) if rec else False}
+                "has_groq_key": bool(rec.groq_key_enc) if rec else False,
+                "has_github_token": bool(rec.github_token_enc) if rec else False}
 
     @app.patch("/api/me")
     def patch_me(request: Request, payload: dict):
@@ -833,13 +834,28 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 return JSONResponse({"error": str(e)}, status_code=400)
             from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
             enc = encrypt_secret(secret_from_config(manager._config), raw)
+        gh = rec.github_token_enc
+        if (payload or {}).get("clear_github_token"):
+            gh = ""
+        elif "github_token" in (payload or {}):
+            raw = str(payload.get("github_token") or "").strip()
+            if not raw:
+                return JSONResponse({"error": "Paste a GitHub token."}, status_code=400)
+            try:
+                from sim.adapters.build.github_api import validate_token
+                validate_token(raw)
+            except RuntimeError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+            from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
+            gh = encrypt_secret(secret_from_config(manager._config), raw)
         rec = auth.users.upsert(UserRecord(
             uid=rec.uid, email=rec.email, role=rec.role, disabled=rec.disabled,
             created_at=rec.created_at, last_login=rec.last_login,
-            name=name, groq_key_enc=enc,
+            name=name, groq_key_enc=enc, github_token_enc=gh,
         ))
         return {"ok": True, "name": rec.name,
-                "has_groq_key": bool(rec.groq_key_enc)}
+                "has_groq_key": bool(rec.groq_key_enc),
+                "has_github_token": bool(rec.github_token_enc)}
 
     @app.get("/api/me/sessions")
     def my_sessions(request: Request):
@@ -1246,6 +1262,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "role": u.role, "disabled": u.disabled,
                 "created_at": u.created_at, "last_login": u.last_login,
                 "has_groq_key": bool(getattr(u, "groq_key_enc", "")),
+                "has_github_token": bool(getattr(u, "github_token_enc", "")),
                 "cohort_ids": list(cohort_ids or [])}
 
     def _sort_dicts(rows, sort: str, direction: str, allowed: dict):
@@ -1482,7 +1499,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         rec = auth.users.upsert(UserRecord(
             uid=rec.uid, email=email, role=role, disabled=disabled,
             created_at=rec.created_at, last_login=rec.last_login, name=name,
-            groq_key_enc=rec.groq_key_enc))
+            groq_key_enc=rec.groq_key_enc, github_token_enc=rec.github_token_enc))
         if "cohort_ids" in body:
             cids = _sync_user_cohorts(rec.uid, body.get("cohort_ids"))
         else:

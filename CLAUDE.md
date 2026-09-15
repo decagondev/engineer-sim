@@ -72,9 +72,11 @@ under `sim.adapters`. Put I/O behind a port in `sim/core/ports/` and implement i
   only needed for admin user mutations and Firestore.
 - `ENV_PROVIDER` = local_folder | docker (per-session sandbox seeded from the scenario's
   `starter/` dir under `SANDBOX_ROOT`, default `.sandboxes/`).
-- `BYOK_SECRET`: Fernet key for per-user Groq keys. `adapters/llm/scoped_client.py` wraps any
-  LLM client so calls resolve the current user's key (set via `request_context.py`) before
-  falling back to the server key.
+- `BYOK_SECRET`: Fernet key for per-user secrets. `adapters/llm/scoped_client.py` wraps any
+  LLM client so calls resolve the current user's Groq key (set via `request_context.py`)
+  before falling back to the server key; `adapters/build/github_api.py::user_token_resolver`
+  does the same for GitHub tokens (`UserRecord.github_token_enc`, edited in `/challenger`
+  Settings) so repo browsing spreads rate limits across the class.
 - `SIM_SCENARIO` points the registry at a single scenario file instead of auto-discovery;
   `GITHUB_TOKEN` raises the GitHub API rate limit for repo submissions and browsing;
   `PUBLIC_BASE_URL` pins the `/login` link in set-password emails (otherwise derived from

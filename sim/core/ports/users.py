@@ -14,6 +14,7 @@ class UserRecord:
     last_login: str = ""
     name: str = ""
     groq_key_enc: str = ""
+    github_token_enc: str = ""     # personal GitHub token (BYOK), Fernet-encrypted
 
 
 class UserDirectory(Protocol):
