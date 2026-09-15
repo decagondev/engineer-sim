@@ -1836,4 +1836,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         # role onboarding guides (docs/onboarding/<role>/), public like /login
         app.mount("/onboarding", StaticFiles(directory=str(onboarding), html=True),
                   name="onboarding")
+    else:
+        log.warning("onboarding guides not found at %s; /onboarding will 404 "
+                    "(check .dockerignore keeps docs/onboarding)", onboarding)
     return app

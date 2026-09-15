@@ -12,3 +12,5 @@ work-sim-79d4d-*.json
 tests
 calibration
 docs
+# the role onboarding guides are served by the app at /onboarding
+!docs/onboarding
