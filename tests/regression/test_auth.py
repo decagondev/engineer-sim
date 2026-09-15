@@ -377,3 +377,31 @@ def test_auth_bulk02_new_cohort_from_pasted_list(tmp_path):
                    headers=admin).json()
     assert again["cohort"]["id"] == cid
     assert len(c.get("/api/admin/cohorts", headers=admin).json()["cohorts"]) == 1
+
+
+def test_cohort_sessions_uids_filter_creates_in_batches(tmp_path):
+    """The instructor UI creates cohort sessions in batches (progress bar):
+    `uids` restricts one call to those members; a second batch never
+    duplicates the first (skip_existing) and the union covers everyone."""
+    c = _fake(tmp_path)
+    admin = _h("a1", "admin", "admin@t.local")
+    inst = _h("i1", "instructor")
+    c.get("/api/auth/me", headers=admin)
+    co = c.post("/api/admin/cohorts", json={"name": "Batch"}, headers=admin).json()["id"]
+    uids = []
+    for i in range(4):
+        u = c.post("/api/admin/users", json={"email": f"b{i}@t.local", "role": "challenger"},
+                   headers=admin).json()
+        uids.append(u["uid"])
+        c.post(f"/api/admin/cohorts/{co}/members", json={"uid": u["uid"]}, headers=admin)
+    first = c.post(f"/api/instructor/cohorts/{co}/sessions",
+                   json={"scenario": "iv_parking", "uids": uids[:2]}, headers=inst).json()
+    assert first["ok"] and sorted(x["uid"] for x in first["created"]) == sorted(uids[:2])
+    assert first["skipped"] == []
+    second = c.post(f"/api/instructor/cohorts/{co}/sessions",
+                    json={"scenario": "iv_parking", "uids": uids[2:]}, headers=inst).json()
+    assert sorted(x["uid"] for x in second["created"]) == sorted(uids[2:])
+    # a full run afterwards skips all four
+    third = c.post(f"/api/instructor/cohorts/{co}/sessions",
+                   json={"scenario": "iv_parking"}, headers=inst).json()
+    assert third["created"] == [] and len(third["skipped"]) == 4

@@ -52,6 +52,14 @@
   .match.warn{background:rgba(224,169,74,.1);border:1px solid rgba(224,169,74,.3);color:var(--warn)}
   .match.bad{background:rgba(224,101,92,.1);border:1px solid rgba(224,101,92,.3);color:var(--bad)}
   .linkbox{display:flex;gap:8px;margin-top:12px}
+  .prog{margin-top:14px}
+  .prog .lab{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:6px}
+  .prog .lab b{color:var(--text);font-variant-numeric:tabular-nums}
+  .prog .bar{height:8px;border-radius:999px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden}
+  .prog .bar i{display:block;height:100%;width:0;background:var(--me);transition:width .2s ease}
+  .prog .bar.busy i{background-image:linear-gradient(90deg,rgba(255,255,255,0) 0,rgba(255,255,255,.25) 50%,rgba(255,255,255,0) 100%);background-size:60px 100%;animation:shimmer 1s linear infinite}
+  @keyframes shimmer{from{background-position:-60px 0}to{background-position:60px 0}}
+  @media (prefers-reduced-motion:reduce){.prog .bar.busy i{animation:none}}
   .linkbox input{flex:1;font-family:var(--mono);font-size:12.5px}
 
   .srow{display:flex;align-items:center;gap:14px;padding:13px 15px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;cursor:pointer;background:var(--panel)}
@@ -331,9 +339,37 @@ async function renderCohort(){
   coSel.onchange = loadMembers; scSel.onchange = loadMembers; skip.onchange = renderMembers;
   await loadMembers();
   el("co-create").onclick = async ()=>{
-    el("co-create").disabled = true;
-    const r = await (await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}/sessions`,{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({scenario:scSel.value,level:lvSel.value,skip_existing:skip.checked})})).json();
-    if(!r.ok){ el("co-result").innerHTML = `<div class="match bad">${esc(r.error||"Could not create sessions.")}</div>`; el("co-create").disabled=false; return; }
+    const btn = el("co-create");
+    btn.disabled = true;
+    const label = btn.textContent;
+    // create in small batches so the bar moves as sessions land
+    const ready = members.filter(m=>!m.blocked && !(skip.checked && m.sessions.length));
+    const total = ready.length, BATCH = 5;
+    el("co-result").innerHTML = `<div class="prog"><div class="lab"><span id="co-plab">Creating sessions…</span><b id="co-pcount">0 / ${total}</b></div><div class="bar busy"><i id="co-pbar"></i></div></div>`;
+    const setProg = (n, text) => { el("co-pcount").textContent = `${n} / ${total}`; el("co-pbar").style.width = (total ? (n/total)*100 : 100) + "%"; if(text) el("co-plab").textContent = text; };
+    btn.textContent = "Creating…";
+    const r = { ok:true, created:[], skipped:[], cohort:null, level:lvSel.value };
+    let done = 0;
+    try {
+      for(let i=0;i<ready.length;i+=BATCH){
+        const chunk = ready.slice(i, i+BATCH);
+        const resp = await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}/sessions`,{method:"POST",headers:{...hdr(),"Content-Type":"application/json"},body:JSON.stringify({scenario:scSel.value,level:lvSel.value,skip_existing:skip.checked,uids:chunk.map(m=>m.uid)})});
+        const part = await resp.json().catch(()=>({}));
+        if(!resp.ok || !part.ok){
+          el("co-result").innerHTML = `<div class="match bad">${esc(part.error||"Could not create sessions.")} ${done ? `${done} of ${total} were created before the error; press the button again to continue.` : ""}</div>`;
+          btn.disabled=false; btn.textContent = label; await loadMembers(); return;
+        }
+        r.created.push(...(part.created||[])); r.skipped.push(...(part.skipped||[]));
+        r.cohort = part.cohort || r.cohort; r.level = part.level || r.level;
+        done = Math.min(total, done + chunk.length);
+        setProg(done, done < total ? `Creating sessions… ${esc((chunk[chunk.length-1].name||chunk[chunk.length-1].email||""))}` : "Done");
+      }
+    } catch(e){
+      el("co-result").innerHTML = `<div class="match bad">Network error after ${done} of ${total}. Reload the members list and press the button again; existing sessions are skipped.</div>`;
+      btn.disabled=false; btn.textContent = label; return;
+    }
+    el("co-pbar").parentElement.classList.remove("busy");
+    btn.textContent = label;
     const link = sid => `${location.origin}/#${sid}`;
     const lines = r.created.map(c=>`${c.name||c.email}${c.name?" <"+c.email+">":""}: ${link(c.session_id)}`).join("\n");
     const q = v => '"' + String(v||"").split('"').join('""') + '"';

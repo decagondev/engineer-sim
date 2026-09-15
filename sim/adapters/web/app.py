@@ -1007,10 +1007,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if lvl not in LEVEL_ORDER:
             return JSONResponse({"error": "bad level"}, status_code=400)
         skip_existing = bool((payload or {}).get("skip_existing", True))
+        only = (payload or {}).get("uids")
+        only = {str(u) for u in only} if isinstance(only, list) else None
         auth = app.state.auth
         owner = _actor(request).uid
         created, skipped = [], []
         for m in _cohort_members(store, cid):
+            if only is not None and m["uid"] not in only:
+                continue   # the client is creating in batches to show progress
             why = _assignable(m)
             if why:
                 skipped.append({**m, "reason": why})
