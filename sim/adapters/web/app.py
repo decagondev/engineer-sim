@@ -1174,14 +1174,38 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 row["assignee_uid"] = rec.assignee_uid
                 row["owner_uid"] = rec.owner_uid
                 row["status"] = rec.status
+                if rec.scenario_key and not row.get("scenario_key"):
+                    row["scenario_key"] = rec.scenario_key
+                if rec.level and not row.get("level"):
+                    row["level"] = rec.level
                 by_id[rec.id] = row
         sessions = list(by_id.values())
         sessions.sort(key=lambda s: s.get("last_ts") or s.get("first_ts") or "", reverse=True)
-        for s in sessions:
+        from sim.core.levels import LEVEL_ORDER
+        default_level = None
+
+        def fill(s):
+            nonlocal default_level
             sid = s["session_id"]
-            s["scenario"] = manager.resolve_scenario_key(sid)
-            s["level"] = _session_level(sid)
+            key = s.get("scenario_key") or ""
+            s["scenario"] = key if key in manager.registry else manager.resolve_scenario_key(sid)
+            lvl = s.get("level") or ""
+            if lvl not in LEVEL_ORDER:
+                lvl = _session_level(sid)
+            s["level"] = lvl
+        _parallel(fill, sessions)
         return sessions
+
+    def _parallel(fn, items, workers: int = 8) -> None:
+        """Run fn over items concurrently (Firestore reads are network-bound)."""
+        items = list(items)
+        if len(items) < 2:
+            for it in items:
+                fn(it)
+            return
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(workers, len(items))) as ex:
+            list(ex.map(fn, items))
 
     def _parse_ts(ts: str):
         from datetime import datetime, timezone
@@ -1193,38 +1217,84 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             return None
         return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
+    def _user_labels() -> dict:
+        """uid -> email, from one listing instead of a read per row."""
+        users = app.state.auth.users
+        if users is None:
+            return {}
+        try:
+            return {u.uid: u.email for u in users.list()}
+        except Exception:
+            return {}
+
     def _enrich_sessions(rows: list) -> list:
         """Add what a dashboard row needs: scenario title/track, assignee label,
-        whether anything was submitted, and a one-word state."""
+        whether anything was submitted, the stored grade, and a one-word state.
+        Rows that already carry the index fields (Firestore session docs) need
+        no further reads; the rest are looked up in parallel and, where the
+        store supports it, written back so the next listing is one stream."""
         subs = app.state.submissions
-        for s in rows:
+        grades = app.state.grades
+        labels = _user_labels() if rows else {}
+        indexer = getattr(app.state.repo, "index_session", None)
+
+        def fill(s):
+            sid = s["session_id"]
             sc = manager.registry.get(s.get("scenario") or "")
             s["title"] = sc.title if sc else (s.get("scenario") or "")
             s["track"] = sc.track if sc else "product"
-            s["assignee"] = _uid_label(s.get("assignee_uid") or "")
-            s["owner"] = _uid_label(s.get("owner_uid") or "")
-            sub = None
-            try:
-                sub = subs.latest(s["session_id"]) if subs is not None else None
-            except Exception:
+            s["assignee"] = labels.get(s.get("assignee_uid") or "", s.get("assignee_uid") or "")
+            s["owner"] = labels.get(s.get("owner_uid") or "", s.get("owner_uid") or "")
+            patch = {}
+            if "submitted_ts" not in s:
                 sub = None
-            s["submitted"] = sub is not None
-            s["submitted_ts"] = sub.ts if sub else ""
-            g = None
-            try:
-                g = app.state.grades.get(s["session_id"]) if app.state.grades is not None else None
-            except Exception:
+                try:
+                    sub = subs.latest(sid) if subs is not None else None
+                except Exception:
+                    sub = None
+                s["submitted_ts"] = sub.ts if sub else ""
+                patch["submitted_ts"] = s["submitted_ts"]
+            if "graded_ts" not in s:
                 g = None
-            s["graded"] = g is not None
-            s["graded_ts"] = g.ts if g else ""
-            s["grade_total"] = g.total if g else None
-            s["graded_by"] = g.graded_by if g else ""
+                try:
+                    g = grades.get(sid) if grades is not None else None
+                except Exception:
+                    g = None
+                s["graded_ts"] = g.ts if g else ""
+                s["grade_total"] = g.total if g else None
+                s["graded_by"] = g.graded_by if g else ""
+                patch.update({"graded_ts": s["graded_ts"], "grade_total": s["grade_total"],
+                              "graded_by": s["graded_by"]})
+            if patch and indexer is not None:
+                try:
+                    indexer(sid, **patch)
+                except Exception:
+                    pass
+            s["submitted"] = bool(s.get("submitted_ts"))
+            s["graded"] = bool(s.get("graded_ts"))
+            s.setdefault("grade_total", None)
+            s.setdefault("graded_by", "")
             # a submission newer than the grade needs another look
-            current = g is not None and (not sub or (g.ts >= sub.ts))
+            current = s["graded"] and (not s["submitted"] or s["graded_ts"] >= s["submitted_ts"])
             s["state"] = ("graded" if current else
-                          "submitted" if sub else
+                          "submitted" if s["submitted"] else
                           "active" if (s.get("count") or 0) > 0 else "not_started")
+        _parallel(fill, rows)
         return rows
+
+    _overview_cache: dict = {}
+    OVERVIEW_TTL = 20.0
+
+    def _cached(key: str, build, fresh: bool = False):
+        """Overview payloads are expensive on Firestore; serve a copy for a few
+        seconds and let the page ask for fresh=1 when someone presses Refresh."""
+        import time
+        hit = _overview_cache.get(key)
+        if hit and not fresh and (time.monotonic() - hit[0]) < OVERVIEW_TTL:
+            return hit[1]
+        data = build()
+        _overview_cache[key] = (time.monotonic(), data)
+        return data
 
     def _session_stats(rows: list) -> dict:
         """Aggregates for the overview pages. Cheap: one pass over the rows."""
@@ -1292,13 +1362,15 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"sessions": _instructor_rows(request)}
 
     @app.get("/api/instructor/overview")
-    def instructor_overview(request: Request,
+    def instructor_overview(request: Request, fresh: bool = False,
                             x_instructor_token: str = Header(default="")):
         """Numbers and charts for the instructor's landing page."""
         if not _instr_ok(x_instructor_token):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        rows = _instructor_rows(request)
-        return {"stats": _session_stats(rows), "recent": rows[:8]}
+        def build():
+            rows = _instructor_rows(request)
+            return {"stats": _session_stats(rows), "recent": rows[:8]}
+        return _cached("instructor:" + _actor(request).uid, build, fresh)
 
     @app.get("/api/instructor/session/{sid}")
     def instructor_session(sid: str, x_instructor_token: str = Header(default="")):
@@ -1807,8 +1879,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return rec.email if rec else uid
 
     @app.get("/api/admin/overview")
-    def admin_overview():
+    def admin_overview(fresh: bool = False):
         """Deployment-wide numbers: people, keys, cohorts, scenarios, sessions."""
+        return _cached("admin", _admin_overview, fresh)
+
+    def _admin_overview():
         auth = app.state.auth
         users = list(auth.users.list()) if auth.users else []
         by_role = {"admin": 0, "instructor": 0, "challenger": 0}

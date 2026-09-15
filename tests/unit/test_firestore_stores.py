@@ -137,3 +137,25 @@ def test_migrate_sqlite_into_firestore_stores(tmp_path):
     assert dest.users.get_by_email("tom@t.local").role == "admin"
     assert dest.repo.list_for_session("s-old")[0].content == "yo"
     assert dest.session_registry.get("s-old").owner_uid == "u1"
+
+
+def test_session_doc_carries_dashboard_index():
+    """Submissions and grades denormalise onto the session doc so a listing
+    is one stream; index_session backfills legacy docs."""
+    from sim.adapters.persistence.firestore_store import FirestoreGradeStore
+    from sim.core.ports.grades import StoredGrade
+    db = FakeFirestore()
+    repo, *_ = _all(db)
+    repo.append(StoredMessage(session_id="s1", sender="tester", channel="general",
+                              content="hi", ts="2026-01-01T00:00:00+00:00", kind="message"))
+    row = repo.list_sessions()[0]
+    assert "submitted_ts" not in row and "graded_ts" not in row, "legacy doc: not indexed yet"
+    FirestoreSubmissionStore(db).save("s1", "DESIGN.md", "# d", "2026-01-02T00:00:00+00:00", kind="doc")
+    FirestoreGradeStore(db).save(StoredGrade("s1", 0.7, "senior", "2026-01-03T00:00:00+00:00", "i@t"))
+    row = repo.list_sessions()[0]
+    assert row["submitted_ts"] == "2026-01-02T00:00:00+00:00" and row["submission_count"] == 1
+    assert row["graded_ts"] == "2026-01-03T00:00:00+00:00" and row["grade_total"] == 0.7
+    assert row["graded_by"] == "i@t"
+    repo.index_session("s1", scenario_key="iv_parking", level="senior")
+    row = repo.list_sessions()[0]
+    assert row["scenario_key"] == "iv_parking" and row["level"] == "senior"

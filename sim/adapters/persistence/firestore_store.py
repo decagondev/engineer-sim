@@ -77,6 +77,12 @@ class FirestoreMessageRepository:
         rows.sort(key=lambda m: (m.id or 0, m.ts))
         return rows
 
+    # Fields the dashboards need per session, denormalised onto the session
+    # document by the stores that own them (submissions, grades, settings) so a
+    # listing is one collection stream instead of five reads per session.
+    INDEX_FIELDS = ("scenario_key", "level", "submitted_ts", "submission_count",
+                    "graded_ts", "grade_total", "graded_by")
+
     def list_sessions(self) -> list[dict]:
         out = []
         for snap in self._db.collection("sessions").stream():
@@ -84,13 +90,23 @@ class FirestoreMessageRepository:
             count = int(d.get("message_count") or 0)
             if count <= 0:
                 continue
-            out.append({
+            row = {
                 "session_id": snap.id, "count": count,
                 "first_ts": d.get("first_ts") or "",
                 "last_ts": d.get("last_ts") or "",
-            })
+            }
+            for k in self.INDEX_FIELDS:
+                if k in d:                 # absent = not indexed yet (legacy doc)
+                    row[k] = d.get(k)
+            out.append(row)
         out.sort(key=lambda r: r.get("last_ts") or "", reverse=True)
         return out
+
+    def index_session(self, session_id: str, **fields) -> None:
+        """Write dashboard index fields onto the session doc (self-healing for
+        documents created before the index existed)."""
+        if fields:
+            session_doc(self._db, session_id).set(fields, merge=True)
 
     def delete_for_session(self, session_id: str) -> None:
         ref = session_doc(self._db, session_id)
@@ -356,7 +372,8 @@ class FirestoreGradeStore:
             "calibrated": bool(grade.calibrated), "body": grade.body,
         })
         session_doc(self._db, grade.session_id).set(
-            {"graded_ts": grade.ts, "grade_total": float(grade.total)}, merge=True)
+            {"graded_ts": grade.ts, "grade_total": float(grade.total),
+             "graded_by": grade.graded_by}, merge=True)
         return grade
 
     def get(self, session_id: str) -> Optional[StoredGrade]:
@@ -371,6 +388,8 @@ class FirestoreGradeStore:
 
     def delete_for_session(self, session_id: str) -> None:
         self._doc(session_id).delete()
+        session_doc(self._db, session_id).set(
+            {"graded_ts": "", "grade_total": None, "graded_by": ""}, merge=True)
 
 
 class FirestoreSubmissionStore:
@@ -385,6 +404,8 @@ class FirestoreSubmissionStore:
             "session_id": session_id, "seq": seq, "filename": filename,
             "content": content, "lines": lines, "ts": ts, "kind": kind or "patch",
         })
+        session_doc(self._db, session_id).set(
+            {"submitted_ts": ts, "submission_count": seq}, merge=True)
         return Submission(session_id, seq, filename, content, lines, ts, kind)
 
     def latest(self, session_id) -> Optional[Submission]:

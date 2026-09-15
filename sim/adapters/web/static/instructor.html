@@ -453,14 +453,15 @@ async function renderCohort(){
 }
 
 // ---- overview ----
+let ovFresh = false;
 async function renderOverview(){
   el("content").classList.add("wide");
   el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance.</p><div class="muted">Loading…</div>`;
   let d;
-  try { d = await (await fetch("/api/instructor/overview",{headers:hdr()})).json(); }
+  try { d = await (await fetch("/api/instructor/overview" + (ovFresh ? "?fresh=1" : ""),{headers:hdr()})).json(); ovFresh = false; }
   catch(e){ el("content").innerHTML = `<h1>Overview</h1><p class="match bad">Could not load the overview.</p>`; return; }
   const s = d.stats, t = s.totals;
-  el("content").innerHTML = `<h1>Overview</h1><p class="sub">Your sessions at a glance. Open Sessions for the full list, or click a row below.</p>
+  el("content").innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0">Overview</h1><span style="flex:1"></span><button id="ov-refresh" type="button">Refresh</button></div><p class="sub">Your sessions at a glance. Open Sessions for the full list, or click a row below.</p>
     ${SimViz.tiles([
       {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
       {label:"Submitted", value:t.submitted, sub:"awaiting your review", tone: t.submitted ? "good" : ""},
@@ -484,6 +485,7 @@ async function renderOverview(){
         (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${levelLabel(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state, r.grade_total)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
         `<tr><td colspan="6" class="muted">No sessions yet. Create one under New session or Cohort.</td></tr>`}</tbody></table>`)}`;
   el("content").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openReplay(tr.dataset.sid));
+  el("ov-refresh").onclick = () => { ovFresh = true; renderOverview(); };
 }
 
 // ---- sessions ----

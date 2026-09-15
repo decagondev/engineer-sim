@@ -254,11 +254,12 @@ async function show(v){
   const gen = peekAll(viewUrls(v)) ? ++loadGen : beginLoad(titles[v] || "Admin", hints[v] || "Loading…");
   try {
   if (v==="overview") {
-    const d = await loadJson("/api/admin/overview", true);
+    const d = await loadJson("/api/admin/overview" + (state.ovFresh ? "?fresh=1" : ""), !!state.ovFresh);
+    state.ovFresh = false;
     if (!still(gen)) return;
     const u = d.users, s = d.sessions, t = s.totals;
     const auth = d.auth || {};
-    c.innerHTML = `<h1>Overview</h1>
+    c.innerHTML = `<div class="row" style="margin:0 0 4px"><h1 style="margin:0">Overview</h1><span class="spacer"></span><button id="ov-refresh">Refresh</button></div>
       <p class="muted">Auth <b>${esc(auth.auth_mode||"?")}</b> · store <b>${esc(auth.persistence||"sqlite")}</b> · project ${esc(auth.firebase_project_id||"(none)")} · ${esc(d.scenarios.enabled)} of ${esc(d.scenarios.total)} scenarios enabled</p>
       ${SimViz.tiles([
         {label:"People", value:u.total, sub:`${u.by_role.admin||0} admin · ${u.by_role.instructor||0} instructors · ${u.by_role.challenger||0} challengers${u.disabled?` · ${u.disabled} disabled`:""}`},
@@ -289,6 +290,7 @@ async function show(v){
           (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${esc(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state, r.grade_total)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
           `<tr><td colspan="6" class="muted">No sessions yet.</td></tr>`}</tbody></table>`)}`;
     c.querySelectorAll("tr.click").forEach(tr => tr.onclick = () => { location.href = "/instructor#replay=" + tr.dataset.sid; });
+    el("ov-refresh").onclick = () => { state.ovFresh = true; bustAdmin(); show("overview"); };
   }
   if (v==="users") {
     const [ud, cd] = await Promise.all([
