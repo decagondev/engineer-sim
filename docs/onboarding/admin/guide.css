@@ -46,6 +46,9 @@
 }
 
 * { box-sizing: border-box; }
+/* links to other guides are revealed per role by guide.js (all of them when
+   the page is opened from disk or the server has no sign-in) */
+[data-guide-link]:not(.allowed) { display: none !important; }
 html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; animation: none !important; } }
 body {

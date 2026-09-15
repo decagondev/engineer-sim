@@ -85,6 +85,38 @@
     t.onclick = () => { cur = cur === "" ? "dark" : cur === "dark" ? "light" : ""; try { localStorage.setItem(TK, cur); } catch (e) {} apply(cur); };
   }
 
+  // ---- who may read which guide ---------------------------------------------
+  // admin: all three; instructor: instructor + challenger; challenger: only theirs.
+  // Enforced the same way as the dashboards: the page asks /api/auth/me and
+  // redirects. Opened from disk, or on a server without sign-in, everything shows.
+  const CAN = { admin: ["admin", "instructor", "challenger"],
+                instructor: ["instructor", "challenger"],
+                challenger: ["challenger"] };
+  function reveal(allowed) {
+    document.querySelectorAll("[data-guide-link]").forEach(a => {
+      a.classList.toggle("allowed", allowed.includes(a.dataset.guideLink));
+    });
+  }
+  async function gate() {
+    const all = ["admin", "instructor", "challenger"];
+    if (!location.protocol.startsWith("http")) { reveal(all); return; }
+    let cfg = null;
+    try { cfg = await (await fetch("/api/auth/config")).json(); } catch (e) { reveal(all); return; }
+    if (!cfg || !cfg.auth_mode || cfg.auth_mode === "password") { reveal(all); return; }
+    const next = encodeURIComponent(location.pathname);
+    if (!window.SimAuth || !SimAuth.token()) { location.replace("/login?next=" + next); return; }
+    let me = null;
+    try { me = await SimAuth.me(); } catch (e) {}
+    if (!me) { SimAuth.signOut("/login?next=" + next); return; }
+    const allowed = CAN[me.role] || CAN.challenger;
+    if (guide !== "index" && !allowed.includes(guide)) {
+      location.replace("/onboarding/" + allowed[0] + "/");
+      return;
+    }
+    reveal(allowed);
+  }
+  gate();
+
   // ---- fill the deployment host into links when served by the app --------------
   if (location.protocol.startsWith("http")) {
     document.querySelectorAll("[data-host-link]").forEach(a => { a.href = location.origin + a.dataset.hostLink; });

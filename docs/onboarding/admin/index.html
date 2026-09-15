@@ -14,8 +14,8 @@
   <span class="role">Admin</span>
   <span class="sp"></span>
   <nav class="other" aria-label="Other guides">
-    <a href="../instructor/index.html">Instructor guide</a>
-    <a href="../challenger/index.html">Challenger guide</a>
+    <a data-guide-link="instructor" href="../instructor/index.html">Instructor guide</a>
+    <a data-guide-link="challenger" href="../challenger/index.html">Challenger guide</a>
   </nav>
   <button class="theme" type="button">Dark theme</button>
 </header>
@@ -213,7 +213,7 @@ python tools/email_templates.py apply --app-name "Your course name"</div>
           <li>Save a personal Groq key on the test account and confirm it is accepted; remove it.</li>
           <li>Hide the scenarios you are not running.</li>
           <li>Build the cohorts from the rosters with <i>New cohort from a pasted list</i>.</li>
-          <li>Send the <a href="../instructor/index.html">instructor guide</a> to instructors and the <a href="../challenger/index.html">challenger guide</a> to the class.</li>
+          <li>Send the <a data-guide-link="instructor" href="../instructor/index.html">instructor guide</a> to instructors and the <a data-guide-link="challenger" href="../challenger/index.html">challenger guide</a> to the class.</li>
         </ol>
       </div>
     </section>
@@ -223,13 +223,14 @@ python tools/email_templates.py apply --app-name "Your course name"</div>
 
 <footer class="foot">
   <span>Engineering Flight Simulator · admin onboarding</span>
-  <a href="../instructor/index.html">Instructor guide</a>
-  <a href="../challenger/index.html">Challenger guide</a>
+  <a data-guide-link="instructor" href="../instructor/index.html">Instructor guide</a>
+  <a data-guide-link="challenger" href="../challenger/index.html">Challenger guide</a>
   <a href="https://console.firebase.google.com" target="_blank" rel="noopener">Firebase console</a>
   <a href="https://railway.app" target="_blank" rel="noopener">Railway</a>
 </footer>
 
 </div>
+<script src="/static/auth.js"></script>
 <script src="guide.js"></script>
 </body>
 </html>

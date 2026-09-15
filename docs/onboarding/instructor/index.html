@@ -14,8 +14,8 @@
   <span class="role">Instructor</span>
   <span class="sp"></span>
   <nav class="other" aria-label="Other guides">
-    <a href="../challenger/index.html">Challenger guide</a>
-    <a href="../admin/index.html">Admin guide</a>
+    <a data-guide-link="challenger" href="../challenger/index.html">Challenger guide</a>
+    <a data-guide-link="admin" href="../admin/index.html">Admin guide</a>
   </nav>
   <button class="theme" type="button">Dark theme</button>
 </header>
@@ -124,7 +124,7 @@
     <section class="step" id="challenger" data-short="What they see">
       <div class="head">
         <div class="num">05</div>
-        <div class="t"><h2>Know what the challenger sees</h2><span class="where">Read the <a href="../challenger/index.html">challenger guide</a>; the short version is here</span></div>
+        <div class="t"><h2>Know what the challenger sees</h2><span class="where">Read the <a data-guide-link="challenger" href="../challenger/index.html">challenger guide</a>; the short version is here</span></div>
         <label class="check"><input type="checkbox"/> Done</label>
       </div>
       <div class="body">
@@ -237,12 +237,13 @@
 
 <footer class="foot">
   <span>Engineering Flight Simulator · instructor onboarding</span>
-  <a href="../challenger/index.html">Challenger guide</a>
-  <a href="../admin/index.html">Admin guide</a>
+  <a data-guide-link="challenger" href="../challenger/index.html">Challenger guide</a>
+  <a data-guide-link="admin" href="../admin/index.html">Admin guide</a>
   <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API keys</a>
 </footer>
 
 </div>
+<script src="/static/auth.js"></script>
 <script src="guide.js"></script>
 </body>
 </html>
