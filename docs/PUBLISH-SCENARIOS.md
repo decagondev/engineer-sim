@@ -50,17 +50,23 @@ repos at no cost.
 1. Open the instructor dashboard (`/instructor`) → **Settings**.
 2. Each scenario has a **starter repo URL** field. Paste the URL and click **Save**.
 
-That's it. From then on, when a learner opens a session for that scenario, the
-**Submit** app shows them the starter link to fork, and they submit their own
-public repo URL back for grading.
+That's it. From then on, when a learner opens a hosted session for that scenario,
+the **Workspace** app shows them the starter link to fork; they paste their own
+public repo URL there once, browse what they pushed in **Files** (read-only, with
+a Refresh button), and press **Submit for grading** in **Submit**.
+
+Design scenarios (`sys_*`, `iv_*`) never use a repo: learners write `DESIGN.md`
+in the browser and submit it from the workspace, on every deployment.
 
 ## Notes
 
 - **Public on purpose.** This mode is trust-based (see `SUBMISSION-VIA-GITHUB.md`):
   learners' repos are public. If reused scenarios' solutions accumulate publicly,
   refresh the scenario rather than adding gates.
-- **No starter URL set?** Learners fall back to the **patch** flow (download the
-  starter zip, work locally, submit a patch) — that path needs no GitHub.
+- **No starter URL set?** Hosted learners see "ask your instructor" in the
+  Workspace app; only a local server offers the patch fallback (download the
+  starter zip, work locally, submit a patch). `WORK_MODE=local|hosted` overrides
+  the automatic choice.
 - **Rate limits:** the simulator reads public repos via the GitHub API. For a
   class, set a `GITHUB_TOKEN` (a classic read-only token) when starting the server
   to raise the API limit from ~60/hr to ~5000/hr:

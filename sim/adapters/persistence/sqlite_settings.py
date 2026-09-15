@@ -36,6 +36,9 @@ class SqliteSettingsStore:
         if "enabled" not in cols:
             self._conn.execute(
                 "ALTER TABLE scenario_config ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(session_settings)")}
+        if "repo_url" not in cols:
+            self._conn.execute("ALTER TABLE session_settings ADD COLUMN repo_url TEXT")
 
     def get_instructor(self) -> InstructorSettings:
         r = self._conn.execute(
@@ -77,6 +80,19 @@ class SqliteSettingsStore:
             "INSERT INTO session_settings (session_id, scenario) VALUES (?, ?) "
             "ON CONFLICT(session_id) DO UPDATE SET scenario=excluded.scenario",
             (session_id, scenario_key))
+        self._conn.commit()
+
+    def get_session_repo_url(self, session_id: str):
+        r = self._conn.execute(
+            "SELECT repo_url FROM session_settings WHERE session_id=?",
+            (session_id,)).fetchone()
+        return r["repo_url"] if r and r["repo_url"] else None
+
+    def set_session_repo_url(self, session_id: str, url: str) -> None:
+        self._conn.execute(
+            "INSERT INTO session_settings (session_id, repo_url) VALUES (?, ?) "
+            "ON CONFLICT(session_id) DO UPDATE SET repo_url=excluded.repo_url",
+            (session_id, url))
         self._conn.commit()
 
     def get_scenario_starter_url(self, scenario_key: str):

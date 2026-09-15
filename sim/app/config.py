@@ -35,6 +35,18 @@ class Config:
     persistence: str = "sqlite"             # sqlite | firestore
     byok_secret: str = ""                   # Fernet secret for per-user Groq keys
     public_base_url: str = ""               # e.g. https://worksim.example.com; else derived from requests
+    work_mode: str = "auto"                 # auto | local | hosted (see sim/core/workflow.py)
+
+    @property
+    def hosted(self) -> bool:
+        """Hosted deployments only offer the GitHub path for product scenarios.
+        `auto` infers it from the presence of Firebase / Firestore."""
+        mode = (self.work_mode or "auto").lower()
+        if mode == "hosted":
+            return True
+        if mode == "local":
+            return False
+        return self.auth_mode == "firebase" or self.persistence in ("firestore", "firebase")
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -64,4 +76,5 @@ class Config:
             persistence=os.environ.get("PERSISTENCE", "sqlite").lower(),
             byok_secret=os.environ.get("BYOK_SECRET", ""),
             public_base_url=os.environ.get("PUBLIC_BASE_URL", "").rstrip("/"),
+            work_mode=os.environ.get("WORK_MODE", "auto").lower(),
         )

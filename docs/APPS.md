@@ -17,9 +17,13 @@ SimApps.register({
   status: "not wired in",     // small caption under the tile (optional)
   icon: '<svg viewBox="0 0 24 24">…</svg>',   // inline SVG, stroke=currentColor
   css: `.tickets{…}`,         // optional; injected once, scope with a wrapper class
+  visible(ctx) { return true; },   // optional; hide the tile for this session
   mount(root, ctx) {
     // root: the empty window body you render into
-    // ctx:  { sid, scenario }  — the shared session id + parsed scenario
+    // ctx:  { sid, scenario }  — the shared session id + parsed scenario;
+    //       ctx.scenario.workflow = { kind: "doc"|"sandbox"|"repo", editable,
+    //       needs_repo_url, submit_label, submit_hint } says how this session
+    //       is worked (see docs/WORKSPACE-PLAN.md)
     root.innerHTML = `<div class="tickets">…</div>`;
     // …wire events, open sockets, fetch data…
     return { unmount() { /* close sockets, timers */ } };
@@ -35,6 +39,18 @@ Then add one line to `static/index.html`:
 
 That's it — the tile appears on the desktop, opens in a window, and cleans up via
 `unmount()` when closed.
+
+## Shared modules
+
+- `static/md.js` (`SimMD`): safe markdown + syntax highlighting for chat and previews.
+- `static/editor.js` (`SimEditor`): one code editor for every app, backed by the
+  vendored CodeMirror 5 under `static/vendor/codemirror/` (no CDN, so it works on a
+  classroom LAN) with a `<textarea>` fallback:
+
+  ```js
+  const ed = SimEditor.mount(el, { path, text, readOnly, onSave, onChange });
+  ed.getValue(); ed.setValue(t); ed.setPath(p); ed.setReadOnly(b); ed.focus(); ed.destroy();
+  ```
 
 ## Rules of thumb
 - **Scope your CSS** under a wrapper class (`.tickets .row`, not `.row`) so apps
@@ -52,16 +68,20 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
 
 ## What ships today
 - **Team Chat** — full: personas, reveal ladder, the uninvited stakeholder, grade.
-- **Workspace** — real: provisions the per-session sandbox, shows how to connect.
+- **Workspace** — real, per workflow: `sandbox` provisions the per-session dev box;
+  `repo` links the learner's public GitHub repo; hidden in `doc` (the folder is
+  created on first use).
 - **Mail** — real: threaded email with the client and stakeholders; the director
   can send inbound email (a scope change), which shows as a dock badge. Emails are
   recorded in the transcript and graded like chat.
-- **Submit** — real: two paths. **GitHub (recommended):** fork the teacher's
-  starter repo, push, and submit your public repo URL (graded from its commits).
-  **Patch (fallback):** download the starter, work locally, submit a git patch —
-  no GitHub needed.
-- **Files** — real: read-only browser of the per-session sandbox (starter repo
-  + your committed work), path-safe.
+- **Submit** — real, one button per workflow: `doc` submits DESIGN.md straight from
+  the workspace; `sandbox` snapshots the dev box (patch paste kept as a collapsed
+  offline fallback); `repo` submits the linked repo. Every path runs the same
+  director triggers and opens the assessor on interview scenarios.
+- **Files** — real: an editor with tabs, syntax highlighting, Save (Ctrl/Cmd+S,
+  autosave), Refresh and markdown Preview. Writes are path-safe and, when hosted,
+  kept in the database so a redeploy does not lose them. Read-only when browsing
+  a linked GitHub repo.
 - **Tickets** — real: a To Do / In Progress / Done board seeded with the client's
   asks; create and move tickets. Scoping actions are recorded in the transcript
   and graded.

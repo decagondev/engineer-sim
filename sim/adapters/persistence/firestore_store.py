@@ -275,6 +275,13 @@ class FirestoreSettingsStore:
         session_doc(self._db, session_id).set(
             {"scenario_key": scenario_key, "scenario": scenario_key}, merge=True)
 
+    def get_session_repo_url(self, session_id: str):
+        url = _data(session_doc(self._db, session_id).get()).get("repo_url") or ""
+        return url or None
+
+    def set_session_repo_url(self, session_id: str, url: str) -> None:
+        session_doc(self._db, session_id).set({"repo_url": url}, merge=True)
+
     def get_scenario_starter_url(self, scenario_key: str):
         url = _data(self._db.collection("scenario_config").document(
             scenario_key).get()).get("starter_url") or ""
@@ -297,7 +304,38 @@ class FirestoreSettingsStore:
 
     def delete_session_settings(self, session_id: str) -> None:
         session_doc(self._db, session_id).set(
-            {"level": "", "scenario_key": "", "scenario": ""}, merge=True)
+            {"level": "", "scenario_key": "", "scenario": "", "repo_url": ""}, merge=True)
+
+
+class FirestoreSessionFileStore:
+    """Browser-edited workspace files: sessions/{sid}/files/{url-encoded path}."""
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    @staticmethod
+    def _id(relpath: str) -> str:
+        from urllib.parse import quote
+        return quote(relpath, safe="")
+
+    def _col(self, session_id: str):
+        return session_doc(self._db, session_id).collection("files")
+
+    def put(self, session_id: str, relpath: str, text: str, ts: str) -> None:
+        self._col(session_id).document(self._id(relpath)).set(
+            {"relpath": relpath, "content": text, "ts": ts})
+
+    def get(self, session_id: str, relpath: str) -> Optional[str]:
+        d = _data(self._col(session_id).document(self._id(relpath)).get())
+        return d.get("content") if d else None
+
+    def list(self, session_id: str) -> Sequence[str]:
+        return sorted(_data(s).get("relpath") or "" for s in self._col(session_id).stream())
+
+    def delete_session(self, session_id: str) -> None:
+        col = self._col(session_id)
+        for snap in list(col.stream()):
+            col.document(snap.id).delete()
 
 
 class FirestoreSubmissionStore:

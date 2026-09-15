@@ -17,7 +17,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                    build_observer=None, workspace_reader=None,
                    instructor_password: str = "", github_observer=None,
                    auth=None,
-                   public_base_url: str = "") -> FastAPI:
+                   public_base_url: str = "", hosted: bool = False,
+                   repo_files=None) -> FastAPI:
     """Web adapter. Resolves each session to a per-scenario bundle via the manager;
     grader / build observer / file reader / settings are app-global.
     """
@@ -38,9 +39,22 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.auth = auth
     app.state.public_base_url = public_base_url or ""
     app.state.public_base_url_fixed = bool(public_base_url)
+    app.state.hosted = bool(hosted)
+
+    from sim.core.workflow import resolve_workflow
+    from sim.core.workspace.service import WorkspaceService, WorkspaceWriteError
+    app.state.workspace = (WorkspaceService(files=workspace_reader,
+                                            store=manager.session_files)
+                           if workspace_reader is not None else None)
+    # read-only browsing of a linked GitHub repo (set by the composition root)
+    app.state.repo_workspace = (WorkspaceService(files=repo_files, store=None)
+                                if repo_files is not None else None)
 
     def b(session_id):
         return manager.for_session(session_id)
+
+    def _workflow(session_id):
+        return resolve_workflow(b(session_id).scenario.track, app.state.hosted)
 
     def _session_level(session_id: str) -> str:
         from sim.core.levels import DEFAULT_LEVEL
@@ -144,8 +158,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             m = dict(m)
             m["starter_url"] = (app.state.settings.get_scenario_starter_url(m["key"])
                                 if app.state.settings else None)
+            m["workflow"] = resolve_workflow(m.get("track", "product"), app.state.hosted).as_dict()
             out.append(m)
-        return {"scenarios": out, "default": manager.default_scenario_key()}
+        return {"scenarios": out, "default": manager.default_scenario_key(),
+                "hosted": app.state.hosted}
 
     def _scenario_info(sc):
         starter_url = (app.state.settings.get_scenario_starter_url(sc.key)
@@ -153,6 +169,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"key": sc.key, "title": sc.title, "difficulty": sc.difficulty,
                 "track": sc.track, "role_label": sc.role_label,
                 "starter_url": starter_url,
+                "hosted": app.state.hosted,
+                "workflow": resolve_workflow(sc.track, app.state.hosted).as_dict(),
                 "personas": [{"key": p.key, "name": p.name, "role": p.role,
                               "lane": getattr(p, "lane", "")}
                              for p in sc.personas]}
@@ -303,24 +321,53 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                               "treat this as directional, not a grade.")
         return body
 
-    @app.post("/api/session/{session_id}/grade")
-    async def grade(session_id: str, payload: dict | None = None):
-        bundle = b(session_id)
-        build_record = (payload or {}).get("build_record", "")
-        if not build_record and app.state.submissions is not None:
-            sub = app.state.submissions.latest(session_id)
+    def _linked_repo(session_id: str) -> str:
+        """The repo the grader reads: the linked one, else the last repo submission."""
+        url = app.state.settings.get_session_repo_url(session_id) if app.state.settings else None
+        if url:
+            return url
+        sub = app.state.submissions.latest(session_id) if app.state.submissions else None
+        return sub.content if sub and sub.kind == "repo" else ""
+
+    def _sandbox_record(session_id: str) -> str:
+        env = b(session_id).environment
+        if env is None or app.state.build_observer is None:
+            return ""
+        h = env.handle(session_id)
+        return app.state.build_observer.summary(h.workdir) if h else ""
+
+    def _build_record_for(session_id: str) -> str:
+        """How the engineer built, resolved per workflow (docs/WORKSPACE-PLAN.md section 3).
+        The design text, diagram and tickets are appended separately by
+        _enrich_build_record so they are never duplicated here."""
+        wf = _workflow(session_id)
+        if wf.kind == "repo":
+            url = _linked_repo(session_id)
+            if not url:
+                return "(no repository linked or submitted)"
+            if app.state.github_observer is None:
+                return f"(repo {url} submitted; GitHub reading not configured)"
+            try:
+                return app.state.github_observer.summary(url)
+            except Exception as e:
+                return f"(could not read submitted repo {url}: {e})"
+        sub = app.state.submissions.latest(session_id) if app.state.submissions else None
+        if wf.kind == "sandbox":
             if sub and sub.kind == "repo" and app.state.github_observer is not None:
                 try:
-                    build_record = await run_in_threadpool(
-                        app.state.github_observer.summary, sub.content)
+                    return app.state.github_observer.summary(sub.content)
                 except Exception as e:
-                    build_record = f"(could not read submitted repo {sub.content}: {e})"
-            elif sub:
-                build_record = f"SUBMITTED PATCH ({sub.filename}):\n{sub.content}"
-        if not build_record and bundle.environment and app.state.build_observer:
-            h = bundle.environment.handle(session_id)
-            if h:
-                build_record = app.state.build_observer.summary(h.workdir)
+                    return f"(could not read submitted repo {sub.content}: {e})"
+            if sub and sub.kind == "patch":
+                return f"SUBMITTED PATCH ({sub.filename}):\n{sub.content}"
+        # doc (and sandbox without a submission): the workspace's own git history
+        return _sandbox_record(session_id)
+
+    @app.post("/api/session/{session_id}/grade")
+    async def grade(session_id: str, payload: dict | None = None):
+        build_record = (payload or {}).get("build_record", "")
+        if not build_record:
+            build_record = await run_in_threadpool(_build_record_for, session_id)
         body = await run_in_threadpool(
             _grade_body, session_id, payload, build_record)
         return JSONResponse(body)
@@ -346,6 +393,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         import io, zipfile
         from pathlib import Path as _P
         from fastapi.responses import Response
+        if app.state.hosted:
+            return JSONResponse({"error": "starter downloads are only available on a local "
+                                          "server; fork the starter repo instead"},
+                                status_code=404)
         sc = b(session_id).scenario
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -363,6 +414,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def submit_work(session_id: str, payload: dict):
         from datetime import datetime, timezone
         from sim.core.ports.repository import StoredMessage
+        if app.state.hosted and _workflow(session_id).kind == "repo":
+            return JSONResponse({"error": "this server only accepts a linked GitHub repo "
+                                          "for this scenario"}, status_code=405)
         content = (payload or {}).get("content", "")
         filename = (payload or {}).get("filename", "work.patch")
         if not content.strip():
@@ -374,28 +428,74 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             session_id=session_id, sender="tester", channel="general",
             content=f"[reveal] Submitted work: {filename} ({sub.lines} lines).",
             ts=ts, kind="event"))
-        svc = b(session_id).session_service
-        svc.remember_design(session_id, content)
-        _maybe_diagram(session_id, content)
+        bundle = b(session_id)
+        svc = bundle.session_service
+        if bundle.scenario.track != "product" or filename.lower().endswith(".md"):
+            # design-doc tracks paste the document itself; a product patch is
+            # already the build record and must not be echoed as a "design"
+            svc.remember_design(session_id, content)
+            _maybe_diagram(session_id, content)
         svc.after_submission(session_id)
         return {"ok": True, "seq": sub.seq, "filename": filename, "lines": sub.lines}
 
-    @app.post("/api/session/{session_id}/submit-repo")
-    def submit_repo(session_id: str, payload: dict):
+    @app.get("/api/session/{session_id}/workspace/repo")
+    def get_linked_repo(session_id: str):
+        url = app.state.settings.get_session_repo_url(session_id) if app.state.settings else None
+        return {"url": url or "", "workflow": _workflow(session_id).as_dict()}
+
+    @app.post("/api/session/{session_id}/workspace/repo")
+    def link_repo(session_id: str, payload: dict):
+        """Remember the learner's public repo so Files can browse it and the
+        grader can read it. Validated against GitHub; recorded in the transcript."""
         from datetime import datetime, timezone
         from sim.core.ports.repository import StoredMessage
+        if not _workflow(session_id).needs_repo_url:
+            return JSONResponse({"error": "this scenario is worked in the workspace, "
+                                          "not a linked repo"}, status_code=405)
         url = (payload or {}).get("url", "").strip()
         if app.state.github_observer is None:
             return JSONResponse({"error": "github submission not configured"}, status_code=501)
         ok, msg = app.state.github_observer.validate(url)
         if not ok:
             return JSONResponse({"error": msg}, status_code=400)
+        previous = app.state.settings.get_session_repo_url(session_id) or ""
+        app.state.settings.set_session_repo_url(session_id, url)
+        if previous != url:
+            app.state.repo.append(StoredMessage(
+                session_id=session_id, sender="tester", channel="general",
+                content=f"[reveal] Linked repo: {url}",
+                ts=datetime.now(timezone.utc).isoformat(), kind="event"))
+        return {"ok": True, "url": url, "message": msg}
+
+    @app.post("/api/session/{session_id}/submit-repo")
+    def submit_repo(session_id: str, payload: dict):
+        from datetime import datetime, timezone
+        from sim.core.ports.repository import StoredMessage
+        url = (payload or {}).get("url", "").strip()
+        if not url and app.state.settings is not None:
+            url = app.state.settings.get_session_repo_url(session_id) or ""
+        if not url:
+            return JSONResponse({"error": "link your repo first"}, status_code=400)
+        if app.state.github_observer is None:
+            return JSONResponse({"error": "github submission not configured"}, status_code=501)
+        ok, msg = app.state.github_observer.validate(url)
+        if not ok:
+            return JSONResponse({"error": msg}, status_code=400)
+        if app.state.settings is not None and _workflow(session_id).needs_repo_url:
+            app.state.settings.set_session_repo_url(session_id, url)
         ts = datetime.now(timezone.utc).isoformat()
         app.state.submissions.save(session_id, "github-repo", url, ts, kind="repo")
         app.state.repo.append(StoredMessage(
             session_id=session_id, sender="tester", channel="general",
             content=f"[reveal] Submitted repo: {url}", ts=ts, kind="event"))
-        b(session_id).session_service.after_submission(session_id)
+        svc = b(session_id).session_service
+        reader = getattr(app.state.github_observer, "read_file", None)
+        design = reader(url, "DESIGN.md") if reader else None
+        if design and design.strip():
+            # a pushed DESIGN.md is the design: the assessor and grader read it
+            svc.remember_design(session_id, design)
+            _maybe_diagram(session_id, design)
+        svc.after_submission(session_id)
         return {"ok": True, "message": msg}
 
     @app.get("/api/session/{session_id}/submissions")
@@ -444,36 +544,174 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def teardown_env(session_id: str):
         env = b(session_id).environment
         if env is not None:
+            h = env.handle(session_id)
             env.teardown(session_id)
+            if h is not None and app.state.workspace is not None:
+                app.state.workspace.forget(h.workdir, session_id)
         return {"torn_down": True}
 
     # ---- files ----------------------------------------------------------
+    class _NoWorkspace(Exception):
+        def __init__(self, msg: str, status: int = 409) -> None:
+            super().__init__(msg)
+            self.status = status
+
+    def _ws(session_id: str):
+        """(WorkspaceService, root) for this session's workflow. `doc` auto-
+        provisions the folder; `sandbox` needs the Workspace app; `repo`
+        needs a linked GitHub URL (read-only)."""
+        wf = _workflow(session_id)
+        if wf.kind == "repo":
+            svc = app.state.repo_workspace
+            if svc is None:
+                raise _NoWorkspace("repo browsing is not configured on this server", 501)
+            url = app.state.settings.get_session_repo_url(session_id) if app.state.settings else None
+            if not url:
+                raise _NoWorkspace("link your GitHub repo in the Workspace app first")
+            return svc, url
+        svc = app.state.workspace
+        if svc is None:
+            raise _NoWorkspace("no file browser", 501)
+        env = b(session_id).environment
+        if env is None:
+            raise _NoWorkspace("no environment configured", 501)
+        h = env.handle(session_id)
+        if h is None and wf.kind == "doc":
+            try:
+                h = env.provision(session_id)
+            except (SandboxUnavailable, SandboxError) as e:
+                raise _NoWorkspace(str(e), 503)
+        if h is None:
+            raise _NoWorkspace("no workspace — open the Workspace app first")
+        return svc, h.workdir
+
+    def _ws_error(e: Exception):
+        if isinstance(e, _NoWorkspace):
+            return JSONResponse({"error": str(e)}, status_code=e.status)
+        return JSONResponse({"error": str(e)}, status_code=400)
+
     @app.get("/api/session/{session_id}/files/list")
     def files_list(session_id: str, path: str = ""):
-        if app.state.files is None:
-            return JSONResponse({"error": "no file browser"}, status_code=501)
-        wd = _workdir(session_id)
-        if not wd:
-            return JSONResponse({"error": "no workspace — open the Workspace app first"}, status_code=409)
         try:
-            entries = app.state.files.list_dir(wd, path)
-        except (ValueError, NotADirectoryError, FileNotFoundError) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
-        return {"path": path, "entries": [
+            svc, root = _ws(session_id)
+            entries = svc.list_dir(root, session_id, path)
+        except (_NoWorkspace, ValueError, NotADirectoryError, FileNotFoundError) as e:
+            return _ws_error(e)
+        wf = _workflow(session_id)
+        return {"path": path, "editable": wf.editable, "entries": [
             {"name": e.name, "is_dir": e.is_dir, "size": e.size} for e in entries]}
 
     @app.get("/api/session/{session_id}/files/read")
     def files_read(session_id: str, path: str = ""):
-        if app.state.files is None:
-            return JSONResponse({"error": "no file browser"}, status_code=501)
-        wd = _workdir(session_id)
-        if not wd:
-            return JSONResponse({"error": "no workspace — open the Workspace app first"}, status_code=409)
         try:
-            c = app.state.files.read_file(wd, path)
-        except (ValueError, IsADirectoryError, FileNotFoundError) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+            svc, root = _ws(session_id)
+            c = svc.read(root, session_id, path)
+        except (_NoWorkspace, ValueError, IsADirectoryError, FileNotFoundError) as e:
+            return _ws_error(e)
         return {"path": c.path, "text": c.text, "note": c.note}
+
+    @app.put("/api/session/{session_id}/files/write")
+    def files_write(session_id: str, payload: dict):
+        from sim.core.ports.workspace import ReadOnlyWorkspace
+        wf = _workflow(session_id)
+        if not wf.editable:
+            return JSONResponse({"error": "this workspace is read-only: push to your "
+                                          "repo and press Refresh"}, status_code=405)
+        path = (payload or {}).get("path", "")
+        text = (payload or {}).get("text")
+        if not isinstance(text, str):
+            return JSONResponse({"error": "text must be a string"}, status_code=400)
+        try:
+            svc, root = _ws(session_id)
+            svc.write(root, session_id, path, text)
+        except ReadOnlyWorkspace as e:
+            return JSONResponse({"error": str(e)}, status_code=405)
+        except (_NoWorkspace, WorkspaceWriteError, ValueError,
+                IsADirectoryError, FileNotFoundError) as e:
+            return _ws_error(e)
+        return {"ok": True, "path": path, "revision": _safe_refresh(svc, root)}
+
+    def _safe_refresh(svc, root: str) -> str:
+        fn = getattr(svc.files, "refresh", None)
+        try:
+            return fn(root) if fn else ""
+        except Exception as e:
+            return f"(refresh failed: {e})"
+
+    @app.post("/api/session/{session_id}/files/refresh")
+    def files_refresh(session_id: str):
+        try:
+            svc, root = _ws(session_id)
+        except _NoWorkspace as e:
+            return _ws_error(e)
+        return {"ok": True, "revision": _safe_refresh(svc, root)}
+
+    @app.post("/api/session/{session_id}/submit-workspace")
+    def submit_workspace(session_id: str):
+        """Submit the sandbox as it is (sandbox workflow): commit the working
+        tree so the build record shows browser edits, then run the director."""
+        from datetime import datetime, timezone
+        from sim.core.ports.repository import StoredMessage
+        wf = _workflow(session_id)
+        if wf.kind != "sandbox":
+            return JSONResponse({"error": "this scenario is not submitted from a workspace"},
+                                status_code=405)
+        try:
+            svc, root = _ws(session_id)
+        except _NoWorkspace as e:
+            return _ws_error(e)
+        snap = getattr(svc.files, "snapshot", None)
+        rev = ""
+        if snap:
+            try:
+                rev = snap(root, "submitted from workspace") or ""
+            except Exception:
+                rev = ""
+        record = _sandbox_record(session_id) or "(workspace has no git history)"
+        ts = datetime.now(timezone.utc).isoformat()
+        sub = app.state.submissions.save(session_id, "workspace", record, ts, kind="workspace")
+        app.state.repo.append(StoredMessage(
+            session_id=session_id, sender="tester", channel="general",
+            content=f"[reveal] Submitted work: workspace{(' @ ' + rev) if rev else ''}.",
+            ts=ts, kind="event"))
+        b(session_id).session_service.after_submission(session_id)
+        return {"ok": True, "seq": sub.seq, "revision": rev}
+
+    @app.post("/api/session/{session_id}/submit-doc")
+    def submit_doc(session_id: str):
+        """Submit DESIGN.md straight from the workspace (doc workflow)."""
+        from datetime import datetime, timezone
+        from sim.core.ports.repository import StoredMessage
+        wf = _workflow(session_id)
+        if wf.kind != "doc":
+            return JSONResponse({"error": "this scenario is not submitted as a design document"},
+                                status_code=405)
+        try:
+            svc, root = _ws(session_id)
+        except _NoWorkspace as e:
+            return _ws_error(e)
+        text = svc.design_text(root, session_id)
+        if not text.strip():
+            return JSONResponse({"error": "DESIGN.md is empty — write your design first"},
+                                status_code=400)
+        snap = getattr(svc.files, "snapshot", None)
+        rev = ""
+        if snap:
+            try:
+                rev = snap(root, "submitted design") or ""
+            except Exception:
+                rev = ""
+        ts = datetime.now(timezone.utc).isoformat()
+        sub = app.state.submissions.save(session_id, "DESIGN.md", text, ts, kind="doc")
+        app.state.repo.append(StoredMessage(
+            session_id=session_id, sender="tester", channel="general",
+            content=f"[reveal] Submitted work: DESIGN.md ({sub.lines} lines).",
+            ts=ts, kind="event"))
+        bundle = b(session_id)
+        bundle.session_service.remember_design(session_id, text)
+        _maybe_diagram(session_id, text)
+        bundle.session_service.after_submission(session_id)
+        return {"ok": True, "seq": sub.seq, "lines": sub.lines, "revision": rev}
 
     # ---- tickets --------------------------------------------------------
     @app.get("/api/session/{session_id}/tickets")
@@ -974,10 +1212,18 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 except TypeError:
                     if hasattr(store, "delete_session_settings"):
                         store.delete_session_settings(sid)
+        if manager.session_files is not None:
+            try:
+                manager.session_files.delete_session(sid)
+            except Exception:
+                pass
         env = b(sid).environment
         if env is not None:
             try:
+                h = env.handle(sid)
                 env.teardown(sid)
+                if h is not None and app.state.workspace is not None:
+                    app.state.workspace.forget(h.workdir, sid)
             except Exception:
                 pass
         if auth.sessions:

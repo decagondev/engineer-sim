@@ -27,11 +27,15 @@ class Bundle:
 
 class SessionManager:
     def __init__(self, config: Config, registry: dict[str, Scenario],
-                 default_scenario_key: str, llm, judge_llm) -> None:
+                 default_scenario_key: str, llm, judge_llm,
+                 repo_files=None) -> None:
         from sim.adapters.persistence.stores import build_stores
 
         self._config = config
         self._registry = registry
+        # Reads files out of a submitted public repo (duck-typed: read_file(url, path)).
+        # Lets a repo submission feed the design doc to the assessor and grader.
+        self.repo_files = repo_files
         self._default = (default_scenario_key if default_scenario_key in registry
                          else next(iter(registry)))
         stores = build_stores(config)
@@ -44,6 +48,7 @@ class SessionManager:
         self.users = stores.users
         self.session_registry = stores.session_registry
         self.cohorts = stores.cohorts
+        self.session_files = stores.session_files
         from sim.adapters.llm.scoped_client import wrap_user_scoped_llm
         self.llm = wrap_user_scoped_llm(llm, users=self.users, config=config)
         self._responder = PersonaResponder(self.llm)
@@ -92,10 +97,29 @@ class SessionManager:
             mail_service=mail, ticket_service=tickets, settings=self.settings,
             primary_key=sc.primary_persona.key,
             track=sc.track, role_label=sc.role_label,
-            design_lookup=lambda sid, env=environment: _read_workspace_design(env, sid))
+            design_lookup=lambda sid, env=environment, track=sc.track:
+                self.lookup_design(sid, env, track))
         bundle = Bundle(sc, session, mail, tickets, environment)
         self._cache[scenario_key] = bundle
         return bundle
+
+
+    # -- durable design lookup ----------------------------------------------
+    def lookup_design(self, session_id: str, environment, track: str) -> str:
+        """Where the learner's design doc lives when it is not in memory
+        (fresh process, hosted restart). Order: the latest submission (the
+        durable record), a repo submission's DESIGN.md, then the sandbox file.
+        """
+        sub = self.submissions.latest(session_id) if self.submissions else None
+        if sub is not None:
+            if sub.kind == "doc" or (sub.kind == "patch" and track != "product"):
+                if sub.content.strip():
+                    return sub.content
+            if sub.kind == "repo" and self.repo_files is not None:
+                text = self.repo_files.read_file(sub.content, "DESIGN.md") or ""
+                if text.strip():
+                    return text
+        return _read_workspace_design(environment, session_id)
 
 
 def _read_workspace_design(environment, session_id: str) -> str:

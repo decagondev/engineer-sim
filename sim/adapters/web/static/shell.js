@@ -81,12 +81,18 @@ window.SimApps = (function () {
     $("brand").textContent = title;
     $("hero").textContent = title;
     document.title = title;
-    if (ctx.scenario.track === "systems") {
-      const sub = document.querySelector("#desktop .sub");
-      if (sub) sub.textContent = "You are the Systems Designer. Discover constraints in Team Chat, write the design in the starter, then submit and defend it.";
-    } else if (ctx.scenario.track === "interview") {
-      const sub = document.querySelector("#desktop .sub");
-      if (sub) sub.textContent = "Interview assessment. Ask the interviewer clarifying questions, write DESIGN.md, submit it, then defend your decisions with the assessor.";
+    const wf = ctx.scenario.workflow || {};
+    const sub = document.querySelector("#desktop .sub");
+    if (sub) {
+      if (ctx.scenario.track === "systems") {
+        sub.textContent = "You are the Systems Designer. Discover constraints in Team Chat, write DESIGN.md in Files, then Submit and defend it.";
+      } else if (ctx.scenario.track === "interview") {
+        sub.textContent = "Interview assessment. Ask the interviewer clarifying questions, write DESIGN.md in Files, Submit it, then defend your decisions with the assessor.";
+      } else if (wf.kind === "repo") {
+        sub.textContent = "Talk to the client in Team Chat, build in your own fork, then link your repo in Workspace and Submit.";
+      } else if (wf.kind === "sandbox") {
+        sub.textContent = "Talk to the client in Team Chat, create your dev box in Workspace, build in Files or your own editor, then Submit.";
+      }
     }
     renderDock();
     tick(); setInterval(tick, 1000);
@@ -94,9 +100,14 @@ window.SimApps = (function () {
     $("close").onclick = close;
   }
 
+  function shown(app) {
+    // an app may opt out for this session (e.g. Workspace in the doc workflow)
+    try { return typeof app.visible !== "function" || !!app.visible(ctx); } catch (e) { return true; }
+  }
+
   function renderDock() {
     const dock = $("dock"); dock.innerHTML = "";
-    apps.forEach(app => {
+    apps.filter(shown).forEach(app => {
       const it = document.createElement("div");
       it.className = "dockitem" + (app.status ? " stub" : "") + (current && current.id === app.id ? " active" : "");
       it.tabIndex = 0; it.dataset.app = app.id;
@@ -110,7 +121,7 @@ window.SimApps = (function () {
 
   function open(id) {
     const app = apps.find(a => a.id === id);
-    if (!app) return;
+    if (!app || !shown(app)) return;
     if (current && current.id === id) return;   // already open
     if (current) close();
     $("wintitle").textContent = app.title;

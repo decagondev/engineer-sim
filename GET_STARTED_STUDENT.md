@@ -165,17 +165,21 @@ details: **[docs/CLASSROOM.md](docs/CLASSROOM.md)**.
    whole point. The client starts vague on purpose.)
 3. Watch the dock: stakeholders may **message**, **email**, or **file tickets**
    as you go. Handle them.
-4. Open **Workspace** to create your dev box. It shows you where your files are
-   (and, with Docker, a `docker exec` command to get a terminal inside it).
-5. Open that folder / container in your coding tool, read the starter code, and
-   **build**. **Commit as you go** — your Git history is part of how the work is
-   reviewed.
-6. Use **Tickets** to scope the work, **Files** to browse the project, and
-   **Mail** for the more formal stakeholder threads.
-7. If you're on your own machine (or a classroom server), use the **Submit**
-   app: download the starter code, build locally, then submit a git patch of
-   your changes.
-8. When you're done, hit **Grade run** in Team Chat for feedback.
+4. How you do the work depends on the scenario, and the desktop tells you which:
+   - **Design scenarios** (system design, interview): open **Files**. Your
+     `DESIGN.md` is already there; write it in the editor (it saves as you go).
+     When it says what you mean, open **Submit** and press **Submit DESIGN.md**.
+     The reviewer or assessor then joins you in Team Chat.
+   - **Build scenarios on your own machine:** open **Workspace** to create your
+     dev box, then either edit in **Files** or open the folder in your coding
+     tool. **Commit as you go.** Press **Submit from workspace** when done.
+   - **Build scenarios on a hosted server:** fork the starter repo shown in
+     **Workspace**, work and push from your own machine, paste your public repo
+     URL there once, and press **Refresh** in **Files** to see what you pushed.
+     **Submit for grading** reads your commits.
+5. Use **Tickets** to scope the work and **Mail** for the more formal
+   stakeholder threads.
+6. When you're done, hit **Grade run** in Team Chat for feedback.
 
 There's no single right answer — work it like a real client.
 

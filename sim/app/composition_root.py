@@ -183,12 +183,16 @@ def build_registry(config: Config) -> dict:
     return reg
 
 
-def build_manager(config: Config, llm=None, judge_llm=None):
+def build_manager(config: Config, llm=None, judge_llm=None, repo_files=None):
     from sim.app.manager import SessionManager
     registry = build_registry(config)
     default_key = "churn_dashboard" if "churn_dashboard" in registry else next(iter(registry))
+    if repo_files is None:
+        from sim.adapters.build.github_observer import GitHostBuildObserver
+        repo_files = GitHostBuildObserver(token=config.github_token)
     return SessionManager(config, registry, default_key,
-                          llm or build_llm(config), judge_llm or build_llm(config))
+                          llm or build_llm(config), judge_llm or build_llm(config),
+                          repo_files=repo_files)
 
 
 def build_scenario(config: Config) -> Scenario:
@@ -333,8 +337,10 @@ def build_app(config: Config | None = None):
     from sim.adapters.web.app import create_web_app
     from sim.adapters.build.git_observer import GitBuildObserver
     from sim.adapters.build.github_observer import GitHostBuildObserver
+    from sim.adapters.workspace.github_files import GitHubWorkspaceFiles
     config = config or Config.from_env()
-    manager = build_manager(config)
+    github = GitHostBuildObserver(token=config.github_token)
+    manager = build_manager(config, repo_files=github)
     return create_web_app(
         manager=manager,
         grader=build_grader(config, users=manager.users),
@@ -342,7 +348,9 @@ def build_app(config: Config | None = None):
         build_observer=GitBuildObserver(),
         workspace_reader=_build_workspace_reader(),
         instructor_password=config.instructor_password,
-        github_observer=GitHostBuildObserver(token=config.github_token),
+        github_observer=github,
         auth=build_auth(config, manager),
         public_base_url=config.public_base_url,
+        hosted=config.hosted,
+        repo_files=GitHubWorkspaceFiles(api=github.api),
     )
