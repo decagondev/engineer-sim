@@ -356,3 +356,24 @@ def test_auth_bulk01_paste_emails_into_cohort(tmp_path):
     assert c.post("/api/admin/users/bulk", json={"text": "x@t.local", "cohort_id": "co-nope"}, headers=admin).status_code == 404
     assert c.post("/api/admin/users/bulk", json={"text": "x@t.local", "role": "god"}, headers=admin).status_code == 400
     assert c.post("/api/admin/users/bulk", json={"text": "x@t.local"}, headers=_h("i1", "instructor")).status_code == 403
+
+
+def test_auth_bulk02_new_cohort_from_pasted_list(tmp_path):
+    """One call names a new cohort and fills it from pasted text."""
+    c = _fake(tmp_path)
+    admin = _h("a1", "admin", "admin@t.local")
+    c.get("/api/auth/me", headers=admin)
+    r = c.post("/api/admin/users/bulk",
+               json={"cohort_name": "Nov intake", "cohort_notes": "evening class",
+                     "text": "gil@t.local\nHana Lee <hana@t.local>"}, headers=admin).json()
+    assert r["ok"] and r["cohort"]["name"] == "Nov intake" and len(r["created"]) == 2
+    cid = r["cohort"]["id"]
+    detail = c.get(f"/api/admin/cohorts/{cid}", headers=admin).json()
+    assert detail["notes"] == "evening class"
+    assert sorted(m["email"] for m in detail["members"]) == ["gil@t.local", "hana@t.local"]
+    # cohort_id wins over cohort_name when both are sent
+    again = c.post("/api/admin/users/bulk",
+                   json={"cohort_id": cid, "cohort_name": "ignored", "text": "ivo@t.local"},
+                   headers=admin).json()
+    assert again["cohort"]["id"] == cid
+    assert len(c.get("/api/admin/cohorts", headers=admin).json()["cohorts"]) == 1

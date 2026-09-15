@@ -1114,6 +1114,18 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         cohort = store.get(cid) if (cid and store) else None
         if cid and cohort is None:
             return JSONResponse({"error": "cohort not found"}, status_code=404)
+        new_name = str(payload.get("cohort_name") or "").strip()
+        if new_name and cohort is None:
+            if store is None:
+                return JSONResponse({"error": "cohorts unavailable"}, status_code=503)
+            import secrets
+            from datetime import datetime, timezone
+            from sim.core.ports.cohorts import CohortRecord
+            cohort = store.upsert(CohortRecord(
+                id="co-" + secrets.token_hex(5), name=new_name,
+                notes=str(payload.get("cohort_notes") or "").strip(),
+                created_at=datetime.now(timezone.utc).isoformat()))
+            cid = cohort.id
         send_reset = payload.get("send_reset", True)
         users = app.state.auth.users
         created, existing, failed = [], [], []

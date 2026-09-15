@@ -404,8 +404,10 @@ async function show(v){
         <input id="nc-name" placeholder="cohort name"/>
         <input id="nc-notes" placeholder="notes (optional)" style="flex:1"/>
         <button class="primary" id="nc"><span class="spin"></span><span id="nc-label">Create cohort</span></button>
+        <button id="nc-bulk">New cohort from a pasted list…</button>
       </div>
       <p class="status muted" id="nc-status"></p>
+      <div id="bk-host" hidden></div>
       <table><thead><tr>
         ${sortHead([["name","Name"],["members","Members"],["created_at","Created"]], state.cSort, state.cDir)}
         <th></th>
@@ -418,6 +420,11 @@ async function show(v){
             <button class="danger" data-dc="${esc(x.id)}">Delete</button></td>
       </tr>`).join("") || `<tr><td colspan="4" class="muted">No cohorts yet.</td></tr>`}</tbody></table>`;
     c.querySelectorAll("th.sort").forEach(th => th.onclick = () => { toggleSort("c", th.dataset.sort); show("cohorts"); });
+    el("nc-bulk").onclick = () => {
+      const host = el("bk-host");
+      if (host.hidden) bulkPanel(host, {key:"cohorts-new", view:"cohorts", createCohort:true}); else { host.hidden = true; host.innerHTML = ""; }
+    };
+
     el("nc").onclick = async () => {
       const name = el("nc-name").value.trim();
       const status = el("nc-status");
@@ -534,8 +541,13 @@ function bulkPanel(host, opts){
   const key = opts.key;
   const coSel = opts.cohorts ? `<select id="bk-co"><option value="">no cohort</option>${opts.cohorts.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>` : "";
   host.hidden = false;
+  const nameRow = opts.createCohort ? `<div class="row" style="margin-top:0">
+      <input id="bk-name" placeholder="cohort name"/>
+      <input id="bk-notes" placeholder="notes (optional)" style="flex:1"/>
+    </div>` : "";
   host.innerHTML = `<div class="editor-card bulk">
-    <div class="head"><b>Bulk add people</b><span class="muted">Paste one person per line: an email, <code>Name &lt;email&gt;</code>, or a row copied from a spreadsheet. Existing accounts are reused${opts.cohortId ? " and added to this cohort" : ""}.</span></div>
+    <div class="head"><b>${opts.createCohort ? "New cohort from a pasted list" : "Bulk add people"}</b><span class="muted">${opts.createCohort ? "Name the cohort, then paste" : "Paste"} one person per line: an email, <code>Name &lt;email&gt;</code>, or a row copied from a spreadsheet. Existing accounts are reused${opts.cohortId || opts.createCohort ? " and added to the cohort" : ""}.</span></div>
+    ${nameRow}
     <textarea id="bk-text" rows="7" placeholder="amy@school.edu&#10;Ben Okoro <ben@school.edu>&#10;Cara Diaz, cara@school.edu"></textarea>
     <div class="row">${coSel}
       <select id="bk-role"><option value="challenger">challenger</option><option value="instructor">instructor</option></select>
@@ -548,11 +560,15 @@ function bulkPanel(host, opts){
     <div id="bk-result"></div>
   </div>`;
   const ta = el("bk-text"), go = el("bk-go"), lab = el("bk-go-label");
-  ta.addEventListener("input", () => {
+  const verb = opts.createCohort ? "Create cohort & add" : "Add";
+  lab.textContent = `${verb} people`;
+  const refresh = () => {
     const n = countPeople(ta.value);
-    lab.textContent = n ? `Add ${n} ${n === 1 ? "person" : "people"}` : "Add people";
-    go.disabled = !n;
-  });
+    lab.textContent = n ? `${verb} ${n} ${n === 1 ? "person" : "people"}` : `${verb} people`;
+    go.disabled = !n || (opts.createCohort && !el("bk-name").value.trim());
+  };
+  ta.addEventListener("input", refresh);
+  if (opts.createCohort) el("bk-name").addEventListener("input", refresh);
   if (state.bulk && state.bulk.key === key) renderBulkResult(state.bulk.result);
   go.onclick = async () => {
     const lines = ta.value.split(/\r?\n/).filter(l => l.trim());
@@ -563,9 +579,17 @@ function bulkPanel(host, opts){
     go.disabled = true; go.classList.add("busy"); ta.disabled = true;
     el("bk-prog").hidden = false; el("bk-fill").style.width = "0%"; el("bk-result").innerHTML = "";
     el("bk-status").className = "status muted";
-    el("bk-status").textContent = body.send_reset ? "Creating accounts and sending set-password emails…" : "Creating accounts…";
     let done = 0;
     try {
+      if (opts.createCohort) {
+        el("bk-status").textContent = "Creating the cohort…";
+        const cr = await fetch("/api/admin/cohorts", {method:"POST", headers:h(),
+          body: JSON.stringify({name: el("bk-name").value.trim(), notes: el("bk-notes").value.trim()})});
+        const cd = await cr.json().catch(() => ({}));
+        if (!cr.ok) { el("bk-status").className = "status err"; el("bk-status").textContent = errText(cd, cr, "Could not create that cohort."); return; }
+        body.cohort_id = cd.id;
+      }
+      el("bk-status").textContent = body.send_reset ? "Creating accounts and sending set-password emails…" : "Creating accounts…";
       for (let i = 0; i < lines.length; i += 10) {
         const chunk = lines.slice(i, i + 10);
         const r = await fetch("/api/admin/users/bulk", {method:"POST", headers:h(), body: JSON.stringify({...body, text: chunk.join("\n")})});
@@ -577,7 +601,12 @@ function bulkPanel(host, opts){
         el("bk-fill").style.width = Math.round(100 * done / lines.length) + "%";
         el("bk-count").textContent = `${Math.min(sum.created.length + sum.existing.length + sum.failed.length, total)} / ${total}`;
       }
-      state.bulk = { key, result: sum };
+      if (opts.createCohort && body.cohort_id) {
+        state.cohortId = body.cohort_id;
+        state.bulk = { key: "cohort:" + body.cohort_id, result: sum };
+      } else {
+        state.bulk = { key, result: sum };
+      }
       bustAdmin();
       await show(opts.view);
     } catch (e) {
