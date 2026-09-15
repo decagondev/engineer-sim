@@ -113,6 +113,7 @@
           <div class="part"><span class="k">Dock</span><b>Mail</b>Threaded email with the cast. Interview scenarios rarely use it; build scenarios do.</div>
           <div class="part hidden-part"><span class="k">Not shown</span><b>Workspace</b>Hidden for interviews. Your folder is created automatically the first time you open Files.</div>
         </div>
+        <div class="note"><span class="lab">Finding this guide again</span>The <b>Guide</b> button in your dashboard's top bar opens it. Your checklist ticks are remembered in this browser.</div>
         <div class="note"><span class="lab">If the page says "This session is not assigned to you"</span>You opened a link made for someone else, or your instructor has not assigned it yet. Go back to your dashboard and open a session from the list, or ask for a fresh link.</div>
       </div>
     </section>
@@ -124,7 +125,7 @@
         <label class="check"><input type="checkbox"/> Done</label>
       </div>
       <div class="body">
-        <p>The moment the session starts, the interviewer posts the problem. It is deliberately short. Here is the one from the parking-garage interview:</p>
+        <p>The moment the session starts, the interviewer posts the problem. It is deliberately short. Each interview has its own interviewer (Sol in the parking-garage one below); the assessor is always Rowan. Here is the parking-garage brief:</p>
         <div class="chat">
           <div class="m"><span class="who">Sol</span><span>A garage wants a display and an API: how many spaces are free, and which floor. Design the system. Twenty minutes.</span></div>
           <div class="sig">Session started. Online: Sol, Rowan.</div>
@@ -176,13 +177,13 @@
             <tr><td>3. Requirements</td><td>Functional, non-functional (scale, latency, consistency, availability), and non-goals for v1.</td></tr>
             <tr><td>4. Capacity sketch</td><td>Rough numbers: QPS, storage, payload size. Show the arithmetic.</td></tr>
             <tr><td>5. API</td><td>Endpoints or messages, with shapes.</td></tr>
-            <tr><td>6. High-level architecture</td><td>Components and how a request flows. The simulator draws a diagram from this section.</td></tr>
+            <tr><td>6. High-level architecture</td><td>Components and how a request flows. When you submit, the simulator draws a diagram of <i>your</i> design from the document (it never adds components you did not name).</td></tr>
             <tr><td>7. Data model</td><td>Tables, keys, indexes, retention.</td></tr>
             <tr><td>8. Key decisions and trade-offs</td><td>Each decision, the alternative you rejected, and why. This is what the assessor will probe.</td></tr>
           </tbody>
         </table></div>
         <ul>
-          <li>The <b>Preview</b> button renders the markdown so you can read it as the assessor will.</li>
+          <li>The <b>Preview</b> button renders the markdown so you can read it as the assessor will. A <code>```mermaid</code> block in your document is drawn as a real diagram there, so you can sketch your own architecture picture if you like.</li>
           <li>A gold dot on the tab means unsaved changes. <b>Save</b> writes to your workspace; the server also keeps a copy, so a refresh or a dropped connection does not lose your work.</li>
           <li>The status line at the bottom confirms each save and shows the workspace revision.</li>
         </ul>
@@ -209,7 +210,7 @@
         <label class="check"><input type="checkbox"/> Done</label>
       </div>
       <div class="body">
-        <p>The Submit app has one button for interview scenarios. It reads <code>DESIGN.md</code> (and <code>TICKETS.md</code> if you wrote one) from your workspace as they are right now, records the submission, and draws a diagram of <i>your</i> architecture. Save first if the tab still shows a gold dot.</p>
+        <p>The Submit app has one button for interview scenarios. It reads <code>DESIGN.md</code> (and <code>TICKETS.md</code> if you wrote one) from your workspace as they are right now, records the submission, and draws a diagram of <i>your</i> architecture. The drawing appears at the top of Team Chat under <b>Design diagram</b>, and your instructor sees the same picture in their replay. Save first if the tab still shows a gold dot.</p>
         <ul>
           <li>You can submit again after edits; the latest submission is the one the assessor and grader read.</li>
           <li>"DESIGN.md is empty" means the file has no content yet. Write it in Files first.</li>
@@ -230,7 +231,7 @@
           <div class="sig">[reveal] Rowan is here to assess your design.</div>
           <div class="m"><span class="who">Rowan</span><span>In section 8 you chose per-floor counters in Redis and reconcile against the ramp sensors every minute. Walk me through what happens when a sensor double-counts for an hour.</span></div>
         </div>
-        <p>The assessor has read your document and asks <b>one probing question at a time about something you wrote</b>. They do not propose a better design, teach the textbook answer, or reveal constraints you never asked about. They are checking two things: that you made the decision, and that you can defend it.</p>
+        <p>The assessor has read your document and the diagram drawn from it, and asks <b>one probing question at a time about something you wrote</b>. They do not propose a better design, teach the textbook answer, or reveal constraints you never asked about. They are checking two things: that you made the decision, and that you can defend it.</p>
         <ul>
           <li>Answer from your document. "In section 4 I estimated …" is a strong opening.</li>
           <li>A defensible alternative is fine. "I chose X over Y because Z" beats guessing what they want.</li>

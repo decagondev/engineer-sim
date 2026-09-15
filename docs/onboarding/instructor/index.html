@@ -114,7 +114,7 @@
         <p>Cohorts are groups of challenger accounts that an admin sets up (or that you ask them to create from a pasted class list). With one in place:</p>
         <ol>
           <li>Choose the <b>Cohort</b>, the <b>Scenario</b>, and the <b>Engineer level</b>.</li>
-          <li>Press <b>Create sessions</b>. One session per member is created and assigned to them.</li>
+          <li>Press <b>Create sessions</b>. A progress bar counts the sessions as they are created (a few at a time), so a class of forty takes a visible half-minute rather than looking stuck. If the connection drops part-way, press the button again: members who already have the scenario are skipped.</li>
           <li>Use <b>Copy all links</b> for a message to the group, or <b>Download CSV</b> for your own records. Each row also has its own <b>Copy link</b> and <b>Replay</b>.</li>
         </ol>
         <p>Members see their new session on their dashboard immediately, so on a hosted server you may not need to send links at all.</p>
@@ -146,11 +146,11 @@
         <label class="check"><input type="checkbox"/> Done</label>
       </div>
       <div class="body">
-        <p>The Sessions tab lists every session you own with scenario, level, status, and message count. Open one to get the replay:</p>
+        <p>The Sessions tab lists every session you own with its scenario, engineer level, event count and last activity. Open one to get the replay:</p>
         <ul>
           <li><b>▶ Play</b> and the scrubber step through the transcript in order; the counter shows where you are.</li>
           <li>Filter chips: <b>Chat</b>, <b>Mail</b>, <b>Tickets</b>, <b>Signals</b>. Signals are the simulator's own lines: reveal-ladder unlocks, the assessor joining, submissions. They are the fastest way to see whether discovery happened.</li>
-          <li>The design diagram the simulator drew from their <code>DESIGN.md</code> is shown with the submission.</li>
+          <li>The <b>Design</b> panel on the right draws the diagram the simulator made from their submitted <code>DESIGN.md</code>, the same picture the assessor and grader work from. <b>Refresh</b> re-reads it after a resubmission; until a submission exists it says so. Any <code>```mermaid</code> block in the transcript is drawn inline too.</li>
         </ul>
         <h3>Reading an interview replay</h3>
         <ul>
@@ -190,7 +190,7 @@
             <tr><td>Scenario library: enabled</td><td>Whether the scenario appears in the New session list. Admins control this.</td><td>Ask an admin to hide scenarios you are not running, so the list stays short.</td></tr>
           </tbody>
         </table></div>
-        <p>You can also change a running session's <b>level</b> or <b>scenario</b> from the replay view. Changing the scenario after the challenger has started resets what they see, so do it before they open the link.</p>
+        <p>A session's scenario and level are fixed when you create it. To move a challenger to a different interview, create a new session for them; an admin can delete the old one.</p>
       </div>
     </section>
 
@@ -223,7 +223,7 @@
       <div class="body">
         <ol>
           <li>Sign in to <code>/instructor</code>; confirm the Sessions tab loads.</li>
-          <li>Create one throwaway session, open the link yourself, ask the interviewer one question, and check a reply arrives. That proves the model key is live.</li>
+          <li>Create one throwaway session, open the link yourself, ask the interviewer one question, and check a reply arrives. That proves the model key is live. Type a line into <code>DESIGN.md</code>, submit it, and confirm the Design panel in your replay draws something.</li>
           <li>Create the cohort's sessions. Copy all links or tell the group to open their dashboards.</li>
           <li>Remind everyone: ask first, write second, submit before talking to the assessor, save with <kbd>Ctrl</kbd>+<kbd>S</kbd>.</li>
           <li>Keep the Sessions tab open. Message counts tick up as people work; a session stuck at the start signal means someone cannot get in.</li>
