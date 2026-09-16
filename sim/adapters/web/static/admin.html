@@ -574,26 +574,45 @@ async function show(v){
   if (v==="sessions") {
     const d = await loadJson("/api/admin/sessions");
     if (!still(gen)) return;
-    const rows = d.sessions || [];
+    const all = d.sessions || [];
     const dash = v => v || "—";
+    const scs = [...new Set(all.map(s=>s.scenario).filter(Boolean))].sort();
     c.innerHTML = `<h1>All sessions</h1>
-      <p class="muted">${rows.length ? "Includes assigned sessions and older recorded runs." : "No sessions yet."}</p>
-      <table><thead><tr><th>Id</th><th>Scenario</th><th>Owner</th><th>Assignee</th><th>Events</th><th></th></tr></thead>
+      <p class="muted">${all.length ? "Every session on this server, newest activity first." : "No sessions yet."}</p>
+      <div class="filters">
+        <input id="as-q" placeholder="Search id, person, scenario…" style="min-width:240px" value="${esc(state.sQ||"")}"/>
+        <select id="as-state"><option value="">Any state</option><option value="graded">Graded</option><option value="submitted">Submitted</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
+        <select id="as-sc"><option value="">Any scenario</option>${scs.map(k=>`<option value="${esc(k)}">${esc((all.find(s=>s.scenario===k)||{}).title||k)}</option>`).join("")}</select>
+        <span class="muted" id="as-count"></span>
+      </div>
+      <div id="as-list"></div>`;
+    const draw = () => {
+      const q = el("as-q").value.trim().toLowerCase(), st = el("as-state").value, sc = el("as-sc").value;
+      state.sQ = el("as-q").value;
+      const rows = all.filter(s => (!st || s.state===st) && (!sc || s.scenario===sc) &&
+        (!q || [s.session_id, s.owner, s.assignee, s.title, s.scenario].some(v => String(v||"").toLowerCase().includes(q))));
+      el("as-count").textContent = `${rows.length} of ${all.length}`;
+      el("as-list").innerHTML = rows.length ? `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Owner</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th><th></th></tr></thead>
       <tbody>${rows.map(s=>`<tr>
-        <td class="muted">${s.session_id}</td>
-        <td>${dash(s.scenario)} <span class="muted">${dash(s.level)}</span></td>
-        <td>${dash(s.owner || s.owner_uid)}</td>
-        <td>${dash(s.assignee || s.assignee_uid)}</td>
+        <td class="id">${esc(s.session_id)}</td>
+        <td>${esc(s.title||s.scenario||"—")}<div class="muted">${esc(dash(s.level))}</div></td>
+        <td>${esc(dash(s.owner || s.owner_uid))}</td>
+        <td>${esc(s.assignee || s.assignee_uid) || "<span class='muted'>unassigned</span>"}</td>
+        <td>${stateChip(s.state, s.grade_total)}</td>
         <td class="muted">${s.count||0}</td>
-        <td><a href="/instructor"><button>Replay via instructor</button></a>
-            <button class="danger" data-ds="${s.session_id}">Delete</button></td>
-      </tr>`).join("")}</tbody></table>`;
-    c.querySelectorAll("[data-ds]").forEach(b => b.onclick = async () => {
-      if (!confirm("Cascade delete session "+b.dataset.ds+"?")) return;
-      await fetch("/api/admin/sessions/"+b.dataset.ds,{method:"DELETE",headers:h()});
-      bustAdmin();
-      show("sessions");
-    });
+        <td class="muted" title="${esc(s.last_ts||"")}">${ago(s.last_ts)}</td>
+        <td style="white-space:nowrap"><a href="/instructor#replay=${esc(s.session_id)}"><button>Replay</button></a>
+            <button class="danger" data-ds="${esc(s.session_id)}">Delete</button></td>
+      </tr>`).join("")}</tbody></table>` : `<div class="muted">No sessions match.</div>`;
+      c.querySelectorAll("[data-ds]").forEach(b => b.onclick = async () => {
+        if (!confirm("Cascade delete session "+b.dataset.ds+"?")) return;
+        await fetch("/api/admin/sessions/"+b.dataset.ds,{method:"DELETE",headers:h()});
+        bustAdmin();
+        show("sessions");
+      });
+    };
+    el("as-q").oninput = draw; el("as-state").onchange = draw; el("as-sc").onchange = draw;
+    draw();
   }
   if (v==="scenarios") {
     const d = await loadJson("/api/admin/scenarios");

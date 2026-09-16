@@ -1985,16 +1985,21 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     @app.get("/api/admin/sessions")
     def admin_list_sessions():
-        rows = _merge_known_sessions(all_registered=True)
+        # one listing + one users listing; labels and states come from the
+        # session index, never a read per row
+        rows = _enrich_sessions(_merge_known_sessions(all_registered=True))
         return {"sessions": [
             {"session_id": s["session_id"],
              "owner_uid": s.get("owner_uid") or "",
              "assignee_uid": s.get("assignee_uid") or "",
-             "owner": _uid_label(s.get("owner_uid") or ""),
-             "assignee": _uid_label(s.get("assignee_uid") or ""),
+             "owner": s.get("owner") or "",
+             "assignee": s.get("assignee") or "",
              "scenario": s.get("scenario") or "",
+             "title": s.get("title") or "",
              "level": s.get("level") or "",
              "status": s.get("status") or "",
+             "state": s.get("state") or "not_started",
+             "grade_total": s.get("grade_total"),
              "created_at": s.get("first_ts") or "",
              "count": s.get("count") or 0,
              "last_ts": s.get("last_ts") or ""}

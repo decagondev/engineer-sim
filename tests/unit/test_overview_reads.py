@@ -73,3 +73,26 @@ def test_overview_reads_are_bounded_on_firestore(tmp_path, monkeypatch):
     # the one read left is the sign-in check on the request itself
     assert d2["cached_at"] and counts["stream"] == 0 and counts["get"] <= 1, counts
     assert time.perf_counter() - t0 < 0.5
+
+
+def test_admin_sessions_list_reads_are_bounded(tmp_path, monkeypatch):
+    db, counts = _counting_db(monkeypatch)
+    cfg = Config(llm_provider="fake", auth_mode="fake", persistence="firestore",
+                 firebase_project_id="x", sandbox_root=str(tmp_path / "b"),
+                 bootstrap_admin_email="admin@t.local")
+    c = TestClient(build_app(cfg))
+    admin = {"Authorization": "Bearer fake:a1:admin:admin@t.local"}
+    inst = {"Authorization": "Bearer fake:i1:instructor:i1@t.local"}
+    c.get("/api/auth/me", headers=admin)
+    co = c.post("/api/admin/cohorts", json={"name": "C"}, headers=admin).json()["id"]
+    for i in range(15):
+        u = c.post("/api/admin/users", json={"email": f"c{i}@t.local", "role": "challenger"},
+                   headers=admin).json()
+        c.post(f"/api/admin/cohorts/{co}/members", json={"uid": u["uid"]}, headers=admin)
+    c.post(f"/api/instructor/cohorts/{co}/sessions", json={"scenario": "iv_parking"}, headers=inst)
+    c.get("/api/admin/sessions", headers=admin)          # backfills the index once
+    counts["get"] = counts["stream"] = 0
+    rows = c.get("/api/admin/sessions", headers=admin).json()["sessions"]
+    assert len(rows) == 15 and all(r["assignee"].endswith("@t.local") for r in rows)
+    assert all(r["state"] == "not_started" for r in rows)
+    assert counts["get"] <= 3 and counts["stream"] <= 6, f"per-row reads: {counts}"
