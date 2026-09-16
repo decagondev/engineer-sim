@@ -177,7 +177,12 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     # ---- static / shell -------------------------------------------------
     @app.get("/health")
     def health():
-        return {"status": "ok"}
+        cfg = manager._config
+        return {"status": "ok",
+                "commit": (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT") or "")[:12],
+                "llm_provider": cfg.llm_provider,
+                "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
+                          "ollama": cfg.ollama_model}.get(cfg.llm_provider, "")}
 
     @app.get("/")
     def index():
@@ -2145,6 +2150,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "llm_provider": cfg.llm_provider,
                 "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
                           "ollama": cfg.ollama_model}.get(cfg.llm_provider, ""),
+                "model_from_env": bool(os.environ.get({"groq": "GROQ_MODEL", "anthropic": "ANTHROPIC_MODEL",
+                                                       "ollama": "OLLAMA_MODEL"}.get(cfg.llm_provider, ""))),
+                "commit": (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT") or "")[:12],
                 "hosted": app.state.hosted, "work_mode": cfg.work_mode,
                 "env_provider": cfg.env_provider,
                 "persistence": cfg.persistence, "auth_mode": cfg.auth_mode,
