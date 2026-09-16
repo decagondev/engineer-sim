@@ -49,5 +49,5 @@ def wrap_user_scoped_llm(llm: LLMClient, *, users, config) -> LLMClient:
     return ScopedLLMClient(
         llm,
         resolve_key=user_key_resolver(users, secret_from_config(config)),
-        groq_model=getattr(config, "groq_model", "llama-3.3-70b-versatile"),
+        groq_model=getattr(config, "groq_model", "openai/gpt-oss-120b"),
     )

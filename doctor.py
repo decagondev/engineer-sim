@@ -178,7 +178,7 @@ if ollama_up:
 elif anthropic_key:
     provider = ("anthropic", "LLM_PROVIDER=anthropic ANTHROPIC_MODEL=<current-model>")
 elif groq_key:
-    provider = ("groq", "LLM_PROVIDER=groq GROQ_MODEL=llama-3.3-70b-versatile")
+    provider = ("groq", "LLM_PROVIDER=groq GROQ_MODEL=openai/gpt-oss-120b")
 else:
     provider = ("fake", "LLM_PROVIDER=fake  (canned replies — set up Ollama for real practice)")
 

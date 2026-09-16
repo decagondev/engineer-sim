@@ -19,7 +19,7 @@ class GroqClient:
     https://console.groq.com/docs/models.
     """
 
-    def __init__(self, model: str = "llama-3.3-70b-versatile",
+    def __init__(self, model: str = "openai/gpt-oss-120b",
                  max_tokens: int = 1024, timeout: float = 60.0,
                  api_key: str | None = None) -> None:
         self._model = model
