@@ -996,11 +996,22 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"ok": True, "session_id": sid, "url": f"/#{sid}"}
 
     # ---- cohorts (instructor view: read cohorts, batch-create sessions) ----
-    def _cohort_members(store, cid: str) -> list:
+    def _users_by_uid() -> dict:
+        """One listing of the directory; a read per member is what made the
+        cohort screens take minutes on Firestore."""
         users = app.state.auth.users
+        if users is None:
+            return {}
+        try:
+            return {u.uid: u for u in users.list()}
+        except Exception:
+            return {}
+
+    def _cohort_members(store, cid: str, users_by_uid: dict | None = None) -> list:
+        by_uid = _users_by_uid() if users_by_uid is None else users_by_uid
         out = []
         for uid in store.members(cid):
-            u = users.get(uid) if users else None
+            u = by_uid.get(uid)
             if u is None:
                 out.append({"uid": uid, "email": "", "name": "", "role": "",
                             "disabled": False})
@@ -1030,8 +1041,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if store is None:
             return {"cohorts": []}
         rows = []
+        by_uid = _users_by_uid()
         for c in store.list():
-            members = _cohort_members(store, c.id)
+            members = _cohort_members(store, c.id, by_uid)
             rows.append({"id": c.id, "name": c.name, "notes": c.notes,
                          "member_count": len(members),
                          "challenger_count": sum(1 for m in members if not _assignable(m))})
@@ -1050,15 +1062,19 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if rec is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         sessions = app.state.auth.sessions
+        by_assignee: dict = {}
+        if sessions is not None:
+            for r in sessions.list_all():           # one stream, not one per member
+                if r.assignee_uid:
+                    by_assignee.setdefault(r.assignee_uid, []).append(r)
         members = []
         for m in _cohort_members(store, cid):
             held = []
-            if sessions is not None and m["uid"]:
-                for r in sessions.list_by_assignee(m["uid"]):
-                    if scenario and r.scenario_key != scenario:
-                        continue
-                    held.append({"session_id": r.id, "scenario": r.scenario_key,
-                                 "level": r.level, "status": r.status})
+            for r in by_assignee.get(m["uid"], []):
+                if scenario and r.scenario_key != scenario:
+                    continue
+                held.append({"session_id": r.id, "scenario": r.scenario_key,
+                             "level": r.level, "status": r.status})
             members.append({**m, "blocked": _assignable(m), "sessions": held})
         return {"id": rec.id, "name": rec.name, "notes": rec.notes,
                 "members": members}
@@ -1089,6 +1105,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         auth = app.state.auth
         owner = _actor(request).uid
         created, skipped = [], []
+        held: dict = {}
+        if skip_existing and auth.sessions is not None:
+            for r in auth.sessions.list_all():
+                if r.assignee_uid and r.scenario_key == key:
+                    held.setdefault(r.assignee_uid, []).append(r)
         for m in _cohort_members(store, cid):
             if only is not None and m["uid"] not in only:
                 continue   # the client is creating in batches to show progress
@@ -1097,8 +1118,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 skipped.append({**m, "reason": why})
                 continue
             if skip_existing and auth.sessions is not None:
-                have = [r for r in auth.sessions.list_by_assignee(m["uid"])
-                        if r.scenario_key == key]
+                have = held.get(m["uid"], [])
                 if have:
                     skipped.append({**m, "reason": "already has this scenario",
                                     "session_id": have[0].id})

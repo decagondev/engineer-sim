@@ -96,3 +96,37 @@ def test_admin_sessions_list_reads_are_bounded(tmp_path, monkeypatch):
     assert len(rows) == 15 and all(r["assignee"].endswith("@t.local") for r in rows)
     assert all(r["state"] == "not_started" for r in rows)
     assert counts["get"] <= 3 and counts["stream"] <= 6, f"per-row reads: {counts}"
+
+
+def test_cohort_screens_reads_are_bounded(tmp_path, monkeypatch):
+    db, counts = _counting_db(monkeypatch)
+    cfg = Config(llm_provider="fake", auth_mode="fake", persistence="firestore",
+                 firebase_project_id="x", sandbox_root=str(tmp_path / "b"),
+                 bootstrap_admin_email="admin@t.local")
+    c = TestClient(build_app(cfg))
+    admin = {"Authorization": "Bearer fake:a1:admin:admin@t.local"}
+    inst = {"Authorization": "Bearer fake:i1:instructor:i1@t.local"}
+    c.get("/api/auth/me", headers=admin)
+    co = c.post("/api/admin/cohorts", json={"name": "C"}, headers=admin).json()["id"]
+    for i in range(20):
+        u = c.post("/api/admin/users", json={"email": f"c{i}@t.local", "role": "challenger"},
+                   headers=admin).json()
+        c.post(f"/api/admin/cohorts/{co}/members", json={"uid": u["uid"]}, headers=admin)
+    c.post(f"/api/instructor/cohorts/{co}/sessions", json={"scenario": "iv_parking"}, headers=inst)
+
+    counts["get"] = counts["stream"] = 0
+    lst = c.get("/api/instructor/cohorts", headers=inst).json()["cohorts"]
+    assert lst[0]["challenger_count"] == 20
+    assert counts["get"] <= 3 and counts["stream"] <= 4, f"cohort list: {counts}"
+
+    counts["get"] = counts["stream"] = 0
+    d = c.get(f"/api/instructor/cohorts/{co}?scenario=iv_parking", headers=inst).json()
+    assert len(d["members"]) == 20 and all(len(m["sessions"]) == 1 for m in d["members"])
+    assert all("has_groq_key" in m for m in d["members"])
+    assert counts["get"] <= 3 and counts["stream"] <= 4, f"cohort detail: {counts}"
+
+    # creating sessions for a second scenario is one stream to check who has it
+    counts["get"] = counts["stream"] = 0
+    r = c.post(f"/api/instructor/cohorts/{co}/sessions", json={"scenario": "iv_chat"}, headers=inst).json()
+    assert len(r["created"]) == 20
+    assert counts["stream"] <= 4, f"cohort create: {counts}"
