@@ -36,7 +36,20 @@ window.SimDiagram = (function () {
     return ready;
   }
 
-  async function render(el, src, caption) {
+  // same surgery as sim/core/session/interview.py::repair_mermaid
+  function repair(src) {
+    const special = /[()\\/{}<>|:#;,&"']/;
+    return String(src).split("\n").map(line => {
+      const t = line.trim();
+      if (/^(subgraph|%%|classDef|class |style |linkStyle)/.test(t)) return line;
+      return line.replace(/\b([A-Za-z_][\w-]*)\[(?!")([^\]"]*?)\]/g, (m, name, label) => {
+        const text = label.replace(/\\n/g, "<br/>").replace(/"/g, "'");
+        return (special.test(label) || label.includes("\\n")) ? `${name}["${text}"]` : m;
+      });
+    }).join("\n");
+  }
+
+  async function render(el, src, caption, _retried) {
     css();
     const text = String(src || "").trim();
     if (!text) return false;
@@ -57,6 +70,10 @@ window.SimDiagram = (function () {
       // mermaid leaves a stray element behind on a parse error
       const junk = document.getElementById("d" + id) || document.getElementById(id);
       if (junk && junk.parentNode) junk.parentNode.removeChild(junk);
+      if (!_retried) {
+        const fixed = repair(text);
+        if (fixed !== text) return render(el, fixed, caption, true);
+      }
       el.className = (el.className.replace(/\berr\b/g, "") + " sim-diagram err").trim();
       el.innerHTML = (caption ? `<div class="cap">${caption}</div>` : "") +
         (window.SimMD ? SimMD.render("```mermaid\n" + text + "\n```") : "") +

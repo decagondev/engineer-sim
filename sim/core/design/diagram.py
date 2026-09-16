@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from sim.core.ports.llm import LLMClient, LLMMessage
-from sim.core.session.interview import extract_mermaid
+from sim.core.session.interview import extract_mermaid, repair_mermaid
 
 _FALLBACK = (
     "flowchart TB\n"
@@ -16,7 +16,9 @@ _SYSTEM = (
     "components and data flows they actually named. Do not invent a better "
     "architecture. Do not add components they did not mention. No prose. "
     "Prefer `flowchart TB`. Keep node labels short. You may use subgraphs "
-    "for stores, queues, and clients."
+    "for stores, queues, and clients. Node labels must be plain words: no "
+    "parentheses, slashes, colons or line breaks inside a label; if you must, "
+    "wrap the label in double quotes, e.g. API[\"API service (POST /shorten)\"]."
 )
 
 
@@ -28,4 +30,4 @@ def render_design_diagram(llm: LLMClient, design: str) -> str:
         system=_SYSTEM,
         messages=[LLMMessage("user", text[:12000])],
     )
-    return extract_mermaid(raw) or _FALLBACK
+    return repair_mermaid(extract_mermaid(raw)) or _FALLBACK

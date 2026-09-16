@@ -37,6 +37,34 @@ def signals_design_ready(text: str) -> bool:
     return any(cue in t for cue in _READY_CUES)
 
 
+_LABEL = re.compile(r'(\b[A-Za-z_][\w-]*)\[(?!")([^\]"]*?)\]')
+_SPECIAL = re.compile(r'[()\\/{}<>|:#;,&"\']')
+
+
+def repair_mermaid(src: str) -> str:
+    """Make an LLM-written flowchart parse: quote node labels that contain
+    characters mermaid treats as syntax (parentheses, slashes, colons ...)
+    and turn literal \\n inside labels into <br/>. Pure text surgery; a
+    diagram that was already valid comes back unchanged."""
+    if not src:
+        return src
+
+    def fix(m):
+        name, label = m.group(1), m.group(2)
+        text = label.replace("\\n", "<br/>").replace('"', "'")
+        if _SPECIAL.search(label) or "\\n" in label:
+            return f'{name}["{text}"]'
+        return m.group(0)
+    out = []
+    for line in src.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("subgraph", "%%", "classDef", "class ", "style ", "linkStyle")):
+            out.append(line)
+            continue
+        out.append(_LABEL.sub(fix, line))
+    return "\n".join(out)
+
+
 def extract_mermaid(raw: str) -> str:
     """Pull a mermaid diagram out of an LLM reply, or return empty."""
     text = (raw or "").strip()

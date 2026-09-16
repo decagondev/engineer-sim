@@ -159,3 +159,25 @@ def test_iv09_meta_exposes_interview_track(tmp_path):
     assert keys["iv_tiny_analytics"]["track"] == "interview"
     assert keys["churn_dashboard"]["track"] == "product"
     assert keys["sys_shortlink"]["track"] == "systems"
+
+
+def test_iv10_repair_mermaid_quotes_awkward_labels():
+    from sim.core.session.interview import repair_mermaid
+    # the model writes a literal backslash-n inside labels, as Groq did in production
+    src = "\n".join([
+        "flowchart TB",
+        "  subgraph Service_Layer",
+        r"    API[API Service\n(POST /shorten, GET /<alias>)]",
+        "  end",
+        r"  DB[DB Table\n(alias PK, long_url)]",
+        "  C[Client] --> LB[Load Balancer / TLS]",
+        "  OK[Plain label]",
+        '  Q["already quoted (fine)"]',
+    ])
+    out = repair_mermaid(src)
+    assert 'API["API Service<br/>(POST /shorten, GET /<alias>)"]' in out
+    assert 'DB["DB Table<br/>(alias PK, long_url)"]' in out
+    assert 'LB["Load Balancer / TLS"]' in out
+    assert "OK[Plain label]" in out and 'Q["already quoted (fine)"]' in out
+    assert "subgraph Service_Layer" in out
+    assert repair_mermaid("flowchart TB\n  A[Client] --> B[Store]\n") == "flowchart TB\n  A[Client] --> B[Store]"

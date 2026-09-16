@@ -31,9 +31,13 @@ SimApps.register({
   .files .tab.dirty .dot{display:block}
   .files .tab .x{color:var(--faint);padding:0 2px;border-radius:4px}
   .files .tab .x:hover{color:var(--text);background:var(--panel-2)}
-  .files .edwrap{flex:1;position:relative;min-height:0}
-  .files .preview{position:absolute;inset:0;overflow:auto;padding:18px 24px;background:var(--ink);display:none}
-  .files .preview.on{display:block}
+  .files .edwrap{flex:1;position:relative;min-height:0;display:flex}
+  .files .edwrap .sim-ed{position:relative;inset:auto;flex:1;min-width:0;order:1}
+  .files .preview{display:none;flex:1;min-width:0;overflow:auto;padding:18px 24px;background:var(--ink);border-left:1px solid var(--line);order:2}
+  .files .edwrap.split .preview{display:block}
+  .files .preview .md{max-width:72ch}
+  .files .preview .pvlab{font:10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
+  @media (max-width:900px){.files .edwrap.split{flex-direction:column}.files .preview{border-left:0;border-top:1px solid var(--line)}}
   .files .status{display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid var(--line);font:11.5px var(--mono);color:var(--muted);background:var(--panel)}
   .files .status .sp{flex:1}
   .files .status .ok{color:var(--ok,#37d67a)}
@@ -49,7 +53,7 @@ SimApps.register({
         <div class="listing"></div>
         <div class="pane">
           <div class="tabs"></div>
-          <div class="edwrap"><div class="note">Select a file to open it.</div><div class="preview"></div></div>
+          <div class="edwrap"><div class="note">Select a file to open it.</div><div class="preview"><p class="pvlab">Preview</p><div class="md pvbody"></div></div></div>
           <div class="status"><span class="msg"></span><span class="sp"></span>
             <button class="pv" hidden>Preview</button><button class="primary save" hidden>Save</button></div>
         </div>
@@ -61,7 +65,7 @@ SimApps.register({
           preview = q(".preview"), msg = q(".msg"), saveBtn = q(".save"), pvBtn = q(".pv");
     let cwd = "", entries = [], editor = null, revision = "";
     const tabs = new Map();            // path -> { text, saved, dirty }
-    let active = null, previewOn = false, timer = null, dead = false;
+    let active = null, previewOn = false, timer = null, dead = false, pvTimer = null;
 
     const esc = s => { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; };
     const join = (a, b) => a ? a + "/" + b : b;
@@ -150,7 +154,8 @@ SimApps.register({
           onSave: save,
           onChange: () => { if (!active) return; const tt = tabs.get(active); if (!tt) return;
             const v = editor.getValue(); tt.text = v; const d = v !== tt.saved;
-            if (d !== tt.dirty) { tt.dirty = d; renderTabs(); } },
+            if (d !== tt.dirty) { tt.dirty = d; renderTabs(); }
+            if (previewOn) { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, 250); } },
         });
         saveBtn.hidden = !wf.editable; pvBtn.hidden = false;
       } else { editor.setPath(path); editor.setValue(t.text); }
@@ -167,8 +172,10 @@ SimApps.register({
         el.title = p;
         tabsEl.appendChild(el);
       }
-      pvBtn.textContent = previewOn ? "Editor" : "Preview";
-      pvBtn.hidden = !(active && /\.(md|markdown)$/i.test(active));
+      pvBtn.textContent = previewOn ? "Hide preview" : "Preview";
+      const isMd = !!(active && /\.(md|markdown)$/i.test(active));
+      pvBtn.hidden = !isMd;
+      if (!isMd && previewOn) { previewOn = false; edwrap.classList.remove("split"); if (editor && editor.refresh) editor.refresh(); }
       saveBtn.disabled = !(active && tabs.get(active) && tabs.get(active).dirty);
     }
     async function closeTab(p) {
@@ -196,17 +203,22 @@ SimApps.register({
     async function saveAllDirty() {
       for (const [p, t] of tabs) if (t.dirty) await save(p);
     }
+    // live markdown preview beside the editor: headings, tables, code and
+    // ```mermaid diagrams render as the learner types
     function renderPreview() {
       const t = active && tabs.get(active);
-      preview.innerHTML = t && window.SimMD ? SimMD.render(t.text) : "";
-      if (window.SimMD) SimMD.hydrate(preview);
-      if (window.SimDiagram) SimDiagram.hydrate(preview);
+      const body = preview.querySelector(".pvbody");
+      body.innerHTML = t && window.SimMD ? SimMD.render(t.text) : "";
+      if (window.SimMD) SimMD.hydrate(body);
+      if (window.SimDiagram) SimDiagram.hydrate(body);
     }
     pvBtn.onclick = () => {
       previewOn = !previewOn;
+      edwrap.classList.toggle("split", previewOn);
       if (previewOn) { if (active && editor) tabs.get(active).text = editor.getValue(); renderPreview(); }
-      preview.classList.toggle("on", previewOn); renderTabs();
-      if (!previewOn && editor) editor.focus();
+      renderTabs();
+      if (editor && editor.refresh) setTimeout(() => editor.refresh(), 0);
+      if (editor) editor.focus();
     };
     saveBtn.onclick = () => save();
 
@@ -226,7 +238,10 @@ SimApps.register({
 
     (async () => {
       const ok = await nav("");
-      if (ok && wf.kind === "doc" && entries.some(e => e.name === "DESIGN.md")) openFile("DESIGN.md");
+      if (ok && wf.kind === "doc" && entries.some(e => e.name === "DESIGN.md")) {
+        await openFile("DESIGN.md");
+        if (!previewOn && root.clientWidth > 900) pvBtn.click();   // side-by-side by default on a wide window
+      }
     })();
     return { unmount() { dead = true; if (timer) clearInterval(timer); if (wf.editable) saveAllDirty(); if (editor) editor.destroy(); } };
   }

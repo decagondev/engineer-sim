@@ -27,8 +27,16 @@ SimApps.register({
   .chat-app .ctop .gradeBtn:hover{border-color:#3a4353}
   .chat-app .ctop .gopts{margin-left:auto;display:flex;align-items:center;gap:10px}
   .chat-app .ctop .gopts label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
-  .chat-app .grade{padding:0 16px 6px;white-space:pre-wrap;font:12.5px/1.6 var(--mono);color:var(--muted)}
-  .chat-app .diagram{margin:0 16px 8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font:12.5px/1.5 var(--mono);color:var(--muted);white-space:pre-wrap;display:none}
+  .chat-app .panel{display:none;margin:8px 16px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);flex:none}
+  .chat-app .panel.on{display:block}
+  .chat-app .panelbar{display:flex;align-items:center;gap:10px;padding:7px 10px 7px 12px;font-size:12.5px;color:var(--muted)}
+  .chat-app .panelbar b{color:var(--text);font-variant-numeric:tabular-nums}
+  .chat-app .panelbar .sp{flex:1}
+  .chat-app .panelbar button{background:var(--panel-2);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
+  .chat-app .panelbody{display:none;border-top:1px solid var(--line);max-height:38vh;overflow:auto;padding:8px 12px 10px}
+  .chat-app .panel.open .panelbody{display:block}
+  .chat-app .grade{white-space:pre-wrap;font:12.5px/1.6 var(--mono);color:var(--muted)}
+  .chat-app .diagram{margin:10px 0 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--ink);font:12.5px/1.5 var(--mono);color:var(--muted);white-space:pre-wrap;display:none}
   .chat-app .log{flex:1;overflow-y:auto;padding:18px 16px;display:flex;flex-direction:column;gap:2px}
   .chat-app .row{display:flex;flex-direction:column;max-width:74%}
   .chat-app .row:has(.md-code){max-width:88%}
@@ -71,8 +79,11 @@ SimApps.register({
             <button class="gradeBtn" type="button">Grade run</button>
           </div>
         </div>
-        <div class="grade"></div>
-        <div class="diagram"></div>
+        <div class="panel">
+          <div class="panelbar"><span class="psum">Grade</span><span class="sp"></span>
+            <button type="button" class="ptoggle">Show</button><button type="button" class="pclose" title="Hide until the next grade">×</button></div>
+          <div class="panelbody"><div class="grade"></div><div class="diagram"></div></div>
+        </div>
         <div class="log"></div>
         <form class="composer" autocomplete="off">
           <input class="input" placeholder="Type a message…" autofocus/>
@@ -83,7 +94,15 @@ SimApps.register({
     const app = root.querySelector(".chat-app"), q = s => app.querySelector(s);
     const log = q(".log"), input = q(".input"), sendBtn = q(".send"),
           peopleEl = q(".people"), peerEl = q(".peer"), gradeOut = q(".grade"),
-          diagramEl = q(".diagram");
+          diagramEl = q(".diagram"), panel = q(".panel"), panelSum = q(".psum");
+    // the grade + diagram live in a collapsible strip above the conversation so
+    // they never cover it; a fresh grade opens it, reopening the app leaves it folded
+    function showPanel(summary, open) {
+      panelSum.innerHTML = summary; panel.classList.add("on"); panel.classList.toggle("open", !!open);
+      q(".ptoggle").textContent = open ? "Hide" : "Show";
+    }
+    q(".ptoggle").onclick = () => { const o = !panel.classList.contains("open"); panel.classList.toggle("open", o); q(".ptoggle").textContent = o ? "Hide" : "Show"; };
+    q(".pclose").onclick = () => panel.classList.remove("on");
     if (window.SimMD) SimMD.hydrate(log);
     if (window.SimDiagram) SimDiagram.hydrate(log);   // ```mermaid fences in replies become drawings
     const sid = ctx.sid;
@@ -221,6 +240,7 @@ SimApps.register({
         const d = await (await fetch(`/api/session/${sid}/diagram`)).json();
         if (!d.mermaid) return;
         diagramEl.style.display = "block";
+        if (!panel.classList.contains("on")) showPanel("Design diagram", false);
         if (window.SimDiagram) { await SimDiagram.render(diagramEl, d.mermaid, "Design diagram, drawn from your DESIGN.md"); return; }
         const src = "```mermaid\n" + d.mermaid + "\n```";
         if (window.SimMD) diagramEl.innerHTML = "<div class='muted' style='margin-bottom:6px'>Design diagram</div>" + SimMD.render(src);
@@ -229,6 +249,7 @@ SimApps.register({
     }
 
     q(".gradeBtn").addEventListener("click", async () => {
+      showPanel("Grading this run…", true);
       gradeOut.textContent = "Grading this run…";
       const includeTickets = interview && q(".includeTickets").checked;
       const g = await (await fetch(`/api/session/${sid}/grade`, {
@@ -243,6 +264,7 @@ SimApps.register({
       const base = g.include_tickets ? `  (base ${(g.total_base * 100 | 0)}% + tickets extra credit)\n` : "";
       const caveat = g.calibrated ? "" : `\n\n! ${g.caveat || "grader not calibrated"}`;
       gradeOut.textContent = `SCORE ${(g.total * 100 | 0)}%\n${base}${rows}${extra}\n\n${g.summary}${caveat}`;
+      showPanel(`Grade <b>${(g.total * 100 | 0)}%</b> · just now`, true);
       refreshDiagram();
     });
 
@@ -255,6 +277,7 @@ SimApps.register({
         const rows = (g.scores || []).map(s => `  ${s.key.padEnd(14)} ${String((s.score * 100 | 0) + "%").padStart(4)}   ${s.evidence}`).join("\n");
         const when = g.graded_at ? new Date(g.graded_at).toLocaleString() : "";
         gradeOut.textContent = `LAST GRADE ${(g.total * 100 | 0)}%${when ? "  (" + when + ")" : ""}\n${rows}\n\n${g.summary || ""}`;
+        showPanel(`Last grade <b>${(g.total * 100 | 0)}%</b>${when ? " · " + when : ""}`, false);
       } catch (e) {}
     })();
 
