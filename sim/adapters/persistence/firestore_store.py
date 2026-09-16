@@ -83,12 +83,14 @@ class FirestoreMessageRepository:
     INDEX_FIELDS = ("scenario_key", "level", "submitted_ts", "submission_count",
                     "graded_ts", "grade_total", "graded_by")
 
-    def list_sessions(self) -> list[dict]:
+    def list_sessions(self, include_empty: bool = False) -> list[dict]:
+        """Message-bearing sessions; with include_empty also the assigned-but-
+        unstarted ones, so a dashboard listing is a single stream."""
         out = []
         for snap in self._db.collection("sessions").stream():
             d = _data(snap)
             count = int(d.get("message_count") or 0)
-            if count <= 0:
+            if count <= 0 and not include_empty:
                 continue
             row = {
                 "session_id": snap.id, "count": count,

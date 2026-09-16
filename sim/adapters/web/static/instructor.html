@@ -473,7 +473,7 @@ async function renderOverview(){
   try { d = await (await fetch("/api/instructor/overview" + (ovFresh ? "?fresh=1" : ""),{headers:hdr()})).json(); ovFresh = false; }
   catch(e){ el("content").innerHTML = `<h1>Overview</h1><p class="match bad">Could not load the overview.</p>`; return; }
   const s = d.stats, t = s.totals;
-  el("content").innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0">Overview</h1><span style="flex:1"></span><button id="ov-refresh" type="button">Refresh</button></div><p class="sub">Your sessions at a glance. Open Sessions for the full list, or click a row below.</p>
+  el("content").innerHTML = `<div style="display:flex;align-items:center;gap:10px"><h1 style="margin:0">Overview</h1><span style="flex:1"></span><button id="ov-refresh" type="button">Refresh</button></div><p class="sub">Your sessions at a glance. Open Sessions for the full list, or click a row below.${d.cached_at ? ` Numbers as of ${ago(d.cached_at)}; Refresh recounts now.` : ""}</p>
     ${SimViz.tiles([
       {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
       {label:"Submitted", value:t.submitted, sub:"awaiting your review", tone: t.submitted ? "good" : ""},

@@ -262,7 +262,7 @@ async function show(v){
     const u = d.users, s = d.sessions, t = s.totals;
     const auth = d.auth || {};
     c.innerHTML = `<div class="row" style="margin:0 0 4px"><h1 style="margin:0">Overview</h1><span class="spacer"></span><button id="ov-refresh">Refresh</button></div>
-      <p class="muted">Auth <b>${esc(auth.auth_mode||"?")}</b> · store <b>${esc(auth.persistence||"sqlite")}</b> · project ${esc(auth.firebase_project_id||"(none)")} · ${esc(d.scenarios.enabled)} of ${esc(d.scenarios.total)} scenarios enabled</p>
+      <p class="muted">Auth <b>${esc(auth.auth_mode||"?")}</b> · store <b>${esc(auth.persistence||"sqlite")}</b> · project ${esc(auth.firebase_project_id||"(none)")} · ${esc(d.scenarios.enabled)} of ${esc(d.scenarios.total)} scenarios enabled${d.cached_at ? ` · numbers as of ${ago(d.cached_at)}` : ""}</p>
       ${SimViz.tiles([
         {label:"People", value:u.total, sub:`${u.by_role.admin||0} admin · ${u.by_role.instructor||0} instructors · ${u.by_role.challenger||0} challengers${u.disabled?` · ${u.disabled} disabled`:""}`},
         {label:"Cohorts", value:d.cohorts.count, sub:`${d.cohorts.members} memberships`},

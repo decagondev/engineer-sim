@@ -1171,7 +1171,13 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         """Message-store runs (legacy classroom) plus assignment-registry rows."""
         by_id = {}
         repo = app.state.repo
-        msg_sessions = repo.list_sessions() if hasattr(repo, "list_sessions") else []
+        msg_sessions = []
+        if hasattr(repo, "list_sessions"):
+            try:
+                # Firestore: every session doc (index fields included) in one stream
+                msg_sessions = repo.list_sessions(include_empty=True)
+            except TypeError:
+                msg_sessions = repo.list_sessions()
         for s in msg_sessions:
             row = dict(s)
             row.setdefault("owner_uid", "")
@@ -1185,6 +1191,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             for rec in recs:
                 row = by_id.get(rec.id, {"session_id": rec.id, "count": 0,
                                          "first_ts": rec.created_at, "last_ts": rec.created_at})
+                if not row.get("first_ts"):
+                    row["first_ts"] = rec.created_at
+                if not row.get("last_ts"):
+                    row["last_ts"] = rec.created_at
                 row["assignee_uid"] = rec.assignee_uid
                 row["owner_uid"] = rec.owner_uid
                 row["status"] = rec.status
@@ -1297,18 +1307,53 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return rows
 
     _overview_cache: dict = {}
-    OVERVIEW_TTL = 20.0
+    _overview_refreshing: set = set()
+    OVERVIEW_TTL = 60.0
 
     def _cached(key: str, build, fresh: bool = False):
-        """Overview payloads are expensive on Firestore; serve a copy for a few
-        seconds and let the page ask for fresh=1 when someone presses Refresh."""
+        """Stale-while-revalidate: a cached overview is returned at once, and if
+        it is older than OVERVIEW_TTL a background thread rebuilds it for the
+        next visitor. Only the very first load (or fresh=1 from the Refresh
+        button) waits for the stores."""
+        import threading
         import time
         hit = _overview_cache.get(key)
-        if hit and not fresh and (time.monotonic() - hit[0]) < OVERVIEW_TTL:
-            return hit[1]
+        if hit and not fresh:
+            if (time.monotonic() - hit[0]) >= OVERVIEW_TTL and key not in _overview_refreshing:
+                _overview_refreshing.add(key)
+
+                def refresh():
+                    try:
+                        _overview_cache[key] = (time.monotonic(), build())
+                    except Exception as e:
+                        log.warning("overview refresh failed for %s: %s", key, e)
+                    finally:
+                        _overview_refreshing.discard(key)
+                threading.Thread(target=refresh, name=f"overview-{key}", daemon=True).start()
+            data = dict(hit[1])
+            data["cached_at"] = hit[2] if len(hit) > 2 else ""
+            return data
+        from datetime import datetime, timezone
         data = build()
-        _overview_cache[key] = (time.monotonic(), data)
-        return data
+        stamp = datetime.now(timezone.utc).isoformat()
+        _overview_cache[key] = (time.monotonic(), data, stamp)
+        out = dict(data)
+        out["cached_at"] = stamp
+        return out
+
+    def _warm_overviews() -> None:
+        """Build the admin overview shortly after boot so the first visit is
+        served from cache (Firestore makes the cold build slow)."""
+        import threading
+        import time
+
+        def run():
+            time.sleep(3)
+            try:
+                _cached("admin", _admin_overview, fresh=True)
+            except Exception as e:
+                log.debug("overview warm-up skipped: %s", e)
+        threading.Thread(target=run, name="overview-warm", daemon=True).start()
 
     def _session_stats(rows: list) -> dict:
         """Aggregates for the overview pages. Cheap: one pass over the rows."""
@@ -1920,10 +1965,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         for sc in reg.values():
             tracks[sc.track] = tracks.get(sc.track, 0) + 1
         rows = _enrich_sessions(_merge_known_sessions(all_registered=True))
-        try:
-            status = admin_auth_status()
-        except Exception:
-            status = {}
+        status = {"auth_mode": auth.mode, "firebase_project_id": auth.firebase_project_id,
+                  "users_count": len(users),
+                  "bootstrap_configured": bool(auth.bootstrap_admin_email),
+                  "persistence": getattr(manager._config, "persistence", "sqlite")}
         return {
             "users": {"total": len(users), "by_role": by_role, "disabled": disabled,
                       "challengers": len(chall), "with_groq": groq, "with_github": gh,
@@ -2112,6 +2157,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         except WebSocketDisconnect:
             return
 
+    if getattr(manager, "_config", None) is not None and \
+            getattr(manager._config, "persistence", "sqlite") in ("firestore", "firebase"):
+        _warm_overviews()
     if _STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
     onboarding = Path(__file__).resolve().parents[3] / "docs" / "onboarding"
