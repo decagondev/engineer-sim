@@ -123,6 +123,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         request.state.principal = principal
         from sim.adapters.llm.request_context import current_uid
         uid_token = current_uid.set(principal.uid)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            _after_mutation(path)
         try:
             if path.startswith("/api/admin"):
                 if not auth.allow_admin(principal):
@@ -1178,14 +1180,20 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 msg_sessions = repo.list_sessions(include_empty=True)
             except TypeError:
                 msg_sessions = repo.list_sessions()
+        complete = bool(msg_sessions) and all(s.get("complete") for s in msg_sessions)
         for s in msg_sessions:
             row = dict(s)
+            row.pop("complete", None)
             row.setdefault("owner_uid", "")
             row.setdefault("assignee_uid", "")
             row.setdefault("status", "")
+            if not row.get("first_ts"):
+                row["first_ts"] = row.get("created_at") or ""
+            if not row.get("last_ts"):
+                row["last_ts"] = row.get("first_ts") or ""
             by_id[s["session_id"]] = row
         auth = app.state.auth
-        if auth.sessions is not None:
+        if auth.sessions is not None and not (complete and all_registered):
             recs = (list(auth.sessions.list_all()) if all_registered
                     else list(auth.sessions.list_by_owner(owner_uid)))
             for rec in recs:
@@ -1341,6 +1349,13 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         out["cached_at"] = stamp
         return out
 
+    def _after_mutation(path: str) -> None:
+        """A write happened: the sessions list must not serve a stale copy, and
+        the overviews should recount on their next read (served stale meanwhile)."""
+        _overview_cache.pop("admin:sessions", None)
+        for k, v in list(_overview_cache.items()):
+            _overview_cache[k] = (0.0,) + tuple(v[1:])
+
     def _warm_overviews() -> None:
         """Build the admin overview shortly after boot so the first visit is
         served from cache (Firestore makes the cold build slow)."""
@@ -1349,10 +1364,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
         def run():
             time.sleep(3)
-            try:
-                _cached("admin", _admin_overview, fresh=True)
-            except Exception as e:
-                log.debug("overview warm-up skipped: %s", e)
+            for key, build in (("admin", _admin_overview), ("admin:sessions", _admin_sessions_payload)):
+                try:
+                    _cached(key, build, fresh=True)
+                except Exception as e:
+                    log.debug("warm-up of %s skipped: %s", key, e)
         threading.Thread(target=run, name="overview-warm", daemon=True).start()
 
     def _session_stats(rows: list) -> dict:
@@ -1983,12 +1999,18 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             "auth": status,
         }
 
-    @app.get("/api/admin/sessions")
-    def admin_list_sessions():
+    def _admin_sessions_payload() -> dict:
         # one listing + one users listing; labels and states come from the
         # session index, never a read per row
         rows = _enrich_sessions(_merge_known_sessions(all_registered=True))
-        return {"sessions": [
+        return {"sessions": _session_rows(rows)}
+
+    @app.get("/api/admin/sessions")
+    def admin_list_sessions(fresh: bool = False):
+        return _cached("admin:sessions", _admin_sessions_payload, fresh)
+
+    def _session_rows(rows: list) -> list:
+        return [
             {"session_id": s["session_id"],
              "owner_uid": s.get("owner_uid") or "",
              "assignee_uid": s.get("assignee_uid") or "",
@@ -2004,7 +2026,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
              "count": s.get("count") or 0,
              "last_ts": s.get("last_ts") or ""}
             for s in rows
-        ]}
+        ]
 
     @app.patch("/api/admin/sessions/{sid}")
     def admin_patch_session(sid: str, payload: dict):

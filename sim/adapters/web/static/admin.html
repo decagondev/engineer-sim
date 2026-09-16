@@ -572,7 +572,8 @@ async function show(v){
     });
   }
   if (v==="sessions") {
-    const d = await loadJson("/api/admin/sessions");
+    const d = await loadJson("/api/admin/sessions" + (state.sFresh ? "?fresh=1" : ""), !!state.sFresh);
+    state.sFresh = false;
     if (!still(gen)) return;
     const all = d.sessions || [];
     const dash = v => v || "—";
@@ -584,8 +585,11 @@ async function show(v){
         <select id="as-state"><option value="">Any state</option><option value="graded">Graded</option><option value="submitted">Submitted</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
         <select id="as-sc"><option value="">Any scenario</option>${scs.map(k=>`<option value="${esc(k)}">${esc((all.find(s=>s.scenario===k)||{}).title||k)}</option>`).join("")}</select>
         <span class="muted" id="as-count"></span>
+        <span class="spacer"></span>
+        <button id="as-refresh">Refresh</button>
       </div>
       <div id="as-list"></div>`;
+    el("as-refresh").onclick = () => { state.sFresh = true; bustAdmin(); show("sessions"); };
     const draw = () => {
       const q = el("as-q").value.trim().toLowerCase(), st = el("as-state").value, sc = el("as-sc").value;
       state.sQ = el("as-q").value;

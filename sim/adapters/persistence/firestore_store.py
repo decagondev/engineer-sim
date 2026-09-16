@@ -81,7 +81,8 @@ class FirestoreMessageRepository:
     # document by the stores that own them (submissions, grades, settings) so a
     # listing is one collection stream instead of five reads per session.
     INDEX_FIELDS = ("scenario_key", "level", "submitted_ts", "submission_count",
-                    "graded_ts", "grade_total", "graded_by")
+                    "graded_ts", "grade_total", "graded_by",
+                    "owner_uid", "assignee_uid", "status", "created_at")
 
     def list_sessions(self, include_empty: bool = False) -> list[dict]:
         """Message-bearing sessions; with include_empty also the assigned-but-
@@ -100,6 +101,7 @@ class FirestoreMessageRepository:
             for k in self.INDEX_FIELDS:
                 if k in d:                 # absent = not indexed yet (legacy doc)
                     row[k] = d.get(k)
+            row["complete"] = include_empty   # registry fields are on the same doc
             out.append(row)
         out.sort(key=lambda r: r.get("last_ts") or "", reverse=True)
         return out
