@@ -200,7 +200,7 @@ function viewUrls(v){
     : [`/api/admin/cohorts?sort=${state.cSort}&direction=${state.cDir}`];
   if (v==="sessions") return ["/api/admin/sessions"];
   if (v==="scenarios") return ["/api/admin/scenarios"];
-  if (v==="settings") return ["/api/admin/settings", "/api/admin/auth/status"];
+  if (v==="settings") return ["/api/admin/settings"];
   return [];
 }
 async function loadJson(url, fresh){
@@ -637,19 +637,56 @@ async function show(v){
     });
   }
   if (v==="settings") {
-    const [s, st] = await Promise.all([
-      loadJson("/api/admin/settings"),
-      loadJson("/api/admin/auth/status"),
-    ]);
+    const s = await loadJson("/api/admin/settings", true);
     if (!still(gen)) return;
+    const dep = s.deployment || {};
+    const yes = v => v ? `<span class="kc on">set</span>` : `<span class="kc">not set</span>`;
+    const gcSel = s.grader_calibrated === null || s.grader_calibrated === undefined ? "" : (s.grader_calibrated ? "1" : "0");
     c.innerHTML = `<h1>Settings</h1>
-      <p class="muted">Auth mode <b>${st.auth_mode}</b> · store <b>${st.persistence||"sqlite"}</b> · project ${st.firebase_project_id||"(none)"} · ${st.users_count} users</p>
-      <div class="row"><label>Default level <input id="dl" value="${s.default_level}"/></label>
-      <button class="primary" id="sv">Save</button></div>`;
+      <p class="muted">Auth <b>${esc(dep.auth_mode)}</b> · store <b>${esc(dep.persistence)}</b> · project ${esc(dep.firebase_project_id||"(none)")}</p>
+      <div class="viz-grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+        <div class="viz-card"><h3>Classroom defaults</h3><div class="sub">Used when a session or instructor has nothing more specific.</div>
+          <label class="fld">Default engineer level
+            <select id="st-level">${(s.levels||[]).map(l=>`<option value="${esc(l.key)}" ${l.key===s.default_level?"selected":""}>${esc(l.label)}</option>`).join("")}</select></label>
+          <label class="fld" style="margin-top:10px">Announcement for challengers (one line, blank to hide)
+            <input id="st-ann" maxlength="280" value="${esc(s.announcement||"")}" placeholder="e.g. Interviews run Thursday 2–4pm; add your Groq key before then"/></label>
+        </div>
+        <div class="viz-card"><h3>Sign-in</h3><div class="sub">How people get accounts.</div>
+          <label class="chk" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="st-signup" ${s.allow_signup?"checked":""}/> Allow "Create challenger account" on the sign-in page</label>
+          <p class="muted" style="margin:8px 0 0">Off: only accounts you create here (or bulk import) can sign in; unknown emails are told to ask their instructor. Recommended once your cohorts are imported.</p>
+        </div>
+        <div class="viz-card"><h3>Grading</h3><div class="sub">Whether grades carry the "directional, not calibrated" caveat.</div>
+          <label class="fld">Grader calibrated
+            <select id="st-gc"><option value="" ${gcSel===""?"selected":""}>Follow GRADER_CALIBRATED env (${s.grader_calibrated_env?"true":"false"})</option><option value="1" ${gcSel==="1"?"selected":""}>Yes — hide the caveat</option><option value="0" ${gcSel==="0"?"selected":""}>No — show the caveat</option></select></label>
+          <p class="muted" style="margin:8px 0 0">Currently <b>${s.grader_calibrated_effective?"calibrated":"not calibrated"}</b>. Only switch to Yes after running the calibration harness against real instructor scores.</p>
+        </div>
+        <div class="viz-card"><h3>Deployment</h3><div class="sub">Read-only; these come from the server's environment variables.</div>
+          <table class="rtable"><tbody>
+            <tr><td>Model</td><td>${esc(dep.llm_provider)}${dep.model?` · ${esc(dep.model)}`:""}</td></tr>
+            <tr><td>Classroom Groq key</td><td>${yes(dep.groq_key_set)} <span class="muted">GROQ_API_KEY</span></td></tr>
+            <tr><td>Classroom GitHub token</td><td>${yes(dep.github_token_set)} <span class="muted">GITHUB_TOKEN</span></td></tr>
+            <tr><td>Key encryption secret</td><td>${yes(dep.byok_secret_set)} <span class="muted">BYOK_SECRET${dep.byok_secret_set?"":" — set it before people save personal keys"}</span></td></tr>
+            <tr><td>Work mode</td><td>${esc(dep.work_mode)} → ${dep.hosted?"hosted (repo path for build scenarios)":"local (dev box)"}</td></tr>
+            <tr><td>Sandbox</td><td>${esc(dep.env_provider)}</td></tr>
+            <tr><td>Public URL</td><td>${esc(dep.public_base_url||"(derived from requests)")}</td></tr>
+            <tr><td>Bootstrap admin</td><td>${esc(dep.bootstrap_admin_email||"(none)")}</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+      <div class="row"><button class="primary" id="sv"><span class="spin"></span>Save settings</button><button id="cc">Recount dashboards now</button><span class="status" id="st-status"></span></div>`;
     el("sv").onclick = async () => {
-      await fetch("/api/admin/settings",{method:"PUT",headers:h(),body:JSON.stringify({onboarded:true,default_level:el("dl").value})});
+      const btn = el("sv"); setBusy(btn, true);
+      const gc = el("st-gc").value;
+      const body = {onboarded:true, default_level: el("st-level").value, allow_signup: el("st-signup").checked,
+                    grader_calibrated: gc==="" ? null : gc==="1", announcement: el("st-ann").value};
+      const r = await fetch("/api/admin/settings",{method:"PUT",headers:h(),body:JSON.stringify(body)});
+      const d = await r.json().catch(()=>({}));
+      setBusy(btn, false);
+      el("st-status").className = "status" + (r.ok ? "" : " err");
+      el("st-status").textContent = r.ok ? "Saved." : errText(d, r);
       bustAdmin();
     };
+    el("cc").onclick = async () => { await fetch("/api/admin/cache/clear",{method:"POST",headers:h()}); bustAdmin(); el("st-status").textContent = "Dashboards will recount on their next load."; };
   }
   } catch (e) {
     if (!still(gen)) return;

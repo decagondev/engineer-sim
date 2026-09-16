@@ -6,8 +6,13 @@ from typing import Optional, Protocol
 
 @dataclass(frozen=True)
 class InstructorSettings:
+    """Site-wide settings, editable by admins (and the level by instructors).
+    grader_calibrated None means "use the GRADER_CALIBRATED env var"."""
     onboarded: bool = False
     default_level: str = "senior"
+    allow_signup: bool = True             # "Create challenger account" on /login
+    grader_calibrated: Optional[bool] = None
+    announcement: str = ""                # one line shown on the challenger dashboard
 
 
 class SettingsStore(Protocol):

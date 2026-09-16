@@ -272,13 +272,20 @@ class FirestoreSettingsStore:
         d = _data(self._db.collection("meta").document("instructor").get())
         if not d:
             return InstructorSettings()
-        return InstructorSettings(bool(d.get("onboarded")),
-                                  d.get("default_level") or "senior")
+        gc = d.get("grader_calibrated")
+        return InstructorSettings(
+            bool(d.get("onboarded")), d.get("default_level") or "senior",
+            allow_signup=True if d.get("allow_signup") is None else bool(d.get("allow_signup")),
+            grader_calibrated=None if gc is None else bool(gc),
+            announcement=d.get("announcement") or "")
 
     def set_instructor(self, settings: InstructorSettings) -> None:
         self._db.collection("meta").document("instructor").set({
             "onboarded": bool(settings.onboarded),
             "default_level": settings.default_level,
+            "allow_signup": bool(settings.allow_signup),
+            "grader_calibrated": settings.grader_calibrated,
+            "announcement": settings.announcement or "",
         }, merge=True)
 
     def get_session_level(self, session_id: str) -> Optional[str]:

@@ -39,21 +39,39 @@ class SqliteSettingsStore:
         cols = {r[1] for r in self._conn.execute("PRAGMA table_info(session_settings)")}
         if "repo_url" not in cols:
             self._conn.execute("ALTER TABLE session_settings ADD COLUMN repo_url TEXT")
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(instructor_settings)")}
+        if "allow_signup" not in cols:
+            self._conn.execute("ALTER TABLE instructor_settings ADD COLUMN allow_signup INTEGER NOT NULL DEFAULT 1")
+        if "grader_calibrated" not in cols:
+            self._conn.execute("ALTER TABLE instructor_settings ADD COLUMN grader_calibrated INTEGER")
+        if "announcement" not in cols:
+            self._conn.execute("ALTER TABLE instructor_settings ADD COLUMN announcement TEXT NOT NULL DEFAULT ''")
 
     def get_instructor(self) -> InstructorSettings:
         r = self._conn.execute(
-            "SELECT onboarded, default_level FROM instructor_settings WHERE id=1"
+            "SELECT onboarded, default_level, allow_signup, grader_calibrated, announcement "
+            "FROM instructor_settings WHERE id=1"
         ).fetchone()
         if not r:
             return InstructorSettings()
-        return InstructorSettings(bool(r["onboarded"]), r["default_level"])
+        gc = r["grader_calibrated"]
+        return InstructorSettings(
+            bool(r["onboarded"]), r["default_level"],
+            allow_signup=bool(r["allow_signup"]) if r["allow_signup"] is not None else True,
+            grader_calibrated=None if gc is None else bool(gc),
+            announcement=r["announcement"] or "")
 
     def set_instructor(self, settings: InstructorSettings) -> None:
+        gc = settings.grader_calibrated
         self._conn.execute(
-            "INSERT INTO instructor_settings (id, onboarded, default_level) "
-            "VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET "
-            "onboarded=excluded.onboarded, default_level=excluded.default_level",
-            (1 if settings.onboarded else 0, settings.default_level))
+            "INSERT INTO instructor_settings (id, onboarded, default_level, allow_signup, "
+            "grader_calibrated, announcement) VALUES (1, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+            "onboarded=excluded.onboarded, default_level=excluded.default_level, "
+            "allow_signup=excluded.allow_signup, grader_calibrated=excluded.grader_calibrated, "
+            "announcement=excluded.announcement",
+            (1 if settings.onboarded else 0, settings.default_level,
+             1 if settings.allow_signup else 0, None if gc is None else (1 if gc else 0),
+             settings.announcement or ""))
         self._conn.commit()
 
     def get_session_level(self, session_id: str) -> Optional[str]:

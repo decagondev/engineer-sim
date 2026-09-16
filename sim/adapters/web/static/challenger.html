@@ -16,6 +16,7 @@
   .bar{height:48px;display:flex;align-items:center;gap:12px;padding:0 18px;background:var(--panel);border-bottom:1px solid var(--line)}
   .spacer{flex:1}
   .shell{flex:1;display:flex;min-height:0}
+  .ann{background:rgba(202,162,74,.12);border-bottom:1px solid rgba(202,162,74,.35);color:#e0bd6a;padding:8px 18px;font-size:13px}
   .side{width:210px;flex:none;border-right:1px solid var(--line);background:var(--panel);padding:12px 10px;display:flex;flex-direction:column;gap:4px}
   .side .nav{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;cursor:pointer;font-size:14px;color:var(--text)}
   .side .nav:hover{background:var(--panel-2)}
@@ -45,6 +46,7 @@
 </style>
 </head>
 <body>
+  <div id="ann" class="ann" hidden></div>
   <div class="bar"><span><b>Challenger</b></span><span class="muted" id="who"></span><span class="spacer"></span><a href="/onboarding/challenger/" target="_blank" rel="noopener"><button>Guide</button></a><button id="out">Sign out</button></div>
   <div class="shell">
     <nav class="side">
@@ -144,6 +146,11 @@ function renderSettings(){
       <p class="status" id="gh-status"></p>
     </div>`;
 }
+
+(async () => {
+  try { const a = await (await fetch("/api/site/announcement")).json();
+    if (a.announcement) { const b = document.getElementById("ann"); b.textContent = a.announcement; b.hidden = false; } } catch (e) {}
+})();
 
 async function showSessions(){
   const data = await (await fetch("/api/me/sessions", {headers: SimAuth.headers()})).json();

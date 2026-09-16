@@ -135,7 +135,7 @@ async function withLoad(msg, fn){
     <input id="email" type="email" placeholder="Email" autocomplete="username"/>
     <input id="pw" type="password" placeholder="Password" autocomplete="current-password"/>
     <button id="go" type="button">Sign in</button>
-    <button class="ghost" id="up" type="button">Create challenger account</button>
+    ${cfg.allow_signup === false ? "" : `<button class="ghost" id="up" type="button">Create challenger account</button>`}
     <button class="link" id="reset" type="button">Forgot password?</button>`;
   const fb = cfg.firebase || {};
   function bootFail(){
@@ -169,7 +169,7 @@ async function withLoad(msg, fn){
     el("pw").addEventListener("keydown", e => {
       if (e.key === "Enter") el("go").click();
     });
-    el("up").onclick = () => withLoad("Creating account…", async () => {
+    if (el("up")) el("up").onclick = () => withLoad("Creating account…", async () => {
       const cred = await auth.createUserWithEmailAndPassword(el("email").value, el("pw").value);
       await after(cred);
     });

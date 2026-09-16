@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
@@ -39,6 +40,19 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         auth = AuthServices("password", password=instructor_password)
     app.state.auth = auth
     app.state.public_base_url = public_base_url or ""
+
+    def _site() -> "InstructorSettings":
+        try:
+            return app.state.settings.get_instructor()
+        except Exception:
+            from sim.core.ports.settings import InstructorSettings
+            return InstructorSettings()
+    auth.allow_new_users = lambda: bool(_site().allow_signup)
+
+    def _calibrated() -> bool:
+        """Admin override wins over the GRADER_CALIBRATED env var."""
+        v = _site().grader_calibrated
+        return bool(app.state.grader_calibrated) if v is None else bool(v)
     app.state.public_base_url_fixed = bool(public_base_url)
     app.state.hosted = bool(hosted)
 
@@ -111,8 +125,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             resp = await call_next(request)
             resp.headers.setdefault("Cache-Control", "no-cache")
             return resp
-        if path in {"/health", "/api/auth/config", "/", "/instructor", "/login",
-                    "/challenger", "/admin"}:
+        if path in {"/health", "/api/auth/config", "/api/site/announcement", "/",
+                    "/instructor", "/login", "/challenger", "/admin"}:
             return await call_next(request)
         if not path.startswith("/api/"):
             return await call_next(request)
@@ -333,8 +347,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         else:
             body["include_tickets"] = False
         body["level"] = prof.key
-        body["calibrated"] = app.state.grader_calibrated
-        if not app.state.grader_calibrated:
+        body["calibrated"] = _calibrated()
+        if not body["calibrated"]:
             body["caveat"] = ("Grader is not yet calibrated against human scores — "
                               "treat this as directional, not a grade.")
         return body
@@ -847,6 +861,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def auth_config():
         return app.state.auth.public_config()
 
+    @app.get("/api/site/announcement")
+    def site_announcement():
+        return {"announcement": _site().announcement or ""}
+
     @app.get("/api/auth/me")
     def auth_me(request: Request):
         if not app.state.auth.gated:
@@ -1125,10 +1143,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def instructor_set_settings(payload: dict, x_instructor_token: str = Header(default="")):
         if not _instr_ok(x_instructor_token):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        from sim.core.ports.settings import InstructorSettings
-        app.state.settings.set_instructor(InstructorSettings(
-            onboarded=bool(payload.get("onboarded", True)),
-            default_level=payload.get("default_level", "senior")))
+        import dataclasses
+        cur = _site()
+        app.state.settings.set_instructor(dataclasses.replace(
+            cur, onboarded=bool(payload.get("onboarded", True)),
+            default_level=payload.get("default_level", cur.default_level or "senior")))
         return {"ok": True}
 
     @app.post("/api/instructor/session/{session_id}/level")
@@ -2090,17 +2109,66 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         manager.unlock.delete_for_session(sid)
         return {"ok": True}
 
+    def _settings_payload() -> dict:
+        s = _site()
+        cfg = manager._config
+        return {
+            "onboarded": s.onboarded, "default_level": s.default_level,
+            "allow_signup": s.allow_signup,
+            "grader_calibrated": s.grader_calibrated,
+            "grader_calibrated_env": bool(app.state.grader_calibrated),
+            "grader_calibrated_effective": _calibrated(),
+            "announcement": s.announcement,
+            "levels": [{"key": k, "label": v} for k, v in
+                       ((l["key"], l["label"]) for l in __import__("sim.core.levels", fromlist=["levels_meta"]).levels_meta())],
+            "deployment": {
+                "llm_provider": cfg.llm_provider,
+                "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
+                          "ollama": cfg.ollama_model}.get(cfg.llm_provider, ""),
+                "hosted": app.state.hosted, "work_mode": cfg.work_mode,
+                "env_provider": cfg.env_provider,
+                "persistence": cfg.persistence, "auth_mode": cfg.auth_mode,
+                "firebase_project_id": cfg.firebase_project_id,
+                "public_base_url": app.state.public_base_url,
+                "groq_key_set": bool(os.environ.get("GROQ_API_KEY")),
+                "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                "github_token_set": bool(cfg.github_token),
+                "byok_secret_set": bool(cfg.byok_secret),
+                "bootstrap_admin_email": cfg.bootstrap_admin_email,
+            },
+        }
+
     @app.get("/api/admin/settings")
     def admin_get_settings():
-        s = app.state.settings.get_instructor()
-        return {"onboarded": s.onboarded, "default_level": s.default_level}
+        return _settings_payload()
 
     @app.put("/api/admin/settings")
     def admin_put_settings(payload: dict):
-        from sim.core.ports.settings import InstructorSettings
-        app.state.settings.set_instructor(InstructorSettings(
-            onboarded=bool(payload.get("onboarded", True)),
-            default_level=payload.get("default_level", "senior")))
+        import dataclasses
+        from sim.core.levels import LEVEL_ORDER
+        cur = _site()
+        changes = {}
+        if "default_level" in payload:
+            lvl = str(payload.get("default_level") or "")
+            if lvl not in LEVEL_ORDER:
+                return JSONResponse({"error": "unknown level"}, status_code=400)
+            changes["default_level"] = lvl
+        if "onboarded" in payload:
+            changes["onboarded"] = bool(payload.get("onboarded"))
+        if "allow_signup" in payload:
+            changes["allow_signup"] = bool(payload.get("allow_signup"))
+        if "grader_calibrated" in payload:
+            v = payload.get("grader_calibrated")
+            changes["grader_calibrated"] = None if v is None or v == "" else bool(v)
+        if "announcement" in payload:
+            changes["announcement"] = str(payload.get("announcement") or "").strip()[:280]
+        app.state.settings.set_instructor(dataclasses.replace(cur, **changes))
+        return {"ok": True, **_settings_payload()}
+
+    @app.post("/api/admin/cache/clear")
+    def admin_clear_cache():
+        """Recount the overviews and session list on their next read."""
+        _overview_cache.clear()
         return {"ok": True}
 
     @app.get("/api/admin/scenarios")

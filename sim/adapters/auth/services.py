@@ -50,6 +50,8 @@ class AuthServices:
         self.users = users
         self.sessions = sessions
         self.bootstrap_admin_email = (bootstrap_admin_email or "").strip().lower()
+        # web layer points this at the admin setting; False refuses unknown sign-ins
+        self.allow_new_users = lambda: True
         self.firebase_api_key = firebase_api_key
         self.firebase_auth_domain = firebase_auth_domain
         self.firebase_project_id = firebase_project_id
@@ -60,7 +62,8 @@ class AuthServices:
         return self.mode in ("firebase", "fake")
 
     def public_config(self) -> dict:
-        out = {"auth_mode": self.mode, "firebase": None}
+        out = {"auth_mode": self.mode, "firebase": None,
+               "allow_signup": bool(self.allow_new_users())}
         if self.mode == "firebase":
             out["firebase"] = {
                 "apiKey": self.firebase_api_key,
@@ -105,6 +108,9 @@ class AuthServices:
                     and p.email.lower() == self.bootstrap_admin_email
                     and self.users.count_role("admin") == 0):
                 role = "admin"
+            elif not self.allow_new_users():
+                raise IdentityError(
+                    "No account for this email. Ask your instructor to add you.", status=403)
             rec = self.users.upsert(UserRecord(
                 uid=p.uid, email=p.email or f"{p.uid}@unknown.local",
                 role=role, disabled=False, created_at=_now(), last_login=_now(),
