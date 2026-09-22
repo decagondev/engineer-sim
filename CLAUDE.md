@@ -161,6 +161,13 @@ in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
 sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
 `grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
+**Scenario authoring:** `ScenarioStore` (`ports/scenarios.py`; sqlite `scenario_overrides`,
+Firestore `scenario_overrides/`, memory) holds YAML text authored on `/admin` → Scenarios.
+`SessionManager.reload_registry` merges disk + overrides (override wins; a new key borrows the
+`based_on` scenario's starter via `scenario_files.load_scenario_text`) and clears the bundle
+cache. Routes: `GET/PUT(?validate=1)/DELETE /api/admin/scenarios/{key}/yaml`,
+`POST /api/admin/scenarios` (new from template). Disk files are never written by the app.
+
 **Model failover:** `build_llm` wraps the primary in `adapters/llm/failover.py::FailoverLLMClient`
 when `LLM_FALLBACK_PROVIDERS` is set; `is_transient` decides which errors fail over (429, quota,
 5xx, timeouts) and the chain records its last failover for the admin panel and `/health`. A

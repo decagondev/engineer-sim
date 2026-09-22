@@ -110,6 +110,11 @@
   </div>
 <script src="/static/auth.js"></script>
 <script src="/static/viz.js"></script>
+<link rel="stylesheet" href="/static/vendor/codemirror/codemirror.min.css"/>
+<script src="/static/vendor/codemirror/codemirror.min.js"></script>
+<script src="/static/vendor/codemirror/mode/yaml.min.js"></script>
+<script src="/static/vendor/codemirror/addon/active-line.min.js"></script>
+<script src="/static/editor.js"></script>
 <script>
 const h = () => SimAuth.headers({"Content-Type":"application/json"});
 const el = id => document.getElementById(id);
@@ -289,6 +294,64 @@ async function archivePanel(){
       else { bustAdmin(); renderArchives(); show("sessions"); }
     };
     poll();
+  };
+}
+// ---- scenario authoring ----
+let scEd = null;
+async function openScenarioEditor(key, scenarios){
+  const panel = el("sc-editor"); panel.hidden = false;
+  panel.innerHTML = `<div class="muted">Loading ${esc(key)}…</div>`;
+  const d = await (await fetch(`/api/admin/scenarios/${encodeURIComponent(key)}/yaml`,{headers:h()})).json();
+  if (d.error) { panel.innerHTML = `<div class="status err">${esc(d.error)}</div>`; return; }
+  panel.innerHTML = `<div class="row" style="margin:0 0 8px"><h3 style="margin:0">${esc(key)}</h3>
+      <span class="muted">${d.source === "override" ? `customised${d.author ? " by " + esc(d.author) : ""}${d.ts ? " · " + ago(d.ts) : ""}${d.based_on ? " · starter from " + esc(d.based_on) : ""}` : "from the file on disk"}</span>
+      <span class="spacer"></span>
+      <button id="sc-validate">Validate</button><button class="primary" id="sc-save"><span class="spin"></span>Save</button>
+      ${d.source === "override" ? `<button class="danger" id="sc-revert">${d.on_disk ? "Revert to file" : "Delete scenario"}</button>` : ""}
+      <button id="sc-close">Close</button></div>
+    <div id="sc-host" style="position:relative;height:460px;border:1px solid var(--line);border-radius:10px;overflow:hidden"></div>
+    <p class="status" id="sc-status" style="margin-top:8px"></p>`;
+  if (scEd) { try { scEd.destroy(); } catch (e) {} }
+  scEd = SimEditor.mount(el("sc-host"), { path: key + ".yaml", text: d.yaml, onSave: () => el("sc-save").click() });
+  const status = el("sc-status");
+  const send = async (validate) => {
+    status.className = "status"; status.textContent = validate ? "Validating…" : "Saving…";
+    const r = await fetch(`/api/admin/scenarios/${encodeURIComponent(key)}/yaml${validate ? "?validate=1" : ""}`,
+      {method:"PUT",headers:h(),body:JSON.stringify({yaml: scEd.getValue()})});
+    const dd = await r.json().catch(()=>({}));
+    if (!r.ok) { status.className = "status err"; status.textContent = errText(dd, r); return; }
+    status.textContent = validate
+      ? `Valid: ${esc(dd.title)} (${esc(dd.track)}) · personas ${dd.personas.join(", ")} · rubric ${dd.criteria.join(", ")}`
+      : `Saved. New sessions on ${esc(key)} use this version.`;
+    if (!validate) { bustAdmin(); }
+  };
+  el("sc-validate").onclick = () => send(true);
+  el("sc-save").onclick = () => send(false);
+  el("sc-close").onclick = () => { panel.hidden = true; if (scEd) { scEd.destroy(); scEd = null; } };
+  const rev = el("sc-revert");
+  if (rev) rev.onclick = async () => {
+    if (!confirm(d.on_disk ? "Discard your edits and go back to the file on disk?" : "Delete this scenario? Existing sessions keep running on it until the server restarts.")) return;
+    const r = await fetch(`/api/admin/scenarios/${encodeURIComponent(key)}/yaml`,{method:"DELETE",headers:h()});
+    if (!r.ok) { status.className = "status err"; status.textContent = "Could not revert."; return; }
+    bustAdmin(); show("scenarios");
+  };
+}
+function newScenarioPanel(scenarios){
+  const p = el("sc-new-panel"); p.hidden = false;
+  p.innerHTML = `<h3>New scenario from a template</h3><div class="sub">Copies the template's YAML under a new key and title, borrowing its starter folder. Then edit the personas, reveal ladder and rubric.</div>
+    <div class="row">
+      <label class="fld">Template<select id="sn-base">${scenarios.map(s=>`<option value="${esc(s.key)}">${esc(s.title)} (${esc(s.key)})</option>`).join("")}</select></label>
+      <label class="fld">Key<input id="sn-key" placeholder="iv_my_interview" pattern="[a-z][a-z0-9_]{2,40}"/></label>
+      <label class="fld" style="flex:1">Title<input id="sn-title" placeholder="Interview: my new problem"/></label>
+      <button class="primary" id="sn-go" style="margin-top:18px"><span class="spin"></span>Create</button><button id="sn-close" style="margin-top:18px">Close</button></div>
+    <p class="status" id="sn-status"></p>`;
+  el("sn-close").onclick = () => { p.hidden = true; };
+  el("sn-go").onclick = async () => {
+    const body = {based_on: el("sn-base").value, key: el("sn-key").value.trim(), title: el("sn-title").value.trim()};
+    const r = await fetch("/api/admin/scenarios",{method:"POST",headers:h(),body:JSON.stringify(body)});
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) { el("sn-status").className = "status err"; el("sn-status").textContent = errText(d, r); return; }
+    bustAdmin(); await show("scenarios"); openScenarioEditor(d.key, scenarios);
   };
 }
 let calTimer = null;
@@ -738,15 +801,22 @@ async function show(v){
     el("au-q").oninput = draw; draw();
   }
   if (v==="scenarios") {
-    const d = await loadJson("/api/admin/scenarios");
+    const d = await loadJson("/api/admin/scenarios", true);
     if (!still(gen)) return;
     c.innerHTML = `<h1>Scenarios</h1>
-      ${(d.scenarios||[]).map(s=>`<div class="row" style="border-bottom:1px solid var(--line);padding:10px 0">
-        <b style="min-width:220px">${s.title}</b>
-        <label class="muted"><input type="checkbox" data-en="${s.key}" ${s.enabled?"checked":""}/> enabled</label>
-        <input data-url="${s.key}" placeholder="starter URL" value="${s.starter_url||""}" style="flex:1"/>
-        <button data-save="${s.key}">Save</button>
-      </div>`).join("")}`;
+      <p class="muted">Every scenario is YAML: personas with a reveal ladder, director triggers, a rubric. Edit one here, or start a new one from a template; the next session created uses it. Files on disk are never changed.</p>
+      <div class="row" style="margin:0 0 14px"><button class="primary" id="sc-new">New scenario from a template…</button></div>
+      <div id="sc-new-panel" hidden class="viz-card" style="margin:0 0 14px"></div>
+      <div id="sc-editor" hidden class="viz-card" style="margin:0 0 14px"></div>
+${(d.scenarios||[]).map(s=>`<div class="row" style="border-bottom:1px solid var(--line);padding:10px 0">
+<b style="min-width:220px">${esc(s.title)}<div class="muted" style="font-weight:400;font-family:var(--mono);font-size:11px">${esc(s.key)} · ${esc(s.track)}${s.customised ? ` · <span style="color:#e0bd6a">${s.store_only ? "new (from " + esc(s.based_on) + ")" : "customised"}</span>` : ""}</div></b>
+<label class="muted"><input type="checkbox" data-en="${s.key}" ${s.enabled?"checked":""}/> enabled</label>
+<input data-url="${s.key}" placeholder="starter URL" value="${s.starter_url||""}" style="flex:1"/>
+<button data-save="${s.key}">Save</button>
+<button data-edit="${s.key}">Edit YAML</button>
+</div>`).join("")}`;
+    c.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openScenarioEditor(b.dataset.edit, d.scenarios));
+    el("sc-new").onclick = () => newScenarioPanel(d.scenarios);
     c.querySelectorAll("[data-save]").forEach(b => b.onclick = async () => {
       const key = b.dataset.save;
       const url = c.querySelector(`[data-url="${key}"]`).value;

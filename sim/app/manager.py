@@ -39,6 +39,8 @@ class SessionManager:
         self._default = (default_scenario_key if default_scenario_key in registry
                          else next(iter(registry)))
         stores = build_stores(config)
+        self.scenarios_store = stores.scenarios
+        self._disk_registry = dict(registry)
         self.repo = stores.repo
         self.unlock = stores.unlock
         self.mailstore = stores.mailstore
@@ -59,6 +61,38 @@ class SessionManager:
         self._responder = PersonaResponder(self.llm)
         self._judge = wrap_user_scoped_llm(judge_llm, users=self.users, config=config)
         self._cache: dict[str, Bundle] = {}
+        self.reload_registry()
+
+    # -- overrides ------------------------------------------------------------
+    def reload_registry(self) -> dict:
+        """Disk scenarios plus dashboard overrides (an override wins; a new key
+        borrows the starter of the scenario it is based on). Clears the bundle
+        cache so the next session picks up the change."""
+        from sim.adapters.persistence.scenario_files import load_scenario_text, starter_dir_for
+        reg = dict(self._disk_registry)
+        store = getattr(self, "scenarios_store", None)
+        overrides = list(store.list()) if store is not None else []
+        for o in overrides:
+            base_key = o.based_on or o.key
+            base_dir = starter_dir_for(base_key) or starter_dir_for(o.key)
+            try:
+                sc = load_scenario_text(o.yaml_text, base_dir.parent if base_dir else None)
+            except Exception:
+                continue        # a broken override never takes the registry down
+            if sc.key != o.key:
+                continue
+            reg[o.key] = sc
+        self._registry = reg
+        if self._default not in reg:
+            self._default = "churn_dashboard" if "churn_dashboard" in reg else next(iter(reg))
+        self._cache.clear()
+        return reg
+
+    def override_meta(self) -> dict:
+        store = getattr(self, "scenarios_store", None)
+        if store is None:
+            return {}
+        return {o.key: {**o.meta(), "on_disk": o.key in self._disk_registry} for o in store.list()}
 
     # -- registry -----------------------------------------------------------
     @property

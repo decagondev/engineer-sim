@@ -2808,12 +2808,137 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def admin_scenarios():
         out = []
         cfg = _scenario_config()
+        overrides = manager.override_meta()
         for m in manager.scenarios_meta():
             m = dict(m)
             m["starter_url"] = (cfg.get(m["key"]) or {}).get("starter_url")
             m["enabled"] = (cfg.get(m["key"]) or {}).get("enabled", True)
+            o = overrides.get(m["key"])
+            m["customised"] = o is not None
+            m["store_only"] = bool(o) and not o.get("on_disk", True)
+            m["based_on"] = (o or {}).get("based_on", "")
             out.append(m)
         return {"scenarios": out}
+
+    def _scenario_yaml_text(key: str) -> tuple[str, str]:
+        """(yaml text, source) where source is 'override' or 'disk'."""
+        store = getattr(manager, "scenarios_store", None)
+        o = store.get(key) if store is not None else None
+        if o is not None:
+            return o.yaml_text, "override"
+        from sim.adapters.persistence.scenario_files import SCENARIOS_DIR
+        p = SCENARIOS_DIR / key / "scenario.yaml"
+        if p.is_file():
+            return p.read_text(encoding="utf-8"), "disk"
+        return "", ""
+
+    def _validate_scenario_yaml(key: str, text: str, based_on: str = ""):
+        """Parse and check the YAML; returns (scenario, error message)."""
+        import yaml as _yaml
+        from sim.adapters.persistence.scenario_files import load_scenario_text, starter_dir_for
+        from sim.core.scenario.scenario import ScenarioError
+        try:
+            data = _yaml.safe_load(text or "")
+        except _yaml.YAMLError as e:
+            return None, f"YAML error: {str(e).splitlines()[0]}"
+        if not isinstance(data, dict):
+            return None, "the document must be a mapping with key, title, personas, rubric"
+        if data.get("key") != key:
+            return None, f"the YAML 'key' must be {key!r}"
+        base = starter_dir_for(based_on or key) or starter_dir_for(key)
+        try:
+            sc = load_scenario_text(text, base.parent if base else None)
+        except (ScenarioError, ValueError, KeyError, TypeError) as e:
+            return None, f"invalid scenario: {e}"
+        if not sc.rubric.criteria:
+            return None, "a scenario needs at least one rubric criterion"
+        return sc, ""
+
+    @app.get("/api/admin/scenarios/{key}/yaml")
+    def admin_scenario_yaml(key: str):
+        text, source = _scenario_yaml_text(key)
+        if not source:
+            return JSONResponse({"error": "no such scenario"}, status_code=404)
+        meta = manager.override_meta().get(key) or {}
+        from sim.adapters.persistence.scenario_files import SCENARIOS_DIR
+        return {"key": key, "yaml": text, "source": source,
+                "on_disk": (SCENARIOS_DIR / key / "scenario.yaml").is_file(),
+                "based_on": meta.get("based_on", ""), "ts": meta.get("ts", ""), "author": meta.get("author", "")}
+
+    @app.put("/api/admin/scenarios/{key}/yaml")
+    def admin_put_scenario_yaml(key: str, payload: dict, request: Request, validate: bool = False):
+        """Save (or just validate) a scenario's YAML as an override; the registry
+        reloads and the next session uses it."""
+        from datetime import datetime, timezone
+        from sim.core.ports.scenarios import ScenarioOverride
+        store = getattr(manager, "scenarios_store", None)
+        if store is None:
+            return JSONResponse({"error": "scenario store not configured"}, status_code=501)
+        text = str((payload or {}).get("yaml") or "")
+        existing = store.get(key)
+        based_on = (payload or {}).get("based_on") or (existing.based_on if existing else "")
+        sc, err = _validate_scenario_yaml(key, text, based_on)
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        if validate:
+            return {"ok": True, "valid": True, "title": sc.title, "track": sc.track,
+                    "personas": [p.name for p in sc.personas], "criteria": [c.key for c in sc.rubric.criteria]}
+        actor = _actor(request)
+        store.put(ScenarioOverride(key=key, yaml_text=text, ts=datetime.now(timezone.utc).isoformat(),
+                                   author=actor.email or actor.uid, based_on=based_on))
+        manager.reload_registry()
+        request.state.audit = (key, f"saved scenario {key} ({sc.title})")
+        return {"ok": True, "key": key, "title": sc.title, "track": sc.track, "source": "override"}
+
+    @app.delete("/api/admin/scenarios/{key}/yaml")
+    def admin_delete_scenario_override(key: str, request: Request):
+        """Drop the override: a file-backed scenario reverts to disk, a
+        dashboard-only one disappears."""
+        store = getattr(manager, "scenarios_store", None)
+        if store is None or not store.delete(key):
+            return JSONResponse({"error": "no override for that scenario"}, status_code=404)
+        manager.reload_registry()
+        on_disk = key in manager.registry
+        request.state.audit = (key, f"{'reverted' if on_disk else 'deleted'} scenario {key}")
+        return {"ok": True, "reverted_to_disk": on_disk, "removed": not on_disk}
+
+    @app.post("/api/admin/scenarios")
+    def admin_new_scenario(payload: dict, request: Request):
+        """A new scenario from a template: copy its YAML with a new key and title;
+        the starter folder is borrowed from the template."""
+        import re as _re
+        import yaml as _yaml
+        from datetime import datetime, timezone
+        from sim.core.ports.scenarios import ScenarioOverride
+        store = getattr(manager, "scenarios_store", None)
+        if store is None:
+            return JSONResponse({"error": "scenario store not configured"}, status_code=501)
+        key = str((payload or {}).get("key") or "").strip().lower()
+        title = str((payload or {}).get("title") or "").strip()
+        based_on = str((payload or {}).get("based_on") or "").strip()
+        if not _re.fullmatch(r"[a-z][a-z0-9_]{2,40}", key):
+            return JSONResponse({"error": "key must be 3-40 chars: lowercase letters, digits, underscores"},
+                                status_code=400)
+        if key in manager.registry:
+            return JSONResponse({"error": "that key already exists"}, status_code=409)
+        if not title:
+            return JSONResponse({"error": "a title is required"}, status_code=400)
+        text, source = _scenario_yaml_text(based_on)
+        if not source:
+            return JSONResponse({"error": "no such template scenario"}, status_code=400)
+        data = _yaml.safe_load(text) or {}
+        data["key"], data["title"] = key, title
+        new_text = _yaml.safe_dump(data, sort_keys=False, allow_unicode=True, width=100)
+        root_base = (store.get(based_on).based_on if store.get(based_on) else "") or based_on
+        sc, err = _validate_scenario_yaml(key, new_text, root_base)
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
+        actor = _actor(request)
+        store.put(ScenarioOverride(key=key, yaml_text=new_text, ts=datetime.now(timezone.utc).isoformat(),
+                                   author=actor.email or actor.uid, based_on=root_base))
+        manager.reload_registry()
+        request.state.audit = (key, f"created scenario {key} from {based_on}")
+        return {"ok": True, "key": key, "title": sc.title, "based_on": root_base}
 
     @app.put("/api/admin/scenarios/{key}")
     def admin_put_scenario(key: str, payload: dict):

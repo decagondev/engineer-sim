@@ -12,6 +12,7 @@ from sim.core.grading.review import HumanReview
 from sim.core.ports.calibration import CalibrationRun
 from sim.core.ports.audit import AuditEntry
 from sim.core.ports.archive import ArchiveRecord
+from sim.core.ports.scenarios import ScenarioOverride
 from sim.core.ports.mail import MailThread
 from sim.core.ports.repository import StoredMessage
 from sim.core.ports.session_registry import SessionRecord
@@ -561,6 +562,42 @@ class FirestoreArchiveStore:
                                       state=d.get("state") or "", size=int(d.get("size") or 0)))
         rows.sort(key=lambda r: r.ts, reverse=True)
         return rows
+
+
+class FirestoreScenarioStore:
+    """scenario_overrides/{key}: YAML authored in the dashboard."""
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    def put(self, override: ScenarioOverride) -> ScenarioOverride:
+        self._db.collection("scenario_overrides").document(override.key).set({
+            "key": override.key, "yaml_text": override.yaml_text, "ts": override.ts,
+            "author": override.author, "based_on": override.based_on})
+        return override
+
+    def get(self, key: str) -> Optional[ScenarioOverride]:
+        d = _data(self._db.collection("scenario_overrides").document(key).get())
+        if not d:
+            return None
+        return ScenarioOverride(key=key, yaml_text=d.get("yaml_text") or "", ts=d.get("ts") or "",
+                                author=d.get("author") or "", based_on=d.get("based_on") or "")
+
+    def list(self) -> Sequence[ScenarioOverride]:
+        rows = []
+        for s in self._db.collection("scenario_overrides").stream():
+            d = _data(s)
+            rows.append(ScenarioOverride(key=s.id, yaml_text=d.get("yaml_text") or "", ts=d.get("ts") or "",
+                                         author=d.get("author") or "", based_on=d.get("based_on") or ""))
+        rows.sort(key=lambda o: o.key)
+        return rows
+
+    def delete(self, key: str) -> bool:
+        ref = self._db.collection("scenario_overrides").document(key)
+        if not ref.get().exists:
+            return False
+        ref.delete()
+        return True
 
 
 class FirestoreSubmissionStore:
