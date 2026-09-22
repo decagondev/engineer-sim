@@ -27,7 +27,9 @@ class SqliteUserDirectory:
                 name TEXT NOT NULL DEFAULT '',
                 groq_key_enc TEXT NOT NULL DEFAULT '',
                 github_token_enc TEXT NOT NULL DEFAULT '',
-                github_scope TEXT NOT NULL DEFAULT ''
+                github_scope TEXT NOT NULL DEFAULT '',
+                gitlab_token_enc TEXT NOT NULL DEFAULT '',
+                gitlab_scope TEXT NOT NULL DEFAULT ''
             )
             """
         )
@@ -48,6 +50,10 @@ class SqliteUserDirectory:
         if "github_scope" not in cols:
             self._conn.execute(
                 "ALTER TABLE users ADD COLUMN github_scope TEXT NOT NULL DEFAULT ''")
+        for col in ("gitlab_token_enc", "gitlab_scope"):
+            if col not in cols:
+                self._conn.execute(
+                    f"ALTER TABLE users ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
     def get(self, uid: str) -> Optional[UserRecord]:
         r = self._conn.execute(
@@ -74,15 +80,17 @@ class SqliteUserDirectory:
         gh = user.github_token_enc
         self._conn.execute(
             "INSERT INTO users (uid, email, role, disabled, created_at, last_login, name, "
-            "groq_key_enc, github_token_enc, github_scope) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "groq_key_enc, github_token_enc, github_scope, gitlab_token_enc, gitlab_scope) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(uid) DO UPDATE SET "
             "email=excluded.email, role=excluded.role, disabled=excluded.disabled, "
             "last_login=excluded.last_login, name=excluded.name, "
             "groq_key_enc=excluded.groq_key_enc, github_token_enc=excluded.github_token_enc, "
-            "github_scope=excluded.github_scope",
+            "github_scope=excluded.github_scope, gitlab_token_enc=excluded.gitlab_token_enc, "
+            "gitlab_scope=excluded.gitlab_scope",
             (user.uid, user.email, user.role, 1 if user.disabled else 0,
-             created, last, name, enc, gh, user.github_scope or ""),
+             created, last, name, enc, gh, user.github_scope or "",
+             user.gitlab_token_enc or "", user.gitlab_scope or ""),
         )
         self._conn.commit()
         return self.get(user.uid)
@@ -114,6 +122,8 @@ class SqliteUserDirectory:
             groq_key_enc=r["groq_key_enc"] if "groq_key_enc" in keys else "",
             github_token_enc=r["github_token_enc"] if "github_token_enc" in keys else "",
             github_scope=r["github_scope"] if "github_scope" in keys else "",
+            gitlab_token_enc=r["gitlab_token_enc"] if "gitlab_token_enc" in keys else "",
+            gitlab_scope=r["gitlab_scope"] if "gitlab_scope" in keys else "",
         )
 
 

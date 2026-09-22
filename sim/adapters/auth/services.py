@@ -125,6 +125,8 @@ class AuthServices:
                     groq_key_enc=rec.groq_key_enc,
                     github_token_enc=rec.github_token_enc,
                     github_scope=rec.github_scope,
+                    gitlab_token_enc=rec.gitlab_token_enc,
+                    gitlab_scope=rec.gitlab_scope,
                 ))
         if rec.disabled:
             raise IdentityError("account disabled", status=403)

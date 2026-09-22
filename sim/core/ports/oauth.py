@@ -20,6 +20,8 @@ class OAuthToken:
     access_token: str
     scope: str = ""
     token_type: str = "bearer"
+    refresh_token: str = ""     # GitLab issues one; GitHub device tokens do not expire
+    expires_in: int = 0         # seconds, 0 = never
 
 
 class OAuthBroker(Protocol):
@@ -30,6 +32,8 @@ class OAuthBroker(Protocol):
     def start(self, scope: str) -> DeviceCode: ...
 
     def poll(self, device_code: str) -> Optional[OAuthToken]: ...
+
+    def refresh(self, refresh_token: str) -> OAuthToken: ...
 
 
 class OAuthError(RuntimeError):

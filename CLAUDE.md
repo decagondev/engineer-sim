@@ -175,12 +175,28 @@ learner's own Groq key falls back to the classroom chain on a transient error. B
 in `chat.js` (`speak`), off by default; phone layouts are media queries in `index.html`, `chat.js`
 and `files.js`.
 
-**GitHub connect** (`ports/oauth.py`, `adapters/auth/github_oauth.py` device flow behind
-`GITHUB_OAUTH_CLIENT_ID`): `/api/me/github/connect` POST/GET/DELETE stores the OAuth token in the
-same encrypted field as a pasted token plus `UserRecord.github_scope`. `GitHubWorkspaceFiles.write_file`
-commits through the contents API only when its injected `can_write()` (composition root: current
-user has a write scope) says so; the classroom token never writes. `_workflow_payload` flips
-`editable` for the `repo` workflow per request.
+**Repo hosts (GitHub + a GitLab instance):** `ports/repo_host.py` is the forge port (`RepoRef`,
+`RepoInfo`, `Commit`, `ChangedFile`, `TreeNode`, `WriteResult`, `RepoHostError`).
+`adapters/build/github_host.py::GitHubHost` wraps `GitHubApi`; `adapters/build/gitlab_api.py::GitLabHost`
+speaks GitLab v4 (URL-encoded project path, `forked_from_project`, `compare?from_project_id=`,
+`repository/files` POST/PUT; tree listings carry no size, so `TreeNode.size == -1`).
+`adapters/build/host_router.py::HostRouter` picks the host by URL (`owns`) and holds one
+`can_write` per host; `GitHostBuildObserver(host=router)` and
+`adapters/workspace/github_files.py::RepoWorkspaceFiles(host=router, can_write=router.can_write)`
+never know which forge answered (`GitHubWorkspaceFiles` is the GitHub-only shim the older tests
+use). `_build_repo_hosts` in the composition root adds the GitLab host only when `GITLAB_URL` is
+set. Adding a forge = one adapter + one line there.
+
+**Connect GitHub / GitLab** (`ports/oauth.py`; `adapters/auth/github_oauth.py` behind
+`GITHUB_OAUTH_CLIENT_ID`, `adapters/auth/gitlab_oauth.py` behind `GITLAB_URL` +
+`GITLAB_OAUTH_CLIENT_ID`, device grant, GitLab ≥ 17.2): `_connect_routes(forge, ...)` in app.py
+registers `/api/me/{github,gitlab}/connect` POST/GET/DELETE for both. GitHub stores the access
+token in `UserRecord.github_token_enc` + `github_scope`; GitLab tokens expire (2 h), so
+`adapters/auth/gitlab_tokens.py` stores an encrypted JSON bundle (access + refresh + expiry) in
+`gitlab_token_enc` and its `user_token_resolver` refreshes through the broker and writes the new
+bundle back. `write_file` commits only when the host's `can_write()` says the current user has a
+write scope (GitHub `public_repo`/`repo`, GitLab `api`); classroom tokens never write.
+`_workflow_payload` flips `editable` per request using the session's linked URL.
 
 **Live view, audit, archive:** `adapters/web/live.py::SessionBus` carries wake-ups (no data) from
 the chat loop, submit and grade routes to `/ws/watch/{sid}` watchers, which re-read the

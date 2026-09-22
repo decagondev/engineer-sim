@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from sim.adapters.build.github_api import GitHubApi, GitHubReadError, parse_repo
+from sim.core.ports.repo_host import RepoHost, RepoHostError
 
 __all__ = ["GitHubReadError", "parse_repo", "GitHostBuildObserver"]
 
@@ -14,55 +15,63 @@ _DOC_CAP = 12_000
 
 
 class GitHostBuildObserver:
-    """BuildRecordSource for a PUBLIC GitHub repo, read via the REST API. The
-    learner submits their public repo URL; this reads the commit history (and, if
-    it's a fork, the net diff against the starter) as the build record.
+    """BuildRecordSource for a PUBLIC repo on any configured forge (GitHub, a
+    GitLab instance), read through the RepoHost port. The learner submits their
+    repo URL; this reads the commit history (and, if it's a fork, the net diff
+    against the starter) as the build record.
 
-    Unauthenticated reads are rate-limited (~60/hr per IP); set GITHUB_TOKEN to
-    raise that to ~5000/hr. Only public repos are read — no auth to the repo needed.
+    Anonymous reads are rate-limited; a server token (GITHUB_TOKEN / GITLAB_TOKEN)
+    or the learner's own token raises that. Only public repos are read.
     """
 
     def __init__(self, token: Optional[str] = None, max_commits: int = 30,
-                 max_files: int = 60, api: Optional[GitHubApi] = None) -> None:
-        self._api = api or GitHubApi(token=token)
+                 max_files: int = 60, api: Optional[GitHubApi] = None,
+                 host: Optional[RepoHost] = None) -> None:
+        if host is None:
+            from sim.adapters.build.github_host import GitHubHost
+            host = GitHubHost(api=api or GitHubApi(token=token))
+        self._host = host
         self._max_commits = max_commits
         self._max_files = max_files
 
     @property
-    def api(self) -> GitHubApi:
-        return self._api
+    def host(self) -> RepoHost:
+        return self._host
+
+    @property
+    def api(self):
+        """The GitHub client when this observer is GitHub-only (older wiring)."""
+        return getattr(self._host, "api", None)
 
     # -- BuildRecordSource port: summary(path) where path is the repo URL --
     def summary(self, repo_url: str) -> str:
-        owner, repo = parse_repo(repo_url)
-        info = self._api.repo(owner, repo)
-        default = info.get("default_branch", "main")
-        commits = self._api.commits(owner, repo, self._max_commits)
+        ref = self._host.parse(repo_url)
+        info = self._host.info(ref)
+        default = info.default_branch
+        commits = list(self._host.commits(ref, self._max_commits))
+        label = self._host.label if not hasattr(self._host, "label_for") else self._host.label_for(repo_url)
 
-        lines = [f"REPO: {owner}/{repo}  (default branch: {default})",
+        lines = [f"REPO: {info.full_name or ref.full_name}  on {label}  (default branch: {default})",
                  f"COMMITS ({len(commits)}):"]
         for c in commits:
-            msg = (c.get("commit", {}).get("message", "") or "").splitlines()[0]
-            date = c.get("commit", {}).get("author", {}).get("date", "")
-            lines.append(f"  {c.get('sha','')[:7]} {date} {msg}")
+            msg = (c.message or "").splitlines()[0] if c.message else ""
+            lines.append(f"  {c.sha[:7]} {c.date} {msg}")
 
-        parent = info.get("parent") if info.get("fork") else None
-        if parent:
-            base = f"{parent['owner']['login']}:{parent.get('default_branch','main')}"
-            head = f"{owner}:{default}"
+        if info.is_fork:
             try:
-                cmp = self._api.compare(owner, repo, base, head)
-                files = cmp.get("files", [])
-                lines.append(f"\nNET CHANGES vs starter ({parent['full_name']}): "
-                             f"{len(files)} file(s)")
+                files = list(self._host.changes(ref))
+            except RepoHostError:
+                files = []
+            if files:
+                lines.append(f"\nNET CHANGES vs starter ({info.parent_full_name}): {len(files)} file(s)")
                 for f in files[: self._max_files]:
-                    lines.append(f"  {f.get('status','?'):9} {f.get('filename','')} "
-                                 f"(+{f.get('additions',0)}/-{f.get('deletions',0)})")
-            except GitHubReadError:
-                pass
+                    lines.append(f"  {f.status:9} {f.path} (+{f.additions}/-{f.deletions})")
 
         for name in _DOC_FILES:
-            text = self._api.file_text(owner, repo, name, ref=default)
+            try:
+                text = self._host.file_text(ref, name, at=default)
+            except RepoHostError:
+                text = None
             if text and text.strip():
                 lines.append(f"\n{name}:\n{text[:_DOC_CAP]}")
         return "\n".join(lines)
@@ -71,24 +80,24 @@ class GitHostBuildObserver:
         """Text of one file on the default branch, or None. Never raises for
         the expected cases (missing file, private repo, rate limit)."""
         try:
-            owner, repo = parse_repo(repo_url)
+            ref = self._host.parse(repo_url)
         except ValueError:
             return None
         try:
-            return self._api.file_text(owner, repo, path)
-        except GitHubReadError:
+            return self._host.file_text(ref, path)
+        except RepoHostError:
             return None
 
     def validate(self, repo_url: str) -> tuple[bool, str]:
         """Submit-time check: (ok, human message). Never raises for expected cases."""
         try:
-            owner, repo = parse_repo(repo_url)
+            ref = self._host.parse(repo_url)
         except ValueError as e:
             return False, str(e)
         try:
-            commits = self._api.commits(owner, repo, 1)
-        except GitHubReadError as e:
+            commits = list(self._host.commits(ref, 1))
+        except RepoHostError as e:
             return False, str(e)
         if not commits:
-            return False, "that repo has no commits yet — commit and push first"
-        return True, f"{owner}/{repo} looks good"
+            return False, "that repo has no commits yet: commit and push first"
+        return True, f"{ref.full_name} looks good"

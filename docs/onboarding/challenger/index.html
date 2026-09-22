@@ -79,6 +79,7 @@
             <tr><td>Display name</td><td>How instructors see you in the directory and in replays.</td><td>Yes. Set it once.</td></tr>
             <tr><td>Groq API key</td><td>The personas and the grader run on a language model. The classroom has a shared key; if you add your own, your sessions use yours instead, so a busy class never slows you down.</td><td>Optional. Recommended if your instructor asks, or if replies feel slow.</td></tr>
             <tr><td>GitHub token</td><td>Only used by <i>build</i> scenarios that read a repo you pushed. Interview scenarios never touch GitHub.</td><td>Not for interviews. Skip it unless you are later assigned a build scenario.</td></tr>
+            <tr><td>GitLab token</td><td>Appears only when your class uses its own GitLab (for example <code>labs.gauntletai.com</code>). Same job as the GitHub token, for projects hosted there.</td><td>Not for interviews. Only if a build scenario's starter lives on that GitLab.</td></tr>
           </tbody>
         </table></div>
         <h3>Getting a Groq key</h3>
@@ -89,6 +90,14 @@
         </ol>
         <h3>Connecting GitHub (build scenarios on the hosted server)</h3>
         <p>In the Workspace app, <b>Connect GitHub</b> shows a short code; enter it at github.com/login/device and approve. From then on the Files app edits your fork directly: every Save is a commit. <b>Disconnect</b> revokes it here (and you can revoke the app under GitHub → Settings → Applications). This replaces pasting a token for the repo scenarios; the classroom's own token can never write to your repo.</p>
+        <h3>Connecting GitLab (when the starter lives on your class's GitLab)</h3>
+        <p>If the starter link points at your class's own GitLab, a second card appears in the Workspace app: <b>Connect GitLab</b>. It works the same way: a short code, approve it on the GitLab page that opens, and Files can then commit to your project. The link box accepts either a GitHub URL or a project URL on that GitLab, and the simulator works out which host to read. GitLab sign-ins expire after a couple of hours; the simulator renews them quietly in the background, and if that ever fails you just press Connect again.</p>
+        <h3>Getting a GitLab token (read-only alternative)</h3>
+        <ol>
+          <li>On your class's GitLab open <b>your avatar → Preferences → Access tokens</b> (the address is <code>/-/user_settings/personal_access_tokens</code>). GitLab's own walkthrough is at <a href="https://docs.gitlab.com/user/profile/personal_access_tokens/" target="_blank" rel="noopener">Personal access tokens</a>.</li>
+          <li>Create a token with the <b>read_api</b> scope. That is enough for browsing and grading; it cannot write to anything.</li>
+          <li>Paste it into <b>GitLab token</b> in Settings and press <b>Save token</b>. Checked against the instance, encrypted, never shown again.</li>
+        </ol>
         <h3>Getting a GitHub token (read-only alternative)</h3>
         <ol>
           <li>Open <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>. GitHub's own walkthrough is at <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">Managing your personal access tokens</a>.</li>
@@ -299,6 +308,7 @@
   <span>Engineering Flight Simulator · challenger onboarding</span>
   <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API keys</a>
   <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub tokens</a>
+  <a href="https://docs.gitlab.com/user/profile/personal_access_tokens/" target="_blank" rel="noopener">GitLab tokens</a>
   <a data-guide-link="instructor" href="../instructor/index.html">Instructor guide</a>
   <a data-guide-link="admin" href="../admin/index.html">Admin guide</a>
 </footer>

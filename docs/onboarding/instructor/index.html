@@ -210,8 +210,9 @@
         <ul>
           <li><b>The language model.</b> On a hosted server it is Groq with a classroom key (<code>GROQ_API_KEY</code>). Every persona reply, reveal-ladder judgment, diagram, and grade is a model call. When twenty people submit at once, the shared key's rate limit is the queue they all wait in.</li>
           <li><b>GitHub reads</b>, for build scenarios only. The classroom token (<code>GITHUB_TOKEN</code>) has one rate limit for everyone.</li>
+          <li><b>GitLab reads</b>, when the admin has pointed the server at your own GitLab instance. Starter links on that host work exactly like GitHub ones: challengers fork, push, and paste their project URL; <b>Connect GitLab</b> lets them edit from Files.</li>
         </ul>
-        <p>Challengers can store their <b>own</b> Groq key and GitHub token in Settings. Both are encrypted, never shown again, and used automatically for that person's sessions. Ask the class to do it before the day; the challenger guide has the steps and links.</p>
+        <p>Challengers can store their <b>own</b> Groq key and GitHub or GitLab token in Settings. All are encrypted, never shown again, and used automatically for that person's sessions. Ask the class to do it before the day; the challenger guide has the steps and links.</p>
         <div class="links">
           <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq API keys<span>Free account, one click to create a key</span><span class="h">console.groq.com/keys</span></a>
           <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">GitHub personal access tokens<span>No scopes needed; it only raises the read limit</span><span class="h">docs.github.com</span></a>

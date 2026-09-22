@@ -112,9 +112,30 @@ function renderSettings(){
     : `No personal token yet — the classroom token (or the anonymous limit) is used until you add yours.`;
   const clearGh = me.has_github_token
     ? `<button class="danger" id="clear-gh" type="button">Remove token</button>` : "";
+  const glHost = me.gitlab_host || "";
+  const glNote = me.gitlab_connected
+    ? `Connected through the Workspace app: Files can commit to your project on ${glHost}.`
+    : me.has_gitlab_token
+      ? `Your ${glHost} token is saved. Project browsing and grading will use it.`
+      : `No personal token yet — the classroom token (or anonymous access) is used until you add yours.`;
+  const clearGl = me.has_gitlab_token
+    ? `<button class="danger" id="clear-gl" type="button">Remove token</button>` : "";
+  const glCard = !glHost ? "" : `
+    <div class="card">
+      <h2>Your GitLab token (${esc(glHost)})</h2>
+      <p class="muted">${esc(glNote)}</p>
+      <p class="muted">For projects on <a href="https://${esc(glHost)}" target="_blank" rel="noopener">${esc(glHost)}</a>. Create a personal access token at <a href="https://${esc(glHost)}/-/user_settings/personal_access_tokens" target="_blank" rel="noopener">${esc(glHost)}/-/user_settings/personal_access_tokens</a> with the <b>read_api</b> scope and paste it here. To edit a project from the Files app, use <b>Connect GitLab</b> in the Workspace app instead.</p>
+      <label for="gl-token">GitLab token</label>
+      <input id="gl-token" type="password" autocomplete="off" placeholder="glpat-…"/>
+      <div class="row">
+        <button class="primary" id="save-gl" type="button"><span class="spin"></span><span id="save-gl-lab">Save token</span></button>
+        ${clearGl}
+      </div>
+      <p class="status" id="gl-status"></p>
+    </div>`;
   return `
     <h1 style="font-size:18px;margin:0 0 6px">Settings</h1>
-    <p class="muted">Your name is visible to instructors. Your Groq key and GitHub token are stored encrypted and never shown again.</p>
+    <p class="muted">Your name is visible to instructors. Your Groq key and repo-host tokens are stored encrypted and never shown again.</p>
     <div class="card">
       <h2>Display name</h2>
       <label for="disp-name">How you appear in the directory</label>
@@ -147,7 +168,7 @@ function renderSettings(){
         ${clearGh}
       </div>
       <p class="status" id="gh-status"></p>
-    </div>`;
+    </div>${glCard}`;
 }
 
 (async () => {
@@ -169,6 +190,53 @@ function showSettings(){
   el("save-gh").onclick = saveGh;
   const clearG = el("clear-gh");
   if (clearG) clearG.onclick = clearGh;
+  const sGl = el("save-gl");
+  if (sGl) sGl.onclick = saveGl;
+  const cGl = el("clear-gl");
+  if (cGl) cGl.onclick = clearGl;
+}
+
+async function saveGl(){
+  const btn = el("save-gl");
+  const status = el("gl-status");
+  const raw = el("gl-token").value.trim();
+  status.className = "status";
+  status.textContent = "";
+  if (!raw) { status.className = "status err"; status.textContent = "Paste a GitLab token first."; return; }
+  setBusy(btn, true, "save-gl-lab", "Save token", "Checking token…");
+  try {
+    const r = await fetch("/api/me", {
+      method: "PATCH", headers: h(),
+      body: JSON.stringify({gitlab_token: raw}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+    me.has_gitlab_token = !!d.has_gitlab_token;
+    me.gitlab_connected = !!d.gitlab_connected;
+    el("gl-token").value = "";
+    showSettings();
+    el("gl-status").className = "status ok";
+    el("gl-status").textContent = "Token saved. Project browsing will use your GitLab token.";
+  } finally {
+    const still = el("save-gl");
+    setBusy(still, false, "save-gl-lab", "Save token", "Checking token…");
+  }
+}
+
+async function clearGl(){
+  const status = el("gl-status");
+  status.className = "status";
+  const r = await fetch("/api/me", {
+    method: "PATCH", headers: h(),
+    body: JSON.stringify({clear_gitlab_token: true}),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { status.className = "status err"; status.textContent = errText(d, r); return; }
+  me.has_gitlab_token = false;
+  me.gitlab_connected = false;
+  showSettings();
+  el("gl-status").className = "status ok";
+  el("gl-status").textContent = "Token removed. The classroom token will be used.";
 }
 
 async function saveGh(){

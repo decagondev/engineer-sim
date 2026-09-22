@@ -155,6 +155,10 @@ PUBLIC_BASE_URL=https://worksim.decadev.co.uk   # optional; set-password emails
 GITHUB_OAUTH_CLIENT_ID=Iv1...   # optional; GitHub OAuth app with device flow so Files can commit to a fork
 GITHUB_TOKEN=ghp_...            # read-only; classroom-wide GitHub API limit for repo browsing
                                 # (challengers can store their own token in Settings, BYOK-style)
+GITLAB_URL=https://labs.gauntletai.com   # optional; accept project links on a self-hosted GitLab too
+GITLAB_TOKEN=glpat-...          # optional; classroom read_api token for that instance (never api)
+GITLAB_OAUTH_CLIENT_ID=...      # optional; Application ID of a non-confidential OAuth app there
+                                # (scope api) so Connect GitLab can commit from Files
 WORK_MODE=auto                  # auto|local|hosted; auto = hosted when Firebase/Firestore is on
 BYOK_SECRET=...                 # Fernet secret for stored personal keys; set before anyone saves one
 ```

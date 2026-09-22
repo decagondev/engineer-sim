@@ -129,9 +129,11 @@ const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;"
 const STATE_LABEL = {reviewed:"✓ reviewed", graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
 const STATE_COLOR = {reviewed:"#9085e9", graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
 function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = ((k==="graded"||k==="reviewed") && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
+window.GITLAB_HOST = window.GITLAB_HOST || "";
+fetch("/api/auth/me", {headers: (window.SimAuth && SimAuth.headers) ? SimAuth.headers() : {}}).then(r => r.json()).then(d => { window.GITLAB_HOST = (d && d.gitlab_host) || ""; }).catch(() => {});
 function keyChips(u){
-  const g = u.has_groq_key, gh = u.has_github_token;
-  return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
+  const g = u.has_groq_key, gh = u.has_github_token, gl = u.has_gitlab_token;
+  return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>${window.GITLAB_HOST ? `<span class="kc ${gl?"on":""}" title="${gl?"GitLab token saved or connected":"No GitLab token"}">GitLab</span>` : ""}`;
 }
 function ago(ts){
   if(!ts) return "—";
@@ -858,6 +860,9 @@ ${(d.scenarios||[]).map(s=>`<div class="row" style="border-bottom:1px solid var(
             <tr><td>Classroom Groq key</td><td>${yes(dep.groq_key_set)} <span class="muted">GROQ_API_KEY</span></td></tr>
             <tr><td>Classroom GitHub token</td><td>${yes(dep.github_token_set)} <span class="muted">GITHUB_TOKEN</span></td></tr>
             <tr><td>GitHub connect (OAuth app)</td><td>${yes(dep.github_oauth_set)} <span class="muted">GITHUB_OAUTH_CLIENT_ID${dep.github_oauth_set ? " · challengers can edit their fork from Files" : ""}</span></td></tr>
+            <tr><td>GitLab instance</td><td>${dep.gitlab_url ? `${esc(dep.gitlab_url)} <span class="muted">GITLAB_URL · repo links on this host are read through its API</span>` : `<span class="muted">none · set GITLAB_URL to accept project links from a self-hosted GitLab</span>`}</td></tr>
+            ${dep.gitlab_url ? `<tr><td>Classroom GitLab token</td><td>${yes(dep.gitlab_token_set)} <span class="muted">GITLAB_TOKEN (read_api)</span></td></tr>
+            <tr><td>GitLab connect (OAuth app)</td><td>${yes(dep.gitlab_oauth_set)} <span class="muted">GITLAB_OAUTH_CLIENT_ID${dep.gitlab_oauth_set ? " · challengers can edit their project from Files" : ""}</span></td></tr>` : ""}
             <tr><td>Key encryption secret</td><td>${yes(dep.byok_secret_set)} <span class="muted">BYOK_SECRET${dep.byok_secret_set?"":" — set it before people save personal keys"}</span></td></tr>
             <tr><td>Work mode</td><td>${esc(dep.work_mode)} → ${dep.hosted?"hosted (repo path for build scenarios)":"local (dev box)"}</td></tr>
             <tr><td>Sandbox</td><td>${esc(dep.env_provider)}</td></tr>

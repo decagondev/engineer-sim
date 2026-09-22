@@ -353,16 +353,14 @@ def build_app(config: Config | None = None):
     from sim.adapters.web.app import create_web_app
     from sim.adapters.build.git_observer import GitBuildObserver
     from sim.adapters.build.github_observer import GitHostBuildObserver
-    from sim.adapters.workspace.github_files import GitHubWorkspaceFiles
-    from sim.adapters.build.github_api import GitHubApi, user_token_resolver
-    from sim.adapters.auth.secretbox import secret_from_config
+    from sim.adapters.workspace.github_files import RepoWorkspaceFiles
     config = config or Config.from_env()
     manager = build_manager(config)
-    # GitHub reads use the signed-in user's own token when they stored one
-    # (Settings), else GITHUB_TOKEN: rate limits spread across the class.
-    api = GitHubApi(token=config.github_token, resolve_token=user_token_resolver(
-        manager.users, secret_from_config(config), config.github_token))
-    github = GitHostBuildObserver(api=api)
+    # One router over every configured forge (GitHub always; a GitLab instance
+    # when GITLAB_URL is set). Reads use the signed-in user's own token when
+    # they stored one (Settings / Connect), else the classroom token.
+    hosts, gitlab_oauth = _build_repo_hosts(config, manager.users)
+    github = GitHostBuildObserver(host=hosts)
     manager.repo_files = github
     return create_web_app(
         manager=manager,
@@ -375,9 +373,49 @@ def build_app(config: Config | None = None):
         auth=build_auth(config, manager),
         public_base_url=config.public_base_url,
         hosted=config.hosted,
-        repo_files=GitHubWorkspaceFiles(api=github.api, can_write=_github_can_write(manager.users)),
+        repo_files=RepoWorkspaceFiles(host=hosts, can_write=hosts.can_write),
         github_oauth=_build_github_oauth(config),
+        gitlab_oauth=gitlab_oauth,
     )
+
+
+def _build_repo_hosts(config: Config, users):
+    """HostRouter over GitHub (+ a GitLab instance when configured) and the
+    GitLab device-flow broker (None when no GITLAB_URL)."""
+    from sim.adapters.auth.secretbox import secret_from_config
+    from sim.adapters.build.github_api import GitHubApi, user_token_resolver
+    from sim.adapters.build.github_host import GitHubHost
+    from sim.adapters.build.host_router import HostRouter
+    secret = secret_from_config(config)
+    github = GitHubHost(api=GitHubApi(token=config.github_token, resolve_token=user_token_resolver(
+        users, secret, config.github_token)))
+    hosts = [github]
+    can_write = {github.host: _github_can_write(users)}
+    gitlab_oauth = None
+    if config.gitlab_url:
+        from sim.adapters.auth.gitlab_oauth import GitLabDeviceFlow
+        from sim.adapters.auth.gitlab_tokens import user_token_resolver as gitlab_resolver
+        from sim.adapters.build.gitlab_api import GitLabHost
+        gitlab_oauth = GitLabDeviceFlow(config.gitlab_url, config.gitlab_oauth_client_id)
+        gitlab = GitLabHost(config.gitlab_url, resolve_token=gitlab_resolver(
+            users, secret, config.gitlab_token, broker=gitlab_oauth))
+        hosts.append(gitlab)
+        can_write[gitlab.host] = _gitlab_can_write(users)
+    return HostRouter(hosts, can_write), gitlab_oauth
+
+
+def _gitlab_can_write(users):
+    """True when the current request's user connected GitLab with the `api`
+    scope (the only scope that lets the REST file API commit)."""
+    def can_write() -> bool:
+        from sim.adapters.llm.request_context import current_uid
+        uid = current_uid.get()
+        if not uid or users is None:
+            return False
+        rec = users.get(uid)
+        scope = (getattr(rec, "gitlab_scope", "") or "") if rec else ""
+        return bool(getattr(rec, "gitlab_token_enc", "")) and "api" in scope.replace(",", " ").split()
+    return can_write
 
 
 def _github_can_write(users):

@@ -32,30 +32,42 @@ SimApps.register({
     const esc = s => { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; };
     const api = (p, o) => fetch(`/api/session/${sid}${p}`, o);
 
-    // ---- repo workflow: link a public GitHub repo ----------------------------
+    // ---- repo workflow: link a public repo (GitHub, or the class GitLab) -------
+    let me = null;
+    async function whoami() {
+      if (me) return me;
+      try { me = await (await fetch("/api/auth/me")).json(); } catch (e) { me = {}; }
+      return me;
+    }
     async function repoView(note) {
       let cur = "";
       try { cur = (await (await api(`/workspace/repo`)).json()).url || ""; } catch (e) {}
+      await whoami();
       const starter = ctx.scenario && ctx.scenario.starter_url;
+      const glHost = me.gitlab_host || "";
+      const starterOnGitLab = !!(glHost && starter && starter.indexOf(glHost) >= 0);
+      const hostName = starterOnGitLab ? "GitLab" : "GitHub";
+      const hostUrl = starterOnGitLab ? `https://${glHost}` : "https://github.com";
+      const hosts = glHost ? `GitHub or ${glHost}` : "GitHub";
       view.innerHTML =
         `<h2>${cur ? "Your repo is linked" : "Link your repo"}</h2>
          <p>You work on your own machine with git. Fork the starter, push as you go,
-            and link your <b>public</b> repo here. The Files app browses what you have
-            pushed, and grading reads your commits.</p>
+            and link your <b>public</b> repo here (${esc(hosts)}). The Files app browses
+            what you have pushed, and grading reads your commits.</p>
          <div class="card">
            <div class="row"><span class="k">Starter</span><span class="v">${starter
              ? `<a href="${esc(starter)}" target="_blank" rel="noopener">${esc(starter)}</a> — fork it`
              : `<span class="muted">not set yet — ask your instructor</span>`}</span></div>
-           <div class="cmd"># after forking on GitHub:
-git clone https://github.com/&lt;you&gt;/&lt;your-fork&gt;.git
+           <div class="cmd"># after forking on ${esc(hostName)}:
+git clone ${esc(hostUrl)}/&lt;you&gt;/&lt;your-fork&gt;.git
 cd &lt;your-fork&gt;
 # …do the work, committing as you go…
 git push</div>
            <div class="row" style="margin-top:14px"><span class="k">Your repo</span>
-             <input id="url" placeholder="https://github.com/you/your-fork" value="${esc(cur)}"/></div>
+             <input id="url" placeholder="${esc(hostUrl)}/you/your-fork" value="${esc(cur)}"/></div>
            <div class="actions">
              <button class="primary" id="link">${cur ? "Update link" : "Link repo"}</button>
-             ${cur ? `<button id="files">Open Files</button><button id="refresh">Refresh from GitHub</button>` : ""}
+             ${cur ? `<button id="files">Open Files</button><button id="refresh">Refresh from ${esc(hostName)}</button>` : ""}
            </div>
            <div id="note" style="margin-top:8px">${note || ""}</div>
          </div>
@@ -64,12 +76,18 @@ git push</div>
            <div class="actions"><button id="ghconnect">Connect GitHub</button><button id="ghdisconnect" hidden>Disconnect</button></div>
            <div id="ghnote" class="muted" style="margin-top:8px"></div>
          </div>
+         ${glHost ? `<div class="card" id="glcard" style="margin-top:12px">
+           <div class="row"><span class="k">Edit here</span><span class="v" id="glstate" style="font-family:var(--ui)">Checking…</span></div>
+           <div class="actions"><button id="glconnect">Connect GitLab</button><button id="gldisconnect" hidden>Disconnect</button></div>
+           <div id="glnote" class="muted" style="margin-top:8px"></div>
+         </div>` : ""}
          <p class="muted">Only public repos can be read. Pushed changes show up after Refresh.</p>`;
-      wireGitHub();
+      wireConnect("github", "GitHub", "gh", "fork");
+      if (glHost) wireConnect("gitlab", glHost, "gl", "project");
       view.querySelector("#link").onclick = async () => {
         const url = view.querySelector("#url").value.trim();
         if (!url) { view.querySelector("#note").innerHTML = `<span class="err">Paste your repo URL.</span>`; return; }
-        view.querySelector("#note").textContent = "Checking on GitHub…";
+        view.querySelector("#note").textContent = "Checking the repo…";
         let r;
         try { r = await (await api(`/workspace/repo`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) })).json(); }
         catch (e) { view.querySelector("#note").innerHTML = `<span class="err">Could not reach the server.</span>`; return; }
@@ -85,40 +103,41 @@ git push</div>
       };
     }
 
-    // ---- connect GitHub (device flow) so Files can commit to the fork ----------
-    let ghPoll = null;
-    async function wireGitHub() {
-      const stateEl = view.querySelector("#ghstate"), note = view.querySelector("#ghnote");
-      const btn = view.querySelector("#ghconnect"), off = view.querySelector("#ghdisconnect");
+    // ---- connect a forge (device flow) so Files can commit to the fork ----------
+    // forge: "github" | "gitlab"; label: what the user sees; p: element id prefix
+    const polls = {};
+    async function wireConnect(forge, label, p, forkWord) {
+      const stateEl = view.querySelector(`#${p}state`), note = view.querySelector(`#${p}note`);
+      const btn = view.querySelector(`#${p}connect`), off = view.querySelector(`#${p}disconnect`);
       if (!stateEl) return;
-      let me = null;
-      try { me = await (await fetch("/api/auth/me")).json(); } catch (e) {}
-      if (!me || !me.uid || me.role === undefined) { view.querySelector("#ghcard").hidden = true; return; }
-      if (!me.github_oauth) { stateEl.textContent = "Not available on this server; push from your machine and press Refresh."; btn.hidden = true; return; }
+      await whoami();
+      if (!me || !me.uid || me.role === undefined) { view.querySelector(`#${p}card`).hidden = true; return; }
+      const oauthKey = `${forge}_oauth`, connKey = `${forge}_connected`;
+      if (!me[oauthKey]) { stateEl.textContent = `${label} sign-in is not available on this server; push from your machine and press Refresh.`; btn.hidden = true; return; }
       const show = () => {
-        if (me.github_connected) { stateEl.innerHTML = `<span class="ok">✓ Connected. Files saves commit straight to your fork.</span>`; btn.hidden = true; off.hidden = false; }
-        else { stateEl.textContent = "Connect your GitHub account and the Files app becomes an editor for this repo: every save is a commit to your fork."; btn.hidden = false; off.hidden = true; }
+        if (me[connKey]) { stateEl.innerHTML = `<span class="ok">✓ Connected to ${esc(label)}. Files saves commit straight to your ${forkWord}.</span>`; btn.hidden = true; off.hidden = false; }
+        else { stateEl.textContent = `Connect your ${label} account and the Files app becomes an editor for a repo hosted there: every save is a commit to your ${forkWord}.`; btn.hidden = false; off.hidden = true; }
       };
       show();
       btn.onclick = async () => {
-        btn.disabled = true; note.textContent = "Asking GitHub for a code…";
+        btn.disabled = true; note.textContent = `Asking ${label} for a code…`;
         let r;
-        try { r = await (await fetch("/api/me/github/connect", { method: "POST" })).json(); }
+        try { r = await (await fetch(`/api/me/${forge}/connect`, { method: "POST" })).json(); }
         catch (e) { note.innerHTML = `<span class="err">Could not reach the server.</span>`; btn.disabled = false; return; }
         if (r.error) { note.innerHTML = `<span class="err">${esc(r.error)}</span>`; btn.disabled = false; return; }
         note.innerHTML = `Open <a href="${esc(r.verification_uri)}" target="_blank" rel="noopener" style="color:var(--me)">${esc(r.verification_uri)}</a> and enter the code <b class="cmd" style="display:inline;padding:2px 8px;font-size:15px">${esc(r.user_code)}</b>. Waiting for you to approve…`;
         const tick = async () => {
-          let s; try { s = await (await fetch("/api/me/github/connect")).json(); } catch (e) { s = { status: "pending", interval: 5 }; }
-          if (s.status === "pending") { ghPoll = setTimeout(tick, Math.max(3, s.interval || 5) * 1000); return; }
+          let s; try { s = await (await fetch(`/api/me/${forge}/connect`)).json(); } catch (e) { s = { status: "pending", interval: 5 }; }
+          if (s.status === "pending") { polls[forge] = setTimeout(tick, Math.max(3, s.interval || 5) * 1000); return; }
           btn.disabled = false;
-          if (s.status === "connected") { me.github_connected = true; note.innerHTML = `<span class="ok">✓ Connected (${esc(s.scope)}). Open Files: it is editable now.</span>`; show(); if (ctx.scenario && ctx.scenario.workflow) { ctx.scenario.workflow.editable = true; ctx.scenario.workflow.writes_to_repo = true; } }
+          if (s.status === "connected") { me[connKey] = true; note.innerHTML = `<span class="ok">✓ Connected (${esc(s.scope)}). Open Files: it is editable now.</span>`; show(); if (ctx.scenario && ctx.scenario.workflow) { ctx.scenario.workflow.editable = true; ctx.scenario.workflow.writes_to_repo = true; } }
           else note.innerHTML = `<span class="err">${esc(s.error || s.status)}</span>`;
         };
-        ghPoll = setTimeout(tick, Math.max(3, r.interval || 5) * 1000);
+        polls[forge] = setTimeout(tick, Math.max(3, r.interval || 5) * 1000);
       };
       off.onclick = async () => {
-        await fetch("/api/me/github/connect", { method: "DELETE" });
-        me.github_connected = false; show(); note.textContent = "Disconnected. Files is read-only for this repo again.";
+        await fetch(`/api/me/${forge}/connect`, { method: "DELETE" });
+        me[connKey] = false; show(); note.textContent = "Disconnected. Files is read-only for this repo again.";
         if (ctx.scenario && ctx.scenario.workflow) { ctx.scenario.workflow.editable = false; ctx.scenario.workflow.writes_to_repo = false; }
       };
     }
@@ -188,6 +207,6 @@ git push</div>
     if (wf.kind === "repo") repoView();
     else if (wf.kind === "doc") docView();
     else refresh();
-    return { unmount() { if (ghPoll) clearTimeout(ghPoll); } };
+    return { unmount() { Object.values(polls).forEach(t => clearTimeout(t)); } };
   }
 });

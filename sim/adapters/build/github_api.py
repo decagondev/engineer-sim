@@ -12,8 +12,10 @@ import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
+from sim.core.ports.repo_host import RepoHostError
 
-class GitHubReadError(RuntimeError):
+
+class GitHubReadError(RepoHostError):
     """A public GitHub repo couldn't be read (not found, private, rate-limited)."""
 
 

@@ -19,7 +19,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                    instructor_password: str = "", github_observer=None,
                    auth=None,
                    public_base_url: str = "", hosted: bool = False,
-                   repo_files=None, github_oauth=None) -> FastAPI:
+                   repo_files=None, github_oauth=None, gitlab_oauth=None) -> FastAPI:
     """Web adapter. Resolves each session to a per-scenario bundle via the manager;
     grader / build observer / file reader / settings are app-global.
     """
@@ -40,8 +40,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     from sim.adapters.web.live import SessionBus
     app.state.bus = SessionBus()
     app.state.github_oauth = github_oauth
+    app.state.gitlab_oauth = gitlab_oauth
     app.state.github_pending = {}          # uid -> {device_code, interval, started}
-    app.state.github_can_write = getattr(getattr(repo_files, "_can_write", None), "__call__", None)
+    app.state.gitlab_pending = {}
+    app.state.repo_files = repo_files
     app.state.github_observer = github_observer
     if auth is None:
         from sim.adapters.auth.services import AuthServices
@@ -90,18 +92,26 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     def _workflow(session_id):
         return resolve_workflow(b(session_id).scenario.track, app.state.hosted)
 
-    def _repo_writable() -> bool:
-        """May the current request commit to a linked repo? (Connected GitHub
-        with a write scope; decided by the files adapter's can_write.)"""
-        fn = app.state.github_can_write
+    def _repo_writable(url: str = "") -> bool:
+        """May the current request commit to the linked repo at `url`? (A
+        connected GitHub / GitLab account with a write scope, decided by the
+        host router behind the files adapter. No URL: any host will do.)"""
+        files = getattr(app.state.repo_workspace, "files", None) or app.state.repo_files
+        fn = getattr(files, "can_write", None)
         try:
-            return bool(fn()) if fn else False
+            return bool(fn(url)) if fn else False
         except Exception:
             return False
 
+    def _session_repo_url(session_id: str) -> str:
+        try:
+            return (app.state.settings.get_session_repo_url(session_id) or "") if app.state.settings else ""
+        except Exception:
+            return ""
+
     def _workflow_payload(session_id) -> dict:
         wf = _workflow(session_id).as_dict()
-        if wf["kind"] == "repo" and _repo_writable():
+        if wf["kind"] == "repo" and _repo_writable(_session_repo_url(session_id)):
             wf["editable"] = True
             wf["writes_to_repo"] = True
         return wf
@@ -260,7 +270,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
                           "ollama": cfg.ollama_model}.get(cfg.llm_provider, ""),
                 "checks": checks, "llm_failover": _failover_status(),
-                "github_oauth": bool(cfg.github_oauth_client_id)}
+                "github_oauth": bool(cfg.github_oauth_client_id),
+                "gitlab_url": cfg.gitlab_url,
+                "gitlab_oauth": bool(cfg.gitlab_url and cfg.gitlab_oauth_client_id)}
         return JSONResponse(body, status_code=200 if ok else 503)
 
     @app.get("/")
@@ -281,7 +293,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     def _workflow_payload_for(sc) -> dict:
         wf = resolve_workflow(sc.track, app.state.hosted).as_dict()
-        if wf["kind"] == "repo" and _repo_writable():
+        if wf["kind"] == "repo" and _repo_writable(""):
             wf["editable"] = True
             wf["writes_to_repo"] = True
         return wf
@@ -698,7 +710,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     @app.post("/api/session/{session_id}/workspace/repo")
     def link_repo(session_id: str, payload: dict):
         """Remember the learner's public repo so Files can browse it and the
-        grader can read it. Validated against GitHub; recorded in the transcript."""
+        grader can read it. Validated against the forge; recorded in the transcript."""
         from datetime import datetime, timezone
         from sim.core.ports.repository import StoredMessage
         if not _workflow(session_id).needs_repo_url:
@@ -706,7 +718,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                                           "not a linked repo"}, status_code=405)
         url = (payload or {}).get("url", "").strip()
         if app.state.github_observer is None:
-            return JSONResponse({"error": "github submission not configured"}, status_code=501)
+            return JSONResponse({"error": "repo submission not configured"}, status_code=501)
         ok, msg = app.state.github_observer.validate(url)
         if not ok:
             return JSONResponse({"error": msg}, status_code=400)
@@ -729,7 +741,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if not url:
             return JSONResponse({"error": "link your repo first"}, status_code=400)
         if app.state.github_observer is None:
-            return JSONResponse({"error": "github submission not configured"}, status_code=501)
+            return JSONResponse({"error": "repo submission not configured"}, status_code=501)
         ok, msg = app.state.github_observer.validate(url)
         if not ok:
             return JSONResponse({"error": msg}, status_code=400)
@@ -1073,7 +1085,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if not app.state.auth.gated:
             p = _local_instructor()
             return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
-                    "name": "", "has_groq_key": False, "has_github_token": False}
+                    "name": "", "has_groq_key": False, "has_github_token": False,
+                    "has_gitlab_token": False, **_gitlab_site()}
         p = getattr(request.state, "principal", None)
         if p is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -1083,7 +1096,20 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "has_groq_key": bool(rec.groq_key_enc) if rec else False,
                 "has_github_token": bool(rec.github_token_enc) if rec else False,
                 "github_connected": bool(rec and rec.github_token_enc and rec.github_scope),
-                "github_oauth": bool(getattr(app.state.github_oauth, "configured", False))}
+                "github_oauth": bool(getattr(app.state.github_oauth, "configured", False)),
+                "has_gitlab_token": bool(getattr(rec, "gitlab_token_enc", "")) if rec else False,
+                "gitlab_connected": bool(rec and getattr(rec, "gitlab_token_enc", "")
+                                         and getattr(rec, "gitlab_scope", "")),
+                **_gitlab_site()}
+
+    def _gitlab_site() -> dict:
+        """Which GitLab instance this server knows, if any (for Settings and
+        the Workspace app)."""
+        cfg = manager._config
+        url = getattr(cfg, "gitlab_url", "") or ""
+        from urllib.parse import urlparse
+        return {"gitlab_url": url, "gitlab_host": urlparse(url).netloc if url else "",
+                "gitlab_oauth": bool(getattr(app.state.gitlab_oauth, "configured", False))}
 
     @app.patch("/api/me")
     def patch_me(request: Request, payload: dict):
@@ -1129,15 +1155,36 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
             gh = encrypt_secret(secret_from_config(manager._config), raw)
         scope = rec.github_scope if gh == rec.github_token_enc else ""   # a pasted token is read-only
+        gl = rec.gitlab_token_enc
+        if (payload or {}).get("clear_gitlab_token"):
+            gl = ""
+        elif "gitlab_token" in (payload or {}):
+            raw = str(payload.get("gitlab_token") or "").strip()
+            site = _gitlab_site()["gitlab_url"]
+            if not site:
+                return JSONResponse({"error": "This server has no GitLab instance configured."}, status_code=400)
+            if not raw:
+                return JSONResponse({"error": "Paste a GitLab token."}, status_code=400)
+            try:
+                from sim.adapters.build.gitlab_api import validate_token as validate_gitlab_token
+                validate_gitlab_token(site, raw)
+            except RuntimeError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+            from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
+            gl = encrypt_secret(secret_from_config(manager._config), raw)
+        gl_scope = rec.gitlab_scope if gl == rec.gitlab_token_enc else ""
         rec = auth.users.upsert(UserRecord(
             uid=rec.uid, email=rec.email, role=rec.role, disabled=rec.disabled,
             created_at=rec.created_at, last_login=rec.last_login,
             name=name, groq_key_enc=enc, github_token_enc=gh, github_scope=scope,
+            gitlab_token_enc=gl, gitlab_scope=gl_scope,
         ))
         return {"ok": True, "name": rec.name,
                 "has_groq_key": bool(rec.groq_key_enc),
                 "has_github_token": bool(rec.github_token_enc),
-                "github_connected": bool(rec.github_token_enc and rec.github_scope)}
+                "github_connected": bool(rec.github_token_enc and rec.github_scope),
+                "has_gitlab_token": bool(rec.gitlab_token_enc),
+                "gitlab_connected": bool(rec.gitlab_token_enc and rec.gitlab_scope)}
 
     # ---- GitHub connect (device flow) -------------------------------------
     def _me_record(request: Request):
@@ -1150,65 +1197,83 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             return None, JSONResponse({"error": "not found"}, status_code=404)
         return rec, None
 
-    @app.post("/api/me/github/connect")
-    def github_connect_start(request: Request):
-        """Begin the device flow: the user types the code at GitHub, then the
-        page polls GET until the token arrives."""
-        import time
-        from sim.core.ports.oauth import OAuthError
-        broker = app.state.github_oauth
-        if broker is None or not getattr(broker, "configured", False):
-            return JSONResponse({"error": "GitHub sign-in is not configured on this server "
-                                          "(GITHUB_OAUTH_CLIENT_ID)"}, status_code=501)
-        rec, err = _me_record(request)
-        if err:
-            return err
-        try:
-            code = broker.start("public_repo")
-        except OAuthError as e:
-            return JSONResponse({"error": str(e)}, status_code=502)
-        app.state.github_pending[rec.uid] = {"device_code": code.device_code, "interval": code.interval,
-                                             "started": time.monotonic(), "expires_in": code.expires_in}
-        return {"user_code": code.user_code, "verification_uri": code.verification_uri,
-                "interval": code.interval, "expires_in": code.expires_in}
-
-    @app.get("/api/me/github/connect")
-    def github_connect_poll(request: Request):
+    def _connect_routes(forge: str, broker_attr: str, pending_attr: str, token_field: str,
+                        scope_field: str, scope: str, not_configured: str, pack=None):
+        """Device-flow connect for one forge: POST starts (the user types the
+        code at the forge), GET polls until the token arrives, DELETE forgets it.
+        `pack(token)` turns the OAuthToken into the plaintext to encrypt (GitLab
+        keeps the refresh token too)."""
         import dataclasses
         import time
         from sim.core.ports.oauth import OAuthError
         from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
-        rec, err = _me_record(request)
-        if err:
-            return err
-        pending = app.state.github_pending.get(rec.uid)
-        if not pending:
-            return {"status": "idle", "connected": bool(rec.github_token_enc and rec.github_scope)}
-        if time.monotonic() - pending["started"] > pending.get("expires_in", 900):
-            app.state.github_pending.pop(rec.uid, None)
-            return {"status": "expired"}
-        try:
-            token = app.state.github_oauth.poll(pending["device_code"])
-        except OAuthError as e:
-            app.state.github_pending.pop(rec.uid, None)
-            return {"status": "failed", "error": str(e)}
-        if token is None:
-            return {"status": "pending", "interval": pending["interval"]}
-        app.state.github_pending.pop(rec.uid, None)
-        enc = encrypt_secret(secret_from_config(manager._config), token.access_token)
-        app.state.auth.users.upsert(dataclasses.replace(rec, github_token_enc=enc,
-                                                        github_scope=token.scope or "public_repo"))
-        return {"status": "connected", "scope": token.scope or "public_repo"}
+        pack = pack or (lambda t: t.access_token)
 
-    @app.delete("/api/me/github/connect")
-    def github_disconnect(request: Request):
-        import dataclasses
-        rec, err = _me_record(request)
-        if err:
-            return err
-        app.state.github_pending.pop(rec.uid, None)
-        app.state.auth.users.upsert(dataclasses.replace(rec, github_token_enc="", github_scope=""))
-        return {"ok": True}
+        def broker():
+            return getattr(app.state, broker_attr, None)
+
+        def pending():
+            return getattr(app.state, pending_attr)
+
+        def connected(rec) -> bool:
+            return bool(getattr(rec, token_field, "") and getattr(rec, scope_field, ""))
+
+        @app.post(f"/api/me/{forge}/connect", name=f"{forge}_connect_start")
+        def connect_start(request: Request):
+            b = broker()
+            if b is None or not getattr(b, "configured", False):
+                return JSONResponse({"error": not_configured}, status_code=501)
+            rec, err = _me_record(request)
+            if err:
+                return err
+            try:
+                code = b.start(scope)
+            except OAuthError as e:
+                return JSONResponse({"error": str(e)}, status_code=502)
+            pending()[rec.uid] = {"device_code": code.device_code, "interval": code.interval,
+                                  "started": time.monotonic(), "expires_in": code.expires_in}
+            return {"user_code": code.user_code, "verification_uri": code.verification_uri,
+                    "interval": code.interval, "expires_in": code.expires_in}
+
+        @app.get(f"/api/me/{forge}/connect", name=f"{forge}_connect_poll")
+        def connect_poll(request: Request):
+            rec, err = _me_record(request)
+            if err:
+                return err
+            p = pending().get(rec.uid)
+            if not p:
+                return {"status": "idle", "connected": connected(rec)}
+            if time.monotonic() - p["started"] > p.get("expires_in", 900):
+                pending().pop(rec.uid, None)
+                return {"status": "expired"}
+            try:
+                token = broker().poll(p["device_code"])
+            except OAuthError as e:
+                pending().pop(rec.uid, None)
+                return {"status": "failed", "error": str(e)}
+            if token is None:
+                return {"status": "pending", "interval": p["interval"]}
+            pending().pop(rec.uid, None)
+            enc = encrypt_secret(secret_from_config(manager._config), pack(token))
+            got = token.scope or scope
+            app.state.auth.users.upsert(dataclasses.replace(rec, **{token_field: enc, scope_field: got}))
+            return {"status": "connected", "scope": got}
+
+        @app.delete(f"/api/me/{forge}/connect", name=f"{forge}_disconnect")
+        def disconnect(request: Request):
+            rec, err = _me_record(request)
+            if err:
+                return err
+            pending().pop(rec.uid, None)
+            app.state.auth.users.upsert(dataclasses.replace(rec, **{token_field: "", scope_field: ""}))
+            return {"ok": True}
+
+    _connect_routes("github", "github_oauth", "github_pending", "github_token_enc", "github_scope",
+                    "public_repo", "GitHub sign-in is not configured on this server (GITHUB_OAUTH_CLIENT_ID)")
+    from sim.adapters.auth.gitlab_tokens import pack_token as _pack_gitlab
+    _connect_routes("gitlab", "gitlab_oauth", "gitlab_pending", "gitlab_token_enc", "gitlab_scope",
+                    "api", "GitLab sign-in is not configured on this server (GITLAB_URL + GITLAB_OAUTH_CLIENT_ID)",
+                    pack=_pack_gitlab)
 
     @app.get("/api/me/sessions")
     def my_sessions(request: Request):
@@ -1307,7 +1372,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 out.append({"uid": u.uid, "email": u.email, "name": u.name or "",
                             "role": u.role, "disabled": u.disabled,
                             "has_groq_key": bool(getattr(u, "groq_key_enc", "")),
-                            "has_github_token": bool(getattr(u, "github_token_enc", ""))})
+                            "has_github_token": bool(getattr(u, "github_token_enc", "")),
+                            "has_gitlab_token": bool(getattr(u, "gitlab_token_enc", ""))})
         out.sort(key=lambda m: (m["name"] or m["email"] or m["uid"]).lower())
         return out
 
@@ -2077,6 +2143,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "created_at": u.created_at, "last_login": u.last_login,
                 "has_groq_key": bool(getattr(u, "groq_key_enc", "")),
                 "has_github_token": bool(getattr(u, "github_token_enc", "")),
+                "has_gitlab_token": bool(getattr(u, "gitlab_token_enc", "")),
                 "cohort_ids": list(cohort_ids or [])}
 
     def _sort_dicts(rows, sort: str, direction: str, allowed: dict):
@@ -2314,7 +2381,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             uid=rec.uid, email=email, role=role, disabled=disabled,
             created_at=rec.created_at, last_login=rec.last_login, name=name,
             groq_key_enc=rec.groq_key_enc, github_token_enc=rec.github_token_enc,
-            github_scope=rec.github_scope))
+            github_scope=rec.github_scope, gitlab_token_enc=rec.gitlab_token_enc,
+            gitlab_scope=rec.gitlab_scope))
         if "cohort_ids" in body:
             cids = _sync_user_cohorts(rec.uid, body.get("cohort_ids"))
         else:
@@ -2635,6 +2703,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "byok_secret_set": bool(cfg.byok_secret),
                 "bootstrap_admin_email": cfg.bootstrap_admin_email,
                 "github_oauth_set": bool(cfg.github_oauth_client_id),
+                "gitlab_url": cfg.gitlab_url,
+                "gitlab_token_set": bool(cfg.gitlab_token),
+                "gitlab_oauth_set": bool(cfg.gitlab_url and cfg.gitlab_oauth_client_id),
                 "llm_fallback_providers": cfg.llm_fallback_providers,
                 "llm_failover": _failover_status(),
             },

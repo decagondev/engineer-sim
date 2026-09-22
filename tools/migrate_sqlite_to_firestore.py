@@ -50,6 +50,10 @@ def migrate(db_path: str, stores) -> dict[str, int]:
             last_login=r["last_login"] or "",
             name=r["name"] if "name" in keys else "",
             groq_key_enc=r["groq_key_enc"] if "groq_key_enc" in keys else "",
+            github_token_enc=r["github_token_enc"] if "github_token_enc" in keys else "",
+            github_scope=r["github_scope"] if "github_scope" in keys else "",
+            gitlab_token_enc=r["gitlab_token_enc"] if "gitlab_token_enc" in keys else "",
+            gitlab_scope=r["gitlab_scope"] if "gitlab_scope" in keys else "",
         ))
         counts["users"] += 1
 

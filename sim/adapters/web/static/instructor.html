@@ -265,9 +265,11 @@ function enterDashboard(){
 const STATE_LABEL = {reviewed:"✓ reviewed", graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
 const STATE_COLOR = {reviewed:"#9085e9", graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
 function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = ((k==="graded"||k==="reviewed") && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
+window.GITLAB_HOST = window.GITLAB_HOST || "";
+fetch("/api/auth/me", {headers: (window.SimAuth && SimAuth.headers) ? SimAuth.headers() : {}}).then(r => r.json()).then(d => { window.GITLAB_HOST = (d && d.gitlab_host) || ""; }).catch(() => {});
 function keyChips(u){
-  const g = u.has_groq_key, gh = u.has_github_token;
-  return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
+  const g = u.has_groq_key, gh = u.has_github_token, gl = u.has_gitlab_token;
+  return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>${window.GITLAB_HOST ? `<span class="kc ${gl?"on":""}" title="${gl?"GitLab token saved or connected":"No GitLab token"}">GitLab</span>` : ""}`;
 }
 function ago(ts){
   if(!ts) return "—";

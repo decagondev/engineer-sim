@@ -16,6 +16,8 @@ class UserRecord:
     groq_key_enc: str = ""
     github_token_enc: str = ""     # personal GitHub token (BYOK), Fernet-encrypted
     github_scope: str = ""         # "" for a pasted read token; OAuth scopes (e.g. public_repo) when connected
+    gitlab_token_enc: str = ""     # personal GitLab token or the Connect GitLab token bundle, Fernet-encrypted
+    gitlab_scope: str = ""         # "" for a pasted token; OAuth scopes (api / read_api) when connected
 
 
 class UserDirectory(Protocol):
