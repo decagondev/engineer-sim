@@ -1,10 +1,12 @@
 # Running on a classroom / lab server (Version A)
 
 This is the "semi-local" setup: **one server** on your network runs the chat,
-mail, tickets, scenarios and grading. Learners connect to it from their own
-laptops, do the actual **coding on their own machines** with their own tools, and
-**submit a patch** back for grading. The instructor runs one dashboard and watches
-every session from one place.
+mail, tickets, scenarios, workspaces and grading. Learners connect to it from
+their own laptops. Design scenarios are written and submitted in the browser;
+build scenarios get a per-learner **dev box on the server** (edit it in the
+Files app or from a coding tool on the server), with a git-patch fallback for
+learners who want to work entirely on their own machine. The instructor runs one
+dashboard and watches every session from one place.
 
 It's the sweet spot for a classroom — no per-laptop server, no cloud, no accounts.
 
@@ -31,13 +33,16 @@ It's the sweet spot for a classroom — no per-laptop server, no cloud, no accou
 
 1. Open the link the instructor gave you — it loads your assigned scenario.
 2. Use **Team Chat** to talk to the client and work out what's really needed.
-3. Open the **Submit** app: **Download starter code**, unzip it, `git init`, and
-   build in your own editor. Commit as you go.
-4. Make a patch (`git format-patch --stdout HEAD~999..HEAD > work.patch` or
-   `git diff > work.patch`), paste or upload it in **Submit**, and submit.
-5. Hit **Grade run** in Team Chat for feedback.
+3. **Design / interview scenarios:** open **Files**, write `DESIGN.md` in the
+   editor (live preview beside it), then **Submit → Submit DESIGN.md**.
+4. **Build scenarios:** open **Workspace → Create workspace**, then build in
+   **Files** or point your coding tool at the folder shown; commit as you go;
+   **Submit → Submit from workspace**. Prefer your own machine? Open the
+   *Offline fallback* in Submit: download the starter, work locally, and paste
+   a git patch.
+5. Hit **Grade run** in Team Chat for feedback; the grade is kept.
 
-## How submission works (and why it's a patch)
+## How the patch fallback works
 
 In this mode the server never sees or runs your code — you keep it on your
 machine. You hand back a **git patch** (a text file describing your changes),

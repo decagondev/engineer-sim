@@ -43,6 +43,11 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
 ## Shared modules
 
 - `static/md.js` (`SimMD`): safe markdown + syntax highlighting for chat and previews.
+- `static/diagram.js` (`SimDiagram`): draws ```mermaid fences and the design
+  diagram with the vendored mermaid build; retries a failed parse after the
+  same label repair the server applies (`repair_mermaid`).
+- `static/viz.js` (`SimViz`): inline-SVG stat tiles, bars, daily columns and
+  meters for the dashboards (no library; palette validated for the dark surface).
 - `static/editor.js` (`SimEditor`): one code editor for every app, backed by the
   vendored CodeMirror 5 under `static/vendor/codemirror/` (no CDN, so it works on a
   classroom LAN) with a `<textarea>` fallback:
@@ -67,7 +72,9 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
   same principle as the grader's `calibrated:false` flag.
 
 ## What ships today
-- **Team Chat** — full: personas, reveal ladder, the uninvited stakeholder, grade.
+- **Team Chat** — full: personas, reveal ladder, the uninvited stakeholder,
+  grade. The grade and the drawn design diagram sit in a collapsible strip
+  above the conversation (folded on open, unfolded after Grade run).
 - **Workspace** — real, per workflow: `sandbox` provisions the per-session dev box;
   `repo` links the learner's public GitHub repo; hidden in `doc` (the folder is
   created on first use).
@@ -79,9 +86,10 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
   offline fallback); `repo` submits the linked repo. Every path runs the same
   director triggers and opens the assessor on interview scenarios.
 - **Files** — real: an editor with tabs, syntax highlighting, Save (Ctrl/Cmd+S,
-  autosave), Refresh and markdown Preview. Writes are path-safe and, when hosted,
-  kept in the database so a redeploy does not lose them. Read-only when browsing
-  a linked GitHub repo.
+  autosave), Refresh and a live markdown preview beside the editor (tables,
+  code, mermaid drawn; opens by itself for DESIGN.md on a wide window). Writes
+  are path-safe and, when hosted, kept in the database so a redeploy does not
+  lose them. Read-only when browsing a linked GitHub repo.
 - **Tickets** — real: a To Do / In Progress / Done board seeded with the client's
   asks; create and move tickets. Scoping actions are recorded in the transcript
   and graded.

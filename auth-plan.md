@@ -640,12 +640,12 @@ rewrite of history except delete).
 | Tickets | G3 | G3 | status/fields | G3 | |
 | Submissions | learner submit | G3 (includes content) | — | G3 | Sensitive |
 | Unlock state | — | G3 | reset | cascade | |
-| Instructor settings | — | G4 | G4 | reset-onboarding | Singleton today |
+| Site settings | — | G4 | G4 (level; admin: allow_signup, grader_calibrated, announcement) | reset-onboarding | Singleton |
 | Session settings | on create | G4 | G4 | cascade | |
 | Scenario starter URL | G5 | G5 | G5 | clear URL | |
 | Scenario enabled flag | G5 | G5 | G5 | — | YAML stays on disk |
 | Sandbox | provision | files list/read | — | teardown | |
-| Grade | POST grade | last result not stored today — optional `grades` table slice | re-grade | — | LLM; Fake in tests |
+| Grade | POST grade (stored) | GET grade | re-grade replaces | cascade | LLM; Fake in tests |
 | Export markdown | GET | — | — | — | |
 | Audit log | auto | G H2 | — | — | Admin only |
 | Auth status | — | G8 | — | — | No secrets |

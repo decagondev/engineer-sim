@@ -106,7 +106,8 @@ editing it.
   submit. Grading for this track
   uses `interview_posture`/`interview_expectation` in `sim/core/levels.py`, and
   `sim/core/design/diagram.py` renders the submitted doc as a mermaid diagram (served at
-  `/api/session/{id}/diagram`).
+  `/api/session/{id}/diagram`), passed through `repair_mermaid` because models write labels
+  mermaid cannot parse. The browser draws it with the vendored mermaid (`static/diagram.js`).
 
 **Workflows** (`sim/core/workflow.py`, pure: `resolve_workflow(track, hosted)`): interview and
 systems tracks are always `doc`; product is `sandbox` locally and `repo` when hosted. The web
@@ -125,6 +126,25 @@ overlay (`ports/session_files.py`; sqlite, Firestore, memory) holding only brows
 files, and replays them onto a re-provisioned folder (`hydrate`), so hosted redeploys lose
 nothing. Writes go to the store first. `/files/write` and `/files/refresh` are the routes;
 `static/editor.js` (`SimEditor`, vendored CodeMirror 5 under `static/vendor/`) is the editor.
+
+**Grades are stored** (`ports/grades.py`; sqlite `grades`, Firestore `sessions/{sid}/grades/latest`,
+memory): `POST /grade` saves the body with time and actor, `GET /grade` returns it, a regrade
+replaces it, and the export uses it. Session rows get a `state` (`not_started` → `active` →
+`submitted` → `graded`); a submission newer than the grade drops back to `submitted`.
+
+**Dashboards** (`/api/instructor/overview`, `/api/admin/overview`, `/api/admin/sessions`) are
+built from `_merge_known_sessions` + `_enrich_sessions` + `_session_stats` in the web app and
+drawn by `static/viz.js`. On Firestore every per-session fact the dashboards need is
+denormalised onto the session document (`INDEX_FIELDS` in `firestore_store.py`, written by the
+submissions, grades, settings and registry stores; `index_session` backfills legacy docs), so a
+listing is one stream. Payloads go through `_cached` (60 s stale-while-revalidate, warmed at
+boot, `?fresh=1` from the Refresh buttons); any API write clears the sessions list and marks
+the overviews for a background recount. Never add a read-per-row loop to these paths; a test
+in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
+
+**Site settings** (`InstructorSettings`): default level, `allow_signup` (gates unknown
+sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
+`grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
 **Submissions and build records:** every submit path ends in `remember_design` (design-doc
 tracks) → `_maybe_diagram` → `after_submission` (director + assessor). `/grade` resolves the
@@ -165,6 +185,8 @@ closures). Static desktop shell in `static/`: `shell.js` is the app registry; ea
 - `docs/WORKSPACE-PLAN.md`: design and delivery record for one workflow per track (doc /
   sandbox / repo), the in-browser editor, and repo-only submission when hosted.
 - `docs/CLASSROOM.md`, `docs/INSTRUCTOR.md`, `GET_STARTED_*.md`: operator-facing run guides.
+- `docs/onboarding/<role>/`: the in-app onboarding guides (served at `/onboarding`).
+- `docs/ROADMAP.md`: what comes next, with sizes and the files each item touches.
 
 ## Things that bite
 
@@ -178,6 +200,10 @@ closures). Static desktop shell in `static/`: `shell.js` is the app registry; ea
 - Firestore stores derive sequence ids as read-max+1 and documents are capped at 1 MB.
 - Firebase only honours custom email *bodies* once a sending domain is verified; until then
   `tools/email_templates.py apply` can change sender name and subject only.
+- Firestore round trips from Railway are slow (hundreds of ms). Anything that loops over
+  sessions or members must read from one listing, not one document per row; see Dashboards.
+- Static files and `/onboarding` are served with `Cache-Control: no-cache`; `/health` reports
+  the running commit and model, which is how to tell whether a deploy has landed.
 - `sim.db`, `.sandboxes/`, and `*-firebase-adminsdk-*.json` are git-ignored; never commit them.
 - Never add a third database. SQLite is local/test, Firestore is hosted (decision recorded in
   `DEPLOYMENT-PLAN.md`).

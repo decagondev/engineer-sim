@@ -31,7 +31,7 @@ client *actually* needs (not what they asked for), handles an uninvited
 stakeholder, and gets graded on how they ran the engagement. Runs on your laptop
 for ~$0. See `PLANNING.md` for the full epic/feature/story/wave breakdown.
 
-## Status — Waves 0–3 complete (MVP)
+## Status
 
 | Wave | What it added | State |
 |---|---|---|
@@ -42,9 +42,15 @@ for ~$0. See `PLANNING.md` for the full epic/feature/story/wave breakdown.
 | 4 Hardening | grader calibration harness, second scenario (RAG), hosting-seams doc, character-consistency eval | ✅ |
 | 5 Environment | per-session sandbox from a starter repo; build-for-real; grade auto-reads git build record | ✅ |
 | 5b Docker env | **isolated per-session container** (bind-mount, mem/cpu/pid limits); same `Environment` port | ✅ |
+| 6 Tracks | **systems-design** and **interview** scenarios (interviewer + assessor, reveal ladder, DESIGN.md, tickets extra credit), engineer levels | ✅ |
+| H0–H2 Hosted | Railway + **Firebase Auth** + **Firestore**; admin / instructor / challenger roles, cohorts, bulk import, per-user (BYOK) Groq keys and GitHub tokens | ✅ |
+| 7 Workflows | one workflow per track (**doc / sandbox / repo**), **in-browser editor** with live markdown + mermaid preview, durable browser edits, GitHub repo browsing | ✅ |
+| 8 Dashboards | Overview pages with stats and charts, **stored grades**, session states, cohort progress, role onboarding guides at `/onboarding` | ✅ |
 
-**48 gating tests green; 3 real-model evals are non-gating (skipped unless a real
-provider is set).** Build-for-real runs on Docker — see `docs/ENVIRONMENT.md`.
+**195 gating tests green (3 fail on Windows for platform reasons only); 3
+real-model evals are non-gating (skipped unless a real provider is set).**
+Build-for-real runs on Docker — see `docs/ENVIRONMENT.md`; the hosted variant
+is in `DEPLOYMENT-PLAN.md`.
 
 ## Run it
 
@@ -66,10 +72,16 @@ to actually converse.
 
 You log into a **workstation**: a desktop with a dock of apps. Click **Team
 Chat** to talk to the client and stakeholders, **Workspace** to spin up your
-sandbox, **Mail** for threaded email (a stakeholder may email you a scope change
-mid-shift — it shows as a dock badge), **Files** to browse your sandbox, and
-**Tickets** to scope the work on a board. Apps are modular — adding one is a
-single file + a `register()` call, see `docs/APPS.md`. The shell never changes.
+sandbox or link your GitHub repo, **Mail** for threaded email (a stakeholder may
+email you a scope change mid-shift — it shows as a dock badge), **Files** to
+edit your workspace in a real editor (syntax highlighting, autosave, a live
+markdown + mermaid preview), **Tickets** to scope the work on a board, and
+**Submit** to hand the work in with one button. Which apps you see and what
+Submit does follow the scenario's **workflow**: design scenarios are written
+and submitted in the browser, build scenarios use your dev box locally or a
+linked public GitHub repo when hosted (`docs/WORKSPACE-PLAN.md`). Apps are
+modular — adding one is a single file + a `register()` call, see `docs/APPS.md`.
+The shell never changes.
 
 Inside Team Chat it's a multi-pane workroom, not a single thread:
 
@@ -146,14 +158,21 @@ still `calibrated:false` until per-level calibration is run). Scenarios carry a
 `difficulty` tag so a junior isn't handed a staff problem. Instructors set the
 level via the gated endpoints (dashboard UI is the next wave).
 
-## Instructor replay
+## Instructor and admin dashboards
 
-Open **`/instructor`** and enter the instructor password (default
-`$T0mV13w`, override with `INSTRUCTOR_PASSWORD`) to watch any recorded
-session back — scrub or play the timeline across chat, mail, tickets, and
-the reveal/stakeholder beats, and grade it. This is a **light gate, not real
-auth** (shared secret, cleartext over HTTP) — fine for a trusted local
-machine, not for untrusted users. See `docs/INSTRUCTOR.md`.
+Open **`/instructor`** to create sessions (one, or one per cohort member),
+watch any session back — scrub or play the timeline across chat, mail,
+tickets, and the reveal/stakeholder beats, see the design diagram drawn from
+the submitted `DESIGN.md` — and grade it. Grades are stored; a regrade
+replaces the last one. The **Overview** tab shows counts, a 14-day activity
+chart, sessions by scenario and level, and what needs review.
+
+Locally the dashboard is behind the instructor password (default `$T0mV13w`,
+override with `INSTRUCTOR_PASSWORD`): a **light gate, not real auth**. Hosted,
+sign-in is Firebase email + password with three roles (admin > instructor >
+challenger); admins get `/admin` for people, cohorts, scenarios, settings and a
+deployment-wide overview. Each role has an onboarding guide at
+`/onboarding/<role>/`. See `docs/INSTRUCTOR.md` and `auth-plan.md`.
 
 ## Calibrating the grader (before you trust a score)
 
@@ -195,9 +214,14 @@ SIM_SCENARIO=path/to/scenario.yaml make run
 No code changes needed — that's the Open/Closed payoff.
 
 ## Known limits (honest list)
-- Single-process, single-user, no auth — by design for the MVP.
+- Single process, single replica: WebSockets and the scenario bundle cache are
+  in-process (`railway.toml` pins one replica).
 - Reveal-unlock and grading quality depend on the model; validate with evals +
   human calibration before trusting scores.
 - Grader calibration HARNESS exists and is tested; the actual PASS still
-  needs a real model run over real human-scored fixtures.
-- Build record reads a local git repo the tester points at; no cloud env yet.
+  needs a real model run over real human-scored fixtures, so grades carry a
+  "directional" caveat until an admin flips the flag.
+- Hosted build scenarios read the learner's **public** GitHub repo; editing a
+  repo from the browser (GitHub OAuth) is not built yet — see `docs/ROADMAP.md`.
+- Firebase's free plan sends 150 set-password emails a day; use Blaze for a
+  class.

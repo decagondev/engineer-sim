@@ -147,13 +147,18 @@ FIREBASE_CREDENTIALS_JSON={"type":"service_account",...}
   # paste the whole service-account JSON as one Railway variable;
   # a file path or GOOGLE_APPLICATION_CREDENTIALS also work
 LLM_PROVIDER=groq
-GROQ_API_KEY=...          # operator key until H2
+GROQ_API_KEY=...          # classroom key; challengers can add their own in Settings (H2, done)
+GROQ_MODEL=openai/gpt-oss-120b  # optional; this is the code default
 PUBLIC_BASE_URL=https://worksim.decadev.co.uk   # optional; set-password emails
+  # link back here. Omitted, the app uses the host of incoming requests.
 GITHUB_TOKEN=ghp_...            # read-only; classroom-wide GitHub API limit for repo browsing
                                 # (challengers can store their own token in Settings, BYOK-style)
 WORK_MODE=auto                  # auto|local|hosted; auto = hosted when Firebase/Firestore is on
-  # link back here. Omitted, the app uses the host of incoming requests.
+BYOK_SECRET=...                 # Fernet secret for stored personal keys; set before anyone saves one
 ```
+
+`/health` reports the running commit and model; the admin Settings tab shows
+which classroom keys are set.
 
 Do not set `AUTH_MODE=password` on Railway.
 

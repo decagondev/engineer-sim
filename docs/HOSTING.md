@@ -11,15 +11,20 @@ Local/LAN stays `AUTH_MODE=password` and `PERSISTENCE=sqlite` unless you opt in.
 |---|---|---|---|
 | Identity | instructor password | Firebase email | `ports/identity.py`, `AUTH_MODE` |
 | Transcript / mail / tickets / settings / users / sessions | SQLite file | Firestore collections | existing ports + `PERSISTENCE=firestore` |
-| Model calls | Ollama / Groq / Anthropic env | same adapters; challenger Groq key in Settings (H2) | `ports/llm.py` + `BYOK_SECRET` |
-| Build record | local git | learner patch / GitHub submit (no Railway sandbox) | `ports/build_record.py` |
-| Transport | one uvicorn | one Railway replica, HTTPS + `wss://` | `adapters/web` |
+| Model calls | Ollama / Groq / Anthropic env | same adapters; challenger's own Groq key from Settings wins | `ports/llm.py` + `BYOK_SECRET` |
+| Workflow | build scenarios use a server dev box (`sandbox`) | build scenarios use a linked public GitHub repo (`repo`); design scenarios are in-browser (`doc`) everywhere | `sim/core/workflow.py`, `WORK_MODE` |
+| Build record | local git | GitHub commits + `DESIGN.md`/`README.md` text (challenger's own GitHub token wins) | `ports/build_record.py`, `GITHUB_TOKEN` |
+| Browser edits | sandbox folder | `session_files` overlay in Firestore, replayed onto a fresh folder after a redeploy | `ports/session_files.py` |
+| Grades | sqlite `grades` | `sessions/{sid}/grades/latest` | `ports/grades.py` |
+| Dashboards | direct reads | session index on the session doc + 60 s stale-while-revalidate cache | `_enrich_sessions`, `_cached` in `adapters/web/app.py` |
+| Transport | one uvicorn | one Railway replica, HTTPS + `wss://`, static served `no-cache` | `adapters/web` |
 
 `sim/core/` imports none of these (`test_smk02`).
 
 ## Not on the first Railway deploy
 
 - Server-side Docker / code-server workspaces
+- Editing a GitHub repo from the browser (needs GitHub OAuth; see `docs/ROADMAP.md`)
 - Postgres
 - Firebase Hosting as the API
 - More than one Railway replica (in-process WebSockets)

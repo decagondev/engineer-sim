@@ -6,8 +6,8 @@ evidence. This is the "go back and see exactly where you nailed it and where you
 went wrong" from the pitch.
 
 ## Access
-Open **`/instructor`** (e.g. http://127.0.0.1:8000/instructor) and enter the
-instructor password. Default: `$T0mV13w`. Override it:
+Locally, open **`/instructor`** (e.g. http://127.0.0.1:8000/instructor) and
+enter the instructor password. Default: `$T0mV13w`. Override it:
 
 ```
 set INSTRUCTOR_PASSWORD=your-password&& python -m uvicorn sim.app.main:app
@@ -20,15 +20,26 @@ set INSTRUCTOR_PASSWORD=your-password&& python -m uvicorn sim.app.main:app
 > behind real auth (accounts, HTTPS, per-user sessions). The check lives in one
 > place (`create_web_app`), so swapping in real auth is contained.
 
+Hosted (`AUTH_MODE=firebase`), there is no shared password: an admin creates
+instructor accounts and you sign in at `/login`. Instructors see only the
+sessions they own; admins see everything (`auth-plan.md`).
+
 ## The dashboard
 After login, `/instructor` is a dashboard:
 - **First run** shows an onboarding step — pick your default engineer level.
+- **Overview** — counts (sessions, submitted, graded, in progress, not
+  started), a 14-day activity chart, sessions by scenario and level, a
+  *needs attention* list of submissions awaiting review, and recent sessions.
+  Numbers are cached for about a minute; **Refresh** recounts.
 - **New session** — pick a scenario (shown with its difficulty) and an engineer
-  level, with a match warning if they're mismatched; create the session and copy
-  the trainee link to hand over.
-- **Sessions** — every recorded run with its scenario + level; click to replay.
-- **Settings** — change the default level, browse the scenario library, or reset
-  onboarding.
+  level, with a match warning if they're mismatched; optionally assign it to a
+  challenger by email; create the session and copy the trainee link.
+- **Cohort** — one session per cohort member on one scenario and level, with a
+  progress bar; copy all links or download a CSV.
+- **Sessions** — every session you own with challenger, state and grade;
+  search and filter; click to replay.
+- **Settings** — change the default level, set starter repo URLs for hosted
+  build scenarios, or reset onboarding.
 
 ## What you can do (replay)
 - **Pick a session** — every recorded run is listed with its event count and last activity.
@@ -36,9 +47,14 @@ After login, `/instructor` is a dashboard:
   unfolded. Filter by surface (Chat / Mail / Tickets / Signals) to focus.
 - **Read the signals** — reveals ("Priya opened up"), joins, and inbound emails
   are shown as a distinct class, so you can see *when* discovery happened.
+- **Design** — the diagram drawn from the submitted `DESIGN.md` (and any
+  ```mermaid block in the transcript is drawn inline).
 - **Grade** — runs the grader on the full transcript (which includes email and
-  ticket actions) and shows the per-criterion score with evidence, plus the
-  `calibrated:false` caveat until you've run calibration.
+  ticket actions), the submitted design, its diagram and, if toggled, the
+  tickets, and shows the per-criterion score with evidence, plus the
+  `calibrated:false` caveat until an admin flips the flag. The grade is stored:
+  reopening the replay shows it with when and by whom, **Regrade** replaces
+  it, and **Export** downloads a markdown audit using the stored grade.
 
 Because everything a session produces is already recorded in the transcript, the
 replay is a pure read-over-data view — it needs no new capture.

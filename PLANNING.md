@@ -607,3 +607,20 @@ Added a `GroqClient` LLM adapter (OpenAI-compatible chat completions, lazy SDK i
 Built the real-git-workflow submission path (trust-based, public repos). `GitHostBuildObserver` reads a public repo's commits/diff via the GitHub API (behind `BuildRecordSource`; optional `GITHUB_TOKEN` raises the rate limit; if the repo is a fork it also reads the net diff vs the starter). Instructors set a per-scenario **starter repo URL** in the dashboard (stored in `SettingsStore`); learners see that link in **Submit** to fork, then submit their own public repo URL, which is validated (`/submit-repo`) and stored as a `kind=repo` submission. Grading prefers: explicit build_record > repo submission (read via the observer) > patch submission > server sandbox. Patch flow stays as the offline/no-account fallback. Tests GH-01..03, SMK-19. Full suite: 96 passed.
 
 Instructors publish starters by hand via `docs/PUBLISH-SCENARIOS.md` (no scripts, no app write-access to GitHub — a deliberate choice).
+
+---
+
+## Delivered after the local MVP (September 2026)
+
+Recorded here so the wave numbering above stays honest; detail lives in the linked docs.
+
+- **Hosted stack (H0–H2)** — Railway + Firebase Auth + Firestore, three roles, cohorts,
+  bulk import, per-user Groq keys and GitHub tokens (`DEPLOYMENT-PLAN.md`, `auth-plan.md`).
+- **Tracks** — systems-design and interview scenarios with interviewer/assessor lanes,
+  DESIGN.md, tickets extra credit, engineer levels (`sim/core/levels.py`).
+- **Workflows and editor** — doc / sandbox / repo per track, in-browser editor with live
+  markdown + mermaid preview, durable browser edits, GitHub repo browsing
+  (`docs/WORKSPACE-PLAN.md`).
+- **Stored grades, dashboards, onboarding guides** — Overview pages with charts, session
+  states, Firestore session index and caches, `/onboarding/<role>/` guides.
+- **Next** — `docs/ROADMAP.md`.
