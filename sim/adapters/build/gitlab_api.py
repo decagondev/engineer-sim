@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +18,8 @@ from typing import Callable, Optional, Sequence
 
 from sim.core.ports.repo_host import (ChangedFile, Commit, RepoHostError, RepoInfo, RepoRef,
                                       TreeNode, WriteResult)
+
+PROJECT_TTL = 5.0     # seconds a project's metadata is reused; branch tips are never cached
 
 
 class GitLabReadError(RepoHostError):
@@ -137,11 +140,14 @@ class GitLabHost:
     label = "GitLab"
 
     def __init__(self, base_url: str, api: Optional[GitLabApi] = None, token: str = "",
-                 resolve_token: Optional[Callable[[], str]] = None) -> None:
+                 resolve_token: Optional[Callable[[], str]] = None,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.base_url = (base_url or "").rstrip("/")
         self.host = urllib.parse.urlparse(self.base_url).netloc.lower() if self.base_url else ""
         self._api = api or GitLabApi(self.base_url, token=token, resolve_token=resolve_token)
         self._ids: dict[str, object] = {}
+        self._projects: dict[str, tuple[float, dict]] = {}
+        self._clock = clock
 
     @property
     def api(self) -> GitLabApi:
@@ -165,9 +171,17 @@ class GitLabHost:
 
     # -- helpers ------------------------------------------------------------
     def _project(self, ref: RepoRef) -> dict:
+        """Project metadata (id, default branch, fork parent), reused for a few
+        seconds so one Files action does not repeat the lookup per call."""
+        key = ref.full_name.lower()
+        hit = self._projects.get(key)
+        now = self._clock()
+        if hit is not None and now - hit[0] < PROJECT_TTL:
+            return hit[1]
         d = self._api.project(ref.full_name)
         if d.get("id"):
-            self._ids[ref.full_name.lower()] = d["id"]
+            self._ids[key] = d["id"]
+        self._projects[key] = (now, d)
         return d
 
     def _pid(self, ref: RepoRef):

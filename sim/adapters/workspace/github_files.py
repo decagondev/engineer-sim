@@ -10,8 +10,11 @@ file API and only when `can_write(root)` says the current request may.
 from __future__ import annotations
 
 import inspect
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
+
+MAX_CACHED_REPOS = 200      # trees are kept per repo; the oldest untouched one goes first
 
 from sim.adapters.build.github_api import GitHubApi
 from sim.core.ports.repo_host import RepoHost, RepoHostError, RepoRef
@@ -41,7 +44,7 @@ class RepoWorkspaceFiles:
         token never writes. A zero-argument callable is accepted too."""
         self._host = host
         self._max = max_bytes
-        self._cache: dict[str, _Snapshot] = {}
+        self._cache: OrderedDict[str, _Snapshot] = OrderedDict()
         fn = can_write or (lambda: False)
         self._can_write = fn if _accepts_root(fn) else (lambda root="": fn())
 
@@ -63,8 +66,10 @@ class RepoWorkspaceFiles:
         ref = self._ref(root)
         k = f"{ref.host}/{ref.full_name}".lower()
         snap = self._cache.get(k)
-        if snap is not None and not force:
-            return snap
+        if snap is not None:
+            self._cache.move_to_end(k)
+            if not force:
+                return snap
         branch, sha = self._host.head(ref)
         if snap is not None and snap.sha == sha:
             return snap
@@ -86,6 +91,9 @@ class RepoWorkspaceFiles:
                     parent = parent.rsplit("/", 1)[0] if "/" in parent else ""
         snap = _Snapshot(sha=sha, blobs=blobs, dirs=dirs, blob_shas=blob_shas, branch=branch)
         self._cache[k] = snap
+        self._cache.move_to_end(k)
+        while len(self._cache) > MAX_CACHED_REPOS:
+            self._cache.popitem(last=False)
         return snap
 
     # -- WorkspaceFiles port ---------------------------------------------

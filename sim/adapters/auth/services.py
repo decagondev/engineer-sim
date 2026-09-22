@@ -46,6 +46,7 @@ class AuthServices:
     ) -> None:
         self.mode = (mode or "password").lower()
         self.password = password
+        self._admin_known = False       # once an admin exists the count never runs again
         self.verifier = verifier
         self.users = users
         self.sessions = sessions
@@ -97,6 +98,13 @@ class AuthServices:
     def principal_from_headers(self, headers: Mapping[str, str]) -> Principal:
         return self.principal_from_token(self.token_from_headers(headers))
 
+    def _has_admin(self) -> bool:
+        if self._admin_known:
+            return True
+        if self.users is not None and self.users.count_role("admin") > 0:
+            self._admin_known = True
+        return self._admin_known
+
     def _sync_directory(self, p: Principal) -> Principal:
         if self.users is None:
             return p
@@ -106,7 +114,7 @@ class AuthServices:
             role = p.role or "challenger"
             if (self.bootstrap_admin_email and p.email
                     and p.email.lower() == self.bootstrap_admin_email
-                    and self.users.count_role("admin") == 0):
+                    and not self._has_admin()):
                 role = "admin"
             elif not self.allow_new_users():
                 raise IdentityError(

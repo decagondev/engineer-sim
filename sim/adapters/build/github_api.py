@@ -8,8 +8,10 @@ import base64
 import json
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from typing import Callable, Optional
 
 from sim.core.ports.repo_host import RepoHostError
@@ -31,7 +33,50 @@ def parse_repo(url: str) -> tuple[str, str]:
     raise ValueError("that doesn't look like a GitHub repo URL")
 
 
-def _default_fetch(resolve_token: Callable[[], str]) -> Callable[..., object]:
+class ETagCache:
+    """Bodies of recent GET responses keyed by path, with their ETag. GitHub
+    answers a matching If-None-Match with 304 and does not count it against the
+    rate limit, so Refresh presses and tree re-reads become free. Public data
+    only, so one cache serves every token."""
+
+    def __init__(self, max_entries: int = 500) -> None:
+        self._max = max_entries
+        self._items: OrderedDict[str, tuple[str, object]] = OrderedDict()
+        self._lock = threading.Lock()
+        self.hits = 0
+
+    def etag(self, path: str) -> str:
+        with self._lock:
+            hit = self._items.get(path)
+            if hit is not None:
+                self._items.move_to_end(path)
+            return hit[0] if hit else ""
+
+    def body(self, path: str):
+        with self._lock:
+            hit = self._items.get(path)
+            if hit is None:
+                return None
+            self.hits += 1
+            return hit[1]
+
+    def put(self, path: str, etag: str, body) -> None:
+        if not etag:
+            return
+        with self._lock:
+            self._items[path] = (etag, body)
+            self._items.move_to_end(path)
+            while len(self._items) > self._max:
+                self._items.popitem(last=False)
+
+
+_ETAGS = ETagCache()
+
+
+def _default_fetch(resolve_token: Callable[[], str],
+                   etags: Optional[ETagCache] = None) -> Callable[..., object]:
+    cache = etags if etags is not None else _ETAGS
+
     def fetch(path: str, method: str = "GET", body: Optional[dict] = None):
         headers = {"Accept": "application/vnd.github+json",
                    "User-Agent": "flight-sim"}
@@ -42,12 +87,25 @@ def _default_fetch(resolve_token: Callable[[], str]) -> Callable[..., object]:
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
+        conditional = method == "GET"
+        if conditional:
+            known = cache.etag(path)
+            if known:
+                headers["If-None-Match"] = known
         req = urllib.request.Request("https://api.github.com" + path, headers=headers,
                                      data=data, method=method)
         try:
             with urllib.request.urlopen(req, timeout=15) as r:
-                return json.loads(r.read().decode("utf-8"))
+                out = json.loads(r.read().decode("utf-8"))
+                if conditional:
+                    cache.put(path, (r.headers.get("ETag") or "") if getattr(r, "headers", None) else "", out)
+                return out
         except urllib.error.HTTPError as e:
+            if e.code == 304 and conditional:
+                cached = cache.body(path)
+                if cached is not None:
+                    return cached
+                raise GitHubReadError("GitHub returned 304 without a cached body")
             if e.code == 404:
                 raise GitHubReadError(
                     "repo not found — check the URL, and make sure the repo is public")

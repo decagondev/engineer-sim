@@ -636,6 +636,22 @@ class FirestoreSubmissionStore:
         _delete_collection(session_doc(self._db, session_id).collection("submissions"))
 
 
+def _aggregation_value(result) -> int:
+    """google-cloud-firestore answers count().get() with [[AggregationResult]];
+    accept that shape, a flat list, or a bare number."""
+    node = result
+    for _ in range(3):
+        if isinstance(node, (list, tuple)):
+            if not node:
+                return 0
+            node = node[0]
+        else:
+            break
+    if hasattr(node, "value"):
+        return int(node.value)
+    return int(node)
+
+
 class FirestoreUserDirectory:
     def __init__(self, db) -> None:
         self._db = db
@@ -696,6 +712,20 @@ class FirestoreUserDirectory:
         return True
 
     def count_role(self, role: str) -> int:
+        """Server-side count when the client offers the aggregation (one small
+        response); otherwise the stream, as before."""
+        col = self._db.collection("users")
+        try:
+            q = col.where("role", "==", role).where("disabled", "==", False)
+            agg = q.count()
+        except (AttributeError, TypeError):
+            agg = None
+        if agg is not None:
+            try:
+                got = agg.get()
+                return int(_aggregation_value(got))
+            except Exception:
+                pass
         return sum(1 for u in self.list() if u.role == role and not u.disabled)
 
     @staticmethod
