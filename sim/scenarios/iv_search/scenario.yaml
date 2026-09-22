@@ -2,6 +2,7 @@ key: iv_search
 title: 'Interview: product catalog search'
 track: interview
 role_label: Candidate
+timebox_minutes: 20
 difficulty: senior
 starter_template: starter
 definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable

@@ -83,6 +83,83 @@ def extract_mermaid(raw: str) -> str:
     return ""
 
 
+def _ts(value: str):
+    from datetime import datetime, timezone
+    try:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def started_at(rows) -> str:
+    """Timestamp of the session-start signal, or ''."""
+    for m in rows:
+        if m.kind == "event" and m.content.startswith("Session started"):
+            return m.ts
+    return ""
+
+
+def timebox_overrun(rows, timebox_minutes: int):
+    """Minutes between the session start and the latest submission, minus the
+    timebox. Positive = over, negative = under, None = untimed or not submitted."""
+    if not timebox_minutes:
+        return None
+    start = _ts(started_at(rows))
+    submitted = None
+    for m in rows:
+        if m.kind == "event" and "Submitted work" in m.content:
+            submitted = _ts(m.ts) or submitted
+    if start is None or submitted is None:
+        return None
+    return round((submitted - start).total_seconds() / 60.0 - timebox_minutes, 1)
+
+
+class AssessmentStats:
+    """How the defense went, counted from the assessor's DM."""
+
+    def __init__(self, probes: int, answered: int, mean_answer_words: float) -> None:
+        self.probes = probes
+        self.answered = answered
+        self.mean_answer_words = mean_answer_words
+
+    @property
+    def unanswered(self) -> int:
+        return self.probes - self.answered
+
+    def summary(self) -> str:
+        if not self.probes:
+            return "no assessor probes yet"
+        return (f"answered {self.answered} of {self.probes} assessor probes"
+                f"{'' if self.answered == self.probes else f' ({self.unanswered} left unanswered)'}"
+                f"; answers averaged {self.mean_answer_words:.0f} words")
+
+
+def assessment_stats(rows, assessor_key: str) -> AssessmentStats:
+    """A probe is an assessor message after the assessment opened; it counts
+    as answered when the candidate replied before the next probe."""
+    channel = f"dm:{assessor_key}"
+    opened = False
+    probes = answered = 0
+    words = []
+    awaiting = False
+    for m in rows:
+        if m.kind == "event" and "[fired:assessment_open]" in m.content:
+            opened = True
+            continue
+        if not opened or m.channel != channel or m.kind != "message":
+            continue
+        if m.sender == assessor_key:
+            probes += 1
+            awaiting = True
+        elif m.sender == "tester" and awaiting:
+            answered += 1
+            awaiting = False
+            words.append(len(m.content.split()))
+    mean = sum(words) / len(words) if words else 0.0
+    return AssessmentStats(probes, answered, mean)
+
+
 def pair_channel_qa(rows, channel: str) -> list[tuple[str, str, str, str]]:
     """Group tester/persona turns on one DM into (who_q, q, who_a, a) pairs.
 

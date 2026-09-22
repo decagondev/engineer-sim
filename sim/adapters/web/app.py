@@ -253,6 +253,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"key": sc.key, "title": sc.title, "difficulty": sc.difficulty,
                 "track": sc.track, "role_label": sc.role_label,
                 "starter_url": starter_url,
+                "timebox_minutes": getattr(sc, "timebox_minutes", 0),
                 "hosted": app.state.hosted,
                 "workflow": resolve_workflow(sc.track, app.state.hosted).as_dict(),
                 "personas": [{"key": p.key, "name": p.name, "role": p.role,
@@ -261,7 +262,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     @app.get("/api/session/{session_id}/scenario")
     def session_scenario(session_id: str):
-        return _scenario_info(b(session_id).scenario)
+        bundle = b(session_id)
+        info = _scenario_info(bundle.scenario)
+        info["started_at"] = bundle.session_service.started_at(session_id)
+        return info
 
     @app.get("/api/levels")
     def levels():
@@ -278,8 +282,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     # ---- session lifecycle ---------------------------------------------
     @app.post("/api/session/{session_id}/start")
     def start(session_id: str):
-        b(session_id).session_service.start(session_id)
-        return {"session_id": session_id, "started": True}
+        svc = b(session_id).session_service
+        svc.start(session_id)
+        return {"session_id": session_id, "started": True,
+                "started_at": svc.started_at(session_id)}
 
     @app.post("/api/session/{session_id}/end")
     def end(session_id: str):
@@ -316,6 +322,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             extra.append("DESIGN DIAGRAM (mermaid):\n" + mermaid)
         if include_tickets:
             extra.append("TICKETS:\n" + _ticket_record(session_id))
+        if b(session_id).scenario.track == "interview":
+            summary = svc.assessment_summary(session_id)
+            if summary:
+                extra.append("ASSESSMENT: " + summary)
         if not extra:
             return build_record
         return ((build_record + "\n\n") if build_record else "") + "\n\n".join(extra)

@@ -76,7 +76,8 @@ window.SimEditor = (function () {
       return {
         getValue: () => ta.value, setValue: v => { ta.value = v; },
         focus: () => ta.focus(), setReadOnly: v => { readOnly = !!v; ta.readOnly = readOnly; },
-        setPath: () => {}, destroy: () => host.remove(), backend: "textarea",
+        setPath: () => {}, insert: t => { ta.value += t; }, wordCount: () => (ta.value.match(/\S+/g) || []).length,
+        destroy: () => host.remove(), backend: "textarea",
       };
     }
 
@@ -95,10 +96,27 @@ window.SimEditor = (function () {
       extraKeys: {
         "Ctrl-S": () => opts.onSave && opts.onSave(),
         "Cmd-S": () => opts.onSave && opts.onSave(),
+        "Ctrl-F": "findPersistent", "Cmd-F": "findPersistent",
+        "Ctrl-H": "replace", "Cmd-Alt-F": "replace",
+        "Ctrl-B": c => mdWrap(c, "**"), "Cmd-B": c => mdWrap(c, "**"),
+        "Ctrl-I": c => mdWrap(c, "_"), "Cmd-I": c => mdWrap(c, "_"),
+        "Ctrl-K": c => mdLink(c), "Cmd-K": c => mdLink(c),
         "Tab": c => { if (c.somethingSelected()) c.indentSelection("add"); else c.replaceSelection("  ", "end"); },
         "Shift-Tab": c => c.indentSelection("subtract"),
       },
     });
+    // markdown helpers: only act in markdown mode so code files keep their bindings
+    function isMd(c) { const m = c.getOption("mode"); return m === "markdown"; }
+    function mdWrap(c, mark) {
+      if (!isMd(c)) return window.CodeMirror.Pass;
+      const sel = c.getSelection() || "text";
+      c.replaceSelection(mark + sel + mark, "around");
+    }
+    function mdLink(c) {
+      if (!isMd(c)) return window.CodeMirror.Pass;
+      const sel = c.getSelection() || "link text";
+      c.replaceSelection(`[${sel}](https://)`, "around");
+    }
     cm.on("change", () => opts.onChange && opts.onChange());
     setTimeout(() => cm.refresh(), 0);
 
@@ -109,6 +127,8 @@ window.SimEditor = (function () {
       refresh: () => cm.refresh(),
       setReadOnly: v => { readOnly = !!v; cm.setOption("readOnly", readOnly ? "nocursor" : false); },
       setPath: p => { const m = modeFor(p); cm.setOption("mode", m); cm.setOption("lineWrapping", m === "markdown"); },
+      insert: text => { cm.replaceSelection(text, "end"); cm.focus(); },
+      wordCount: () => (cm.getValue().match(/\S+/g) || []).length,
       destroy: () => { host.remove(); },
       backend: "codemirror",
     };

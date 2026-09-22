@@ -46,6 +46,7 @@ class SessionService:
     primary_key: str = ""
     track: str = "product"
     role_label: str = "Engineer"
+    timebox_minutes: int = 0
     clock: Callable[[], str] = _utcnow_iso
     design_lookup: Optional[Callable[[str], str]] = None
     _designs: dict = field(default_factory=dict)
@@ -74,10 +75,30 @@ class SessionService:
                 "submit it, then defend your decisions with the assessor. "
                 "The interviewer will not hand you the architecture.",
             )
+        if self.timebox_minutes:
+            self._event(session_id, "general", f"[timebox:{int(self.timebox_minutes)}]")
         if self.ticket_service is not None:
             self.ticket_service.seed(session_id)
         if self.track == "interview":
             self._run_director(session_id, self.level(session_id), phase="start")
+
+    def started_at(self, session_id: str) -> str:
+        from sim.core.session.interview import started_at
+        return started_at(self.reader.list_for_session(session_id))
+
+    def assessment_summary(self, session_id: str) -> str:
+        """For the grader: how the defense went, and the timebox, if any."""
+        from sim.core.session.interview import assessment_stats, timebox_overrun
+        rows = self.reader.list_for_session(session_id)
+        assessor = next((p for p in self.cast.values() if p.lane == "assessor"), None)
+        parts = []
+        if assessor is not None:
+            parts.append(assessment_stats(rows, assessor.key).summary())
+        over = timebox_overrun(rows, self.timebox_minutes)
+        if over is not None:
+            parts.append(f"submitted {abs(over):.0f} minutes {'over' if over > 0 else 'inside'} "
+                         f"the {int(self.timebox_minutes)}-minute timebox")
+        return "; ".join(parts)
 
     def end(self, session_id: str) -> None:
         self._event(session_id, "general", "Session ended.")
@@ -202,6 +223,12 @@ class SessionService:
         ]
         if mermaid:
             parts += ["", "MERMAID OF THEIR DESIGN:", mermaid]
+        from sim.core.session.interview import timebox_overrun
+        over = timebox_overrun(self.reader.list_for_session(session_id), self.timebox_minutes)
+        if over is not None and over > 0:
+            parts += ["", f"NOTE: the candidate submitted about {over:.0f} minutes over the "
+                          f"{int(self.timebox_minutes)}-minute timebox. You may mention it once; "
+                          "do not dwell on it."]
         return "\n".join(parts)
 
     # -- reveal ladder -----------------------------------------------------

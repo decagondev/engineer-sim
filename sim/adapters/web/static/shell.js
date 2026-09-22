@@ -77,6 +77,7 @@ window.SimApps = (function () {
     }
     ctx.scenario = res.body;
     if (!Array.isArray(ctx.scenario.personas)) ctx.scenario.personas = [];
+    if (ctx.scenario.started_at) noteStarted(ctx.scenario.started_at);
     const title = ctx.scenario.title || "Workstation";
     $("brand").textContent = title;
     $("hero").textContent = title;
@@ -152,9 +153,21 @@ window.SimApps = (function () {
     } catch (e) {}
   }
 
+  // ---- timebox countdown (interview scenarios) ----
+  let startedAt = null;
+  function noteStarted(ts) { if (ts) { startedAt = new Date(ts); tick(); } }
   function tick() {
     $("clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const t = $("timer"), mins = ctx.scenario && ctx.scenario.timebox_minutes;
+    if (!t || !mins) return;
+    t.hidden = false;
+    if (!startedAt || isNaN(startedAt)) { t.textContent = `${mins}:00 · starts with Team Chat`; t.className = "clock"; return; }
+    const left = mins * 60 - Math.floor((Date.now() - startedAt.getTime()) / 1000);
+    const mm = Math.floor(Math.abs(left) / 60), ss = Math.abs(left) % 60;
+    const fmt = `${mm}:${String(ss).padStart(2, "0")}`;
+    if (left >= 0) { t.textContent = `${fmt} left`; t.className = "clock" + (left <= 120 ? " low" : ""); }
+    else { t.textContent = `over by ${fmt}`; t.className = "clock over"; }
   }
 
-  return { register, boot, open, close };
+  return { register, boot, open, close, noteStarted };
 })();

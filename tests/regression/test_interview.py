@@ -181,3 +181,53 @@ def test_iv10_repair_mermaid_quotes_awkward_labels():
     assert "OK[Plain label]" in out and 'Q["already quoted (fine)"]' in out
     assert "subgraph Service_Layer" in out
     assert repair_mermaid("flowchart TB\n  A[Client] --> B[Store]\n") == "flowchart TB\n  A[Client] --> B[Store]"
+
+
+def test_iv11_timebox_and_assessment_stats():
+    from sim.core.ports.repository import StoredMessage
+    from sim.core.session.interview import assessment_stats, started_at, timebox_overrun
+
+    def m(i, sender, content, ts, kind="message", channel="dm:rowan"):
+        return StoredMessage(session_id="s", sender=sender, channel=channel, content=content,
+                             ts=ts, kind=kind, id=i)
+    rows = [
+        m(1, "system", "Session started. Online: Sol, Rowan.", "2026-01-01T10:00:00+00:00", "event", "general"),
+        m(2, "system", "[timebox:20]", "2026-01-01T10:00:00+00:00", "event", "general"),
+        m(3, "tester", "[reveal] Submitted work: DESIGN.md (5 lines).", "2026-01-01T10:24:30+00:00", "event", "general"),
+        m(4, "system", "[fired:assessment_open]", "2026-01-01T10:24:31+00:00", "event", "general"),
+        m(5, "rowan", "Why Redis?", "2026-01-01T10:25:00+00:00"),
+        m(6, "tester", "Because counters need atomic increments and low latency.", "2026-01-01T10:26:00+00:00"),
+        m(7, "rowan", "What if a sensor double-counts?", "2026-01-01T10:27:00+00:00"),
+        m(8, "rowan", "And the daily report?", "2026-01-01T10:29:00+00:00"),
+        m(9, "tester", "A nightly job reconciles from the raw events.", "2026-01-01T10:30:00+00:00"),
+    ]
+    assert started_at(rows) == "2026-01-01T10:00:00+00:00"
+    assert timebox_overrun(rows, 20) == 4.5
+    assert timebox_overrun(rows, 0) is None
+    assert timebox_overrun(rows[:2], 20) is None
+    st = assessment_stats(rows, "rowan")
+    assert (st.probes, st.answered, st.unanswered) == (3, 2, 1)
+    assert "answered 2 of 3" in st.summary() and "1 left unanswered" in st.summary()
+    assert assessment_stats(rows[:4], "rowan").summary() == "no assessor probes yet"
+
+
+def test_iv12_timebox_flows_to_shell_and_grader(tmp_path):
+    c, h = _client(tmp_path)
+    sid = "s-iv-tb"
+    c.post(f"/api/instructor/session/{sid}/scenario", json={"scenario": "iv_parking"}, headers=h)
+    sc = c.get(f"/api/session/{sid}/scenario").json()
+    assert sc["timebox_minutes"] == 20 and sc["started_at"] == ""
+    r = c.post(f"/api/session/{sid}/start").json()
+    assert r["started_at"]
+    assert c.get(f"/api/session/{sid}/scenario").json()["started_at"] == r["started_at"]
+    texts = [m["content"] for m in c.get(f"/api/session/{sid}/transcript").json()]
+    assert "[timebox:20]" in texts
+    c.post(f"/api/session/{sid}/submit", json={"filename": "DESIGN.md", "content": "# d\nq\n"})
+    svc = c.app.state.manager.for_session(sid).session_service
+    svc.post_tester_message(sid, "Because the counters are per floor.", target="rowan")
+    c.post(f"/api/session/{sid}/grade", json={})
+    llm = c.app.state.grader._llm
+    calls = getattr(llm, "calls", None) or llm._fallback.calls
+    prompt = calls[-1]["messages"][0].content
+    assert "ASSESSMENT: answered 1 of 2 assessor probes" in prompt
+    assert "inside the 20-minute timebox" in prompt

@@ -35,6 +35,10 @@ SimApps.register({
   .files .edwrap .sim-ed{position:relative;inset:auto;flex:1;min-width:0;order:1}
   .files .preview{display:none;flex:1;min-width:0;overflow:auto;padding:18px 24px;background:var(--ink);border-left:1px solid var(--line);order:2}
   .files .edwrap.split .preview{display:block}
+  .files .edwrap .gutter{display:none;flex:none;width:6px;cursor:col-resize;background:var(--panel);border-left:1px solid var(--line);order:1}
+  .files .edwrap.split .gutter{display:block}
+  .files .edwrap .gutter:hover,.files .edwrap .gutter.drag{background:var(--me)}
+  .files .status .wc{font-variant-numeric:tabular-nums}
   .files .preview .md{max-width:72ch}
   .files .preview .pvlab{font:10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
   @media (max-width:900px){.files .edwrap.split{flex-direction:column}.files .preview{border-left:0;border-top:1px solid var(--line)}}
@@ -53,8 +57,9 @@ SimApps.register({
         <div class="listing"></div>
         <div class="pane">
           <div class="tabs"></div>
-          <div class="edwrap"><div class="note">Select a file to open it.</div><div class="preview"><p class="pvlab">Preview</p><div class="md pvbody"></div></div></div>
-          <div class="status"><span class="msg"></span><span class="sp"></span>
+          <div class="edwrap"><div class="note">Select a file to open it.</div><div class="gutter" title="Drag to resize"></div><div class="preview"><p class="pvlab">Preview</p><div class="md pvbody"></div></div></div>
+          <div class="status"><span class="msg"></span><span class="sp"></span><span class="wc"></span>
+            <button class="ins" hidden title="Insert a mermaid diagram template at the cursor">Insert diagram</button>
             <button class="pv" hidden>Preview</button><button class="primary save" hidden>Save</button></div>
         </div>
       </div></div>`;
@@ -62,7 +67,8 @@ SimApps.register({
     const sid = ctx.sid;
     const wf = (ctx.scenario && ctx.scenario.workflow) || { kind: "sandbox", editable: true };
     const bar = q(".bar"), listing = q(".listing"), tabsEl = q(".tabs"), edwrap = q(".edwrap"),
-          preview = q(".preview"), msg = q(".msg"), saveBtn = q(".save"), pvBtn = q(".pv");
+          preview = q(".preview"), msg = q(".msg"), saveBtn = q(".save"), pvBtn = q(".pv"),
+          insBtn = q(".ins"), wcEl = q(".wc"), gutter = q(".gutter");
     let cwd = "", entries = [], editor = null, revision = "";
     const tabs = new Map();            // path -> { text, saved, dirty }
     let active = null, previewOn = false, timer = null, dead = false, pvTimer = null;
@@ -155,7 +161,8 @@ SimApps.register({
           onChange: () => { if (!active) return; const tt = tabs.get(active); if (!tt) return;
             const v = editor.getValue(); tt.text = v; const d = v !== tt.saved;
             if (d !== tt.dirty) { tt.dirty = d; renderTabs(); }
-            if (previewOn) { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, 250); } },
+            if (previewOn) { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, 250); }
+            updateWordCount(); },
         });
         saveBtn.hidden = !wf.editable; pvBtn.hidden = false;
       } else { editor.setPath(path); editor.setValue(t.text); }
@@ -175,6 +182,8 @@ SimApps.register({
       pvBtn.textContent = previewOn ? "Hide preview" : "Preview";
       const isMd = !!(active && /\.(md|markdown)$/i.test(active));
       pvBtn.hidden = !isMd;
+      insBtn.hidden = !(isMd && wf.editable);
+      updateWordCount();
       if (!isMd && previewOn) { previewOn = false; edwrap.classList.remove("split"); if (editor && editor.refresh) editor.refresh(); }
       saveBtn.disabled = !(active && tabs.get(active) && tabs.get(active).dirty);
     }
@@ -203,6 +212,33 @@ SimApps.register({
     async function saveAllDirty() {
       for (const [p, t] of tabs) if (t.dirty) await save(p);
     }
+    function updateWordCount() {
+      const isMd = !!(active && /\.(md|markdown)$/i.test(active));
+      wcEl.textContent = (isMd && editor && editor.wordCount) ? `${editor.wordCount()} words` : "";
+    }
+    insBtn.onclick = () => {
+      if (!editor || !editor.insert) return;
+      editor.insert("\n```mermaid\nflowchart TB\n  Client[Client] --> API[API service]\n  API --> Store[(Store)]\n```\n");
+    };
+    // drag the gutter to resize editor vs preview; remembered per browser
+    (function () {
+      let dragging = false;
+      const KEY = "sim-files:split";
+      try { const w = localStorage.getItem(KEY); if (w) preview.style.flex = `0 0 ${w}px`; } catch (e) {}
+      gutter.onmousedown = e => { dragging = true; gutter.classList.add("drag"); e.preventDefault(); };
+      window.addEventListener("mousemove", e => {
+        if (!dragging) return;
+        const rect = edwrap.getBoundingClientRect();
+        const w = Math.min(Math.max(rect.right - e.clientX, 220), rect.width - 260);
+        preview.style.flex = `0 0 ${w}px`;
+      });
+      window.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false; gutter.classList.remove("drag");
+        try { localStorage.setItem(KEY, String(preview.getBoundingClientRect().width | 0)); } catch (e) {}
+        if (editor && editor.refresh) editor.refresh();
+      });
+    })();
     // live markdown preview beside the editor: headings, tables, code and
     // ```mermaid diagrams render as the learner types
     function renderPreview() {

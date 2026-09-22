@@ -28,6 +28,9 @@
   #menubar .app-name{color:var(--muted)}
   #menubar .spacer{flex:1}
   #menubar .clock{font-family:var(--mono);color:var(--muted);font-size:12px}
+  #menubar #timer{color:var(--text);border:1px solid var(--line);border-radius:6px;padding:2px 8px;margin-right:6px}
+  #menubar #timer.low{color:var(--sig);border-color:var(--sig-line);background:var(--sig-bg)}
+  #menubar #timer.over{color:#e5807a;border-color:rgba(224,101,92,.5);background:rgba(224,101,92,.08)}
 
   /* the desktop stage + wallpaper */
   #stage{position:absolute;inset:30px 0 0 0;overflow:hidden;
@@ -97,6 +100,7 @@
     <span class="who" id="who" hidden></span>
     <a class="menubtn" id="dash" href="/challenger" hidden>Dashboard</a>
     <button class="menubtn" id="signout" type="button" hidden>Sign out</button>
+    <span class="clock" id="timer" hidden title="Time left in the timebox"></span>
     <span class="clock" id="clock"></span>
   </div>
   <div id="stage">

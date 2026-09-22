@@ -2,6 +2,7 @@ key: iv_web_crawler
 title: 'Interview: polite web crawler'
 track: interview
 role_label: Candidate
+timebox_minutes: 20
 difficulty: senior
 starter_template: starter
 definition_of_done: 'The candidate asks clarifying questions, writes a detailed understandable

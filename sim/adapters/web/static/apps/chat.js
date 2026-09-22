@@ -216,7 +216,8 @@ SimApps.register({
       const history = await (await fetch(`/api/session/${sid}/transcript`)).json();
       ensureChannel(primaryKey, { replay: true });
       if (history.length === 0) {
-        await fetch(`/api/session/${sid}/start`, { method: "POST" });
+        const started = await (await fetch(`/api/session/${sid}/start`, { method: "POST" })).json().catch(() => ({}));
+        if (started && started.started_at && SimApps.noteStarted) SimApps.noteStarted(started.started_at);
         (await (await fetch(`/api/session/${sid}/transcript`)).json()).forEach(m => incoming(m, { replay: true }));
       } else {
         history.forEach(m => incoming(m, { replay: true }));

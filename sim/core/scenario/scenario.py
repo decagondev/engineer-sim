@@ -55,6 +55,7 @@ class Scenario:
     tickets: tuple = field(default_factory=tuple)         # seed tickets (Wave 7)
     track: str = "product"                                # product | systems | interview
     role_label: str = ""                                  # e.g. Systems Designer / Candidate
+    timebox_minutes: int = 0                              # 0 = untimed; shown as a countdown
 
     @property
     def primary_persona(self) -> Persona:
@@ -121,6 +122,7 @@ class Scenario:
             image=data.get("image", ""),
             tickets=tuple(data.get("tickets", [])),
             track=data.get("track", "product") or "product",
+            timebox_minutes=int(data.get("timebox_minutes") or 0),
             role_label=data.get("role_label", "") or (
                 "Systems Designer" if data.get("track") == "systems"
                 else "Candidate" if data.get("track") == "interview"

@@ -100,6 +100,7 @@ class SessionManager:
             mail_service=mail, ticket_service=tickets, settings=self.settings,
             primary_key=sc.primary_persona.key,
             track=sc.track, role_label=sc.role_label,
+            timebox_minutes=getattr(sc, "timebox_minutes", 0),
             design_lookup=lambda sid, env=environment, track=sc.track:
                 self.lookup_design(sid, env, track))
         bundle = Bundle(sc, session, mail, tickets, environment)

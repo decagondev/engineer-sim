@@ -774,6 +774,7 @@ def build(entry: dict) -> dict:
         "title": entry["title"],
         "track": "interview",
         "role_label": "Candidate",
+        "timebox_minutes": 20,
         "difficulty": entry["difficulty"],
         "starter_template": "starter",
         "definition_of_done": (

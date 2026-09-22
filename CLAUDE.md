@@ -161,6 +161,13 @@ in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
 sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
 `grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
+**Interview timebox and defense stats:** `Scenario.timebox_minutes` (YAML, generated as 20 for
+`iv_*`) is emitted as a `[timebox:N]` signal at start; `interview.timebox_overrun` and
+`assessment_stats` are pure helpers, surfaced by `SessionService.assessment_summary` into the
+grader's build record ("ASSESSMENT: answered 4 of 5 probes …") and into the assessor's context
+when the candidate ran over. The shell shows the countdown from `started_at` on the scenario
+payload / start response.
+
 **Submissions and build records:** every submit path ends in `remember_design` (design-doc
 tracks) → `_maybe_diagram` → `after_submission` (director + assessor). `/grade` resolves the
 build record per workflow in `_build_record_for`: GitHub commits + `DESIGN.md`/`README.md`
