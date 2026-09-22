@@ -483,3 +483,16 @@ def test_smk21_ws_streams_deltas_before_the_message(tmp_path):
     assert deltas[-1]["content"] == final["content"] == "Hi, I'm Priya and this is a longer reply."
     assert final["sender"] == "priya" and final["kind"] == "message"
     assert all(deltas[i]["content"].startswith(deltas[i - 1]["content"]) for i in range(1, len(deltas)))
+
+
+def test_smk22_route_inventory_is_complete(tmp_path):
+    """C10: splitting the web factory into route modules must not lose a
+    route. tests/smoke/route_inventory.txt was frozen before the split."""
+    import pathlib
+    app = build_app(_cfg(tmp_path))
+    have = {f"{','.join(sorted(getattr(r, 'methods', None) or ['WS']))} {r.path}" for r in app.routes}
+    want = [ln.strip() for ln in pathlib.Path("tests/smoke/route_inventory.txt").read_text().splitlines() if ln.strip()]
+    missing = [w for w in want if w not in have]
+    assert not missing, f"routes lost: {missing}"
+    from sim.adapters.web.app import ROUTE_MODULES
+    assert len(ROUTE_MODULES) >= 10 and all(hasattr(m, "register") for m in ROUTE_MODULES)

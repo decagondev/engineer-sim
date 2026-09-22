@@ -245,8 +245,14 @@ can bulk-onboard from pasted text.
 by `build_registry`. Adding one needs no code. The inline `_DEMO_SCENARIO` in composition_root
 is a fallback and the canonical example of the schema.
 
-**Web layer:** `sim/adapters/web/app.py` is one large `create_web_app` factory (all routes are
-closures). Static desktop shell in `static/`: `shell.js` is the app registry; each dock app is
+**Web layer:** `sim/adapters/web/app.py::create_web_app` builds the FastAPI app and registers
+the route modules under `sim/adapters/web/routes/` in `ROUTE_MODULES` order (core helpers, auth
+gate, shell, session, workspace, tickets_mail, me, instructor, dashboards, admin, live). Each
+module is `register(app, ctx)`: routes stay closures, shared helpers are read from and published
+to one `WebContext` (`routes/context.py`), and a helper that lives in a later module is called as
+`ctx.<name>` at call time. A new route goes in the module for its area; a helper two areas need
+is published on `ctx`. `tests/smoke/route_inventory.txt` pins the route list.
+Static desktop shell in `static/`: `shell.js` is the app registry; each dock app is
 `static/apps/<id>.js` calling `SimApps.register(...)` plus one `<script>` tag in `index.html`
 (see `docs/APPS.md`). Pages: `/` (learner), `/instructor`, `/login`, `/challenger`, `/admin`.
 
