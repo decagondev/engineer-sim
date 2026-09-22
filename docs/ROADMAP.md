@@ -1,8 +1,11 @@
 # Roadmap
 
-What to build next, in the order that pays off soonest. The implementation
-design for every item, following the ports-and-adapters rules, is in
-`docs/ROADMAP-PLAN.md`. Sizes are honest guesses
+**Status, 2026-09-22: every item below has been built** (commits from
+"Instructor review" through "Scenario authoring from the admin dashboard"; see
+`git log`). The list stays as the record of what was asked and why; the design
+each item was built to is in `docs/ROADMAP-PLAN.md`, and `CLAUDE.md` documents
+where each piece lives. What comes after this is an open question for the
+next planning pass. Sizes are honest guesses
 for one person: **S** under a day, **M** two to four days, **L** a week or more.
 Each item names the files it touches so it can be picked up cold. Delivered work is
 summarised at the end of `PLANNING.md`.

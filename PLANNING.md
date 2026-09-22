@@ -623,4 +623,8 @@ Recorded here so the wave numbering above stays honest; detail lives in the link
   (`docs/WORKSPACE-PLAN.md`).
 - **Stored grades, dashboards, onboarding guides** — Overview pages with charts, session
   states, Firestore session index and caches, `/onboarding/<role>/` guides.
-- **Next** — `docs/ROADMAP.md`.
+- **Roadmap round one (September 2026)** — instructor reviews merged over the model grade,
+  evidence links, calibration from the dashboard, cohort results, interview timebox and
+  defense stats, editor polish, diff against the starter, live replay, audit log, session
+  archiving, GitHub connect (device flow) with commits from the Files app, model failover,
+  persona voice, phone layouts, scenario authoring (`docs/ROADMAP.md`, `docs/ROADMAP-PLAN.md`).

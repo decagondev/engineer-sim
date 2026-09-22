@@ -4,7 +4,9 @@ How each item in `docs/ROADMAP.md` gets built, in the same shape as the rest of 
 codebase: a pure decision or model in `sim/core/`, I/O behind a port in
 `sim/core/ports/`, adapters in `sim/adapters/`, wiring in `sim/app/composition_root.py`
 and `manager.py`, routes as closures in `sim/adapters/web/app.py`, and one dock app or
-dashboard tab per feature. Status: plan, 2026-09-22. Nothing here is built.
+dashboard tab per feature. Status: built, 2026-09-22, in the sequencing order below;
+deviations from the plan are noted in the commit messages and `CLAUDE.md` is the source of
+truth for what exists.
 
 ## Rules every item follows
 
