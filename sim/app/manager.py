@@ -52,6 +52,8 @@ class SessionManager:
         self.grades = stores.grades
         self.reviews = stores.reviews
         self.calibration_runs = stores.calibration_runs
+        self.audit = stores.audit
+        self.archive = stores.archive
         from sim.adapters.llm.scoped_client import wrap_user_scoped_llm
         self.llm = wrap_user_scoped_llm(llm, users=self.users, config=config)
         self._responder = PersonaResponder(self.llm)

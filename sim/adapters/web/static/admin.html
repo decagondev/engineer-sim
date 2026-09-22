@@ -98,6 +98,7 @@
       <div class="nav" data-v="cohorts">Cohorts</div>
       <div class="nav" data-v="sessions">Sessions</div>
       <div class="nav" data-v="scenarios">Scenarios</div>
+      <div class="nav" data-v="audit">Audit</div>
       <div class="nav" data-v="settings">Settings</div>
     </nav>
     <div class="content" id="content">
@@ -116,7 +117,7 @@ const state = {uSort:"name", uDir:"asc", cSort:"name", cDir:"asc", cohortId:""};
 let loadGen = 0;
 const titles = {
   overview: "Overview", users: "Users", cohorts: "Cohorts", sessions: "All sessions",
-  scenarios: "Scenarios", settings: "Settings",
+  scenarios: "Scenarios", settings: "Settings", audit: "Audit log",
 };
 const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 // ---- shared dashboard bits (state chips, relative time) ----
@@ -200,6 +201,7 @@ function viewUrls(v){
     : [`/api/admin/cohorts?sort=${state.cSort}&direction=${state.cDir}`];
   if (v==="sessions") return ["/api/admin/sessions"];
   if (v==="scenarios") return ["/api/admin/scenarios"];
+  if (v==="audit") return ["/api/admin/audit?limit=300"];
   if (v==="settings") return ["/api/admin/settings"];
   return [];
 }
@@ -243,6 +245,52 @@ function toggleSort(which, key){
   }
 })();
 
+async function renderArchives(){
+  const box = el("as-archives"); if (!box) return;
+  let d; try { d = await (await fetch("/api/admin/archives",{headers:h()})).json(); } catch (e) { return; }
+  const rows = d.archives || [];
+  if (!rows.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<h2 style="font-size:16px;margin:0 0 6px">Archived sessions</h2><p class="muted">Deleted from the live store; the markdown audit is kept.</p>
+    <table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Archived</th><th></th></tr></thead><tbody>${
+      rows.map(a => `<tr><td class="id">${esc(a.session_id)}</td><td>${esc(a.title||a.scenario)}</td><td>${esc(a.assignee)||"—"}</td><td>${stateChip(a.state)}</td><td class="muted">${ago(a.ts)}</td><td><a href="/api/admin/archives/${esc(a.session_id)}.md" target="_blank" rel="noopener"><button>Download</button></a></td></tr>`).join("")}</tbody></table>`;
+}
+let archiveTimer = null;
+async function archivePanel(){
+  const p = el("as-archive-panel"); p.hidden = false;
+  p.innerHTML = `<h3>Archive finished sessions</h3><div class="sub">Keeps each session's markdown audit, then deletes the session, transcript, files, grade and review. Preview first.</div>
+    <div class="row"><label class="muted">Older than <input id="ar-days" type="number" min="0" value="30" style="width:70px"/> days</label>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ar-graded" checked/> graded</label>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ar-reviewed" checked/> reviewed</label>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ar-submitted"/> submitted (ungraded)</label>
+      <label class="muted" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ar-idle"/> never started</label>
+      <button id="ar-preview">Preview</button><button class="danger" id="ar-go" disabled>Archive</button><button id="ar-close">Close</button></div>
+    <div id="ar-out" class="muted" style="margin-top:8px"></div>`;
+  const states = () => [["graded","ar-graded"],["reviewed","ar-reviewed"],["submitted","ar-submitted"],["not_started","ar-idle"]].filter(([,id]) => el(id).checked).map(([s]) => s);
+  const body = dry => ({older_than_days: +el("ar-days").value || 0, states: states(), dry_run: dry});
+  el("ar-close").onclick = () => { p.hidden = true; clearTimeout(archiveTimer); };
+  el("ar-preview").onclick = async () => {
+    const r = await fetch("/api/admin/sessions/archive",{method:"POST",headers:h(),body:JSON.stringify(body(true))});
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) { el("ar-out").textContent = errText(d, r); return; }
+    el("ar-out").innerHTML = d.count ? `<b>${d.count}</b> session${d.count===1?"":"s"} would be archived: ${d.sessions.slice(0,12).map(s=>esc(s.session_id)).join(", ")}${d.count>12?" …":""}` : "Nothing matches.";
+    el("ar-go").disabled = !d.count;
+  };
+  el("ar-go").onclick = async () => {
+    if (!confirm("Archive these sessions? Their live data is deleted; the markdown audit is kept.")) return;
+    const r = await fetch("/api/admin/sessions/archive",{method:"POST",headers:h(),body:JSON.stringify(body(false))});
+    const d = await r.json().catch(()=>({}));
+    if (!r.ok) { el("ar-out").textContent = errText(d, r); return; }
+    el("ar-go").disabled = true;
+    const poll = async () => {
+      const s = await (await fetch("/api/admin/sessions/archive",{headers:h()})).json();
+      const j = s.job || {};
+      el("ar-out").innerHTML = `<div class="progress"><div class="track"><i style="display:block;height:100%;background:var(--me);width:${j.total?Math.round(j.done/j.total*100):100}%"></i></div><span>${j.done||0} / ${j.total||0}${j.failed&&j.failed.length?` · ${j.failed.length} failed`:""}</span></div>`;
+      if (j.status === "running") archiveTimer = setTimeout(poll, 1500);
+      else { bustAdmin(); renderArchives(); show("sessions"); }
+    };
+    poll();
+  };
+}
 let calTimer = null;
 async function renderCalibration(){
   const box = el("cal-panel"); if (!box) return;
@@ -636,9 +684,14 @@ async function show(v){
         <select id="as-sc"><option value="">Any scenario</option>${scs.map(k=>`<option value="${esc(k)}">${esc((all.find(s=>s.scenario===k)||{}).title||k)}</option>`).join("")}</select>
         <span class="muted" id="as-count"></span>
         <span class="spacer"></span>
+        <button id="as-archive">Archive…</button>
         <button id="as-refresh">Refresh</button>
       </div>
-      <div id="as-list"></div>`;
+      <div id="as-archive-panel" hidden class="viz-card" style="margin:0 0 14px"></div>
+      <div id="as-list"></div>
+      <div id="as-archives" style="margin-top:22px"></div>`;
+    el("as-archive").onclick = () => archivePanel();
+    renderArchives();
     el("as-refresh").onclick = () => { state.sFresh = true; bustAdmin(); show("sessions"); };
     const draw = () => {
       const q = el("as-q").value.trim().toLowerCase(), st = el("as-state").value, sc = el("as-sc").value;
@@ -667,6 +720,22 @@ async function show(v){
     };
     el("as-q").oninput = draw; el("as-state").onchange = draw; el("as-sc").onchange = draw;
     draw();
+  }
+  if (v==="audit") {
+    const d = await loadJson("/api/admin/audit?limit=300", true);
+    if (!still(gen)) return;
+    const all = d.entries || [];
+    c.innerHTML = `<h1>Audit log</h1><p class="muted">Every administrative write: who, what, when, and whether it succeeded. Append-only.</p>
+      <div class="filters"><input id="au-q" placeholder="Filter by person, action or target…" style="min-width:280px"/><span class="muted" id="au-count"></span></div>
+      <div id="au-list"></div>`;
+    const draw = () => {
+      const q = el("au-q").value.trim().toLowerCase();
+      const rows = all.filter(e => !q || [e.actor, e.action, e.target, e.summary].some(v => String(v||"").toLowerCase().includes(q)));
+      el("au-count").textContent = `${rows.length} of ${all.length}`;
+      el("au-list").innerHTML = rows.length ? `<table class="rtable"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody>${
+        rows.map(e => `<tr><td class="muted" title="${esc(e.ts)}">${ago(e.ts)}</td><td>${esc(e.actor)}</td><td class="id">${esc(e.action)}${e.summary ? `<div class="muted" style="font-family:var(--ui)">${esc(e.summary)}</div>` : ""}</td><td class="id">${esc(e.target)}</td><td>${e.status < 300 ? `<span class="kc on">${e.status}</span>` : `<span class="kc" style="color:var(--bad);border-color:var(--bad)">${e.status}</span>`}</td></tr>`).join("")}</tbody></table>` : `<div class="muted">Nothing recorded yet.</div>`;
+    };
+    el("au-q").oninput = draw; draw();
   }
   if (v==="scenarios") {
     const d = await loadJson("/api/admin/scenarios");

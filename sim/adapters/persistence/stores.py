@@ -19,6 +19,8 @@ class Stores:
     grades: object = None
     reviews: object = None
     calibration_runs: object = None
+    audit: object = None
+    archive: object = None
 
 
 def build_stores(config) -> Stores:
@@ -31,7 +33,7 @@ def build_stores(config) -> Stores:
             FirestoreSubmissionStore, FirestoreTicketStore,
             FirestoreCohortDirectory, FirestoreUnlockStore, FirestoreUserDirectory,
             FirestoreSessionFileStore, FirestoreGradeStore, FirestoreReviewStore,
-            FirestoreCalibrationRunStore,
+            FirestoreCalibrationRunStore, FirestoreAuditLog, FirestoreArchiveStore,
         )
         db = make_firestore_client(config)
         return Stores(
@@ -48,6 +50,8 @@ def build_stores(config) -> Stores:
             grades=FirestoreGradeStore(db),
             reviews=FirestoreReviewStore(db),
             calibration_runs=FirestoreCalibrationRunStore(db),
+            audit=FirestoreAuditLog(db),
+            archive=FirestoreArchiveStore(db),
         )
     if mode != "sqlite":
         raise ValueError(f"unknown PERSISTENCE: {mode!r}")
@@ -64,6 +68,8 @@ def build_stores(config) -> Stores:
     from sim.adapters.persistence.sqlite_grades import SqliteGradeStore
     from sim.adapters.persistence.sqlite_reviews import SqliteReviewStore
     from sim.adapters.persistence.sqlite_calibration import SqliteCalibrationRunStore
+    from sim.adapters.persistence.sqlite_audit import SqliteAuditLog
+    from sim.adapters.persistence.sqlite_archive import SqliteArchiveStore
     path = config.db_path
     return Stores(
         repo=SqliteMessageRepository(path),
@@ -79,4 +85,6 @@ def build_stores(config) -> Stores:
         grades=SqliteGradeStore(path),
         reviews=SqliteReviewStore(path),
         calibration_runs=SqliteCalibrationRunStore(path),
+        audit=SqliteAuditLog(path),
+        archive=SqliteArchiveStore(path),
     )

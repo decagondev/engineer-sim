@@ -161,6 +161,15 @@ in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
 sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
 `grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
+**Live view, audit, archive:** `adapters/web/live.py::SessionBus` carries wake-ups (no data) from
+the chat loop, submit and grade routes to `/ws/watch/{sid}` watchers, which re-read the
+transcript; the replay's Live chip uses it. Every non-GET `/api/admin/*` request is appended to
+the `AuditLog` (`ports/audit.py`; sqlite, Firestore `audit/`, memory) by the middleware, with
+`request.state.audit = (target, summary)` for routes that want to say more; `/api/admin/audit`.
+`POST /api/admin/sessions/archive` (dry_run first) exports each matching session's markdown
+audit to the `ArchiveStore` (`ports/archive.py`; sqlite, Firestore `archives/`, memory) and
+cascade-deletes it on a background thread; `_audit_markdown` is the shared export builder.
+
 **Cohort results** (`sim/core/reporting/cohort.py`, pure): per-criterion distribution and
 per-member totals from enriched rows plus merged grade bodies fetched with
 `GradeStore.list_many` (one query / one `get_all`). Route `/api/instructor/cohorts/{cid}/results`

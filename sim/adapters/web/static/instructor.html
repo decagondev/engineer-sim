@@ -99,6 +99,7 @@
   .chip{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;cursor:pointer;color:var(--muted);user-select:none}
   .chip.on{color:var(--text);border-color:currentColor}
   .chip.chat.on{color:var(--chat)} .chip.mail.on{color:var(--mail)} .chip.ticket.on{color:var(--ticket)} .chip.sig.on{color:var(--sig)}
+  .chip.live.on{color:#37d67a;border-color:#37d67a}
   .scrub{display:flex;align-items:center;gap:10px}
   .scrub input[type=range]{flex:1}
   .scrub .pos{font:12px/1 var(--mono);color:var(--muted);min-width:64px;text-align:right}
@@ -573,7 +574,8 @@ async function openReplay(sid){
       <div class="replay-main">
         <div class="replay-head"><button class="back">← Sessions</button>
           <b>${sid}</b><span class="badge">${esc((data.scenario||{}).title||"")}</span>
-          <span class="badge">${levelLabel(data.level)}</span></div>
+          <span class="badge">${levelLabel(data.level)}</span>
+          <span style="flex:1"></span><span class="chip live" id="liveChip" title="Follow this session as it happens">● Live</span></div>
         <div class="controls">
           <div class="rowa"><button id="play">▶ Play</button>
             <div class="chips" id="chips">
@@ -595,7 +597,8 @@ async function openReplay(sid){
         <div class="body" id="gradebody"><div class="muted">Grade the run to see the score and evidence.</div></div>
       </div>
     </div>`;
-  el("content").querySelector(".back").onclick = ()=> switchView("sessions");
+  el("content").querySelector(".back").onclick = ()=> { stopLive(); switchView("sessions"); };
+  el("liveChip").onclick = () => liveSock ? stopLive() : startLive();
   wireReplay();
   loadDiagram();
   loadStoredGrade();
@@ -622,6 +625,32 @@ function jumpToMessage(id){
   row.scrollIntoView({block: "center", behavior: "smooth"});
   row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1800);
 }
+// ---- live follow: a read-only socket that streams new rows into the timeline ----
+let liveSock = null;
+function startLive(){
+  if (liveSock || !curSid) return;
+  const chip = el("liveChip");
+  const tok = (window.SimAuth && SimAuth.token()) ? "?token=" + encodeURIComponent(SimAuth.token()) : (token ? "?itoken=" + encodeURIComponent(token) : "");
+  const s = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/watch/${curSid}${tok}`);
+  liveSock = s;
+  chip.classList.add("on"); chip.textContent = "● Live";
+  s.onmessage = e => {
+    let msg; try { msg = JSON.parse(e.data); } catch (err) { return; }
+    const known = new Set(rows.map(m => m.id));
+    const incoming = (msg.rows || []).filter(m => !known.has(m.id) && !(m.kind === "event" && m.content.startsWith("[fired:")));
+    if (!incoming.length) return;
+    const atEnd = idx >= filtered.length;
+    rows = rows.concat(incoming);
+    applyFilter();
+    if (atEnd) idx = filtered.length;
+    syncScrub(); renderTimeline();
+    if (incoming.some(m => m.kind === "event" && m.content.includes("Submitted work"))) loadDiagram();
+    if (incoming.some(m => m.kind === "event")) loadStoredGrade();
+  };
+  s.onclose = () => { if (liveSock === s) { liveSock = null; chip.classList.remove("on"); chip.textContent = "● Live"; } };
+  s.onerror = () => { chip.textContent = "● Live (reconnect)"; };
+}
+function stopLive(){ if (liveSock) { const s = liveSock; liveSock = null; try { s.close(); } catch (e) {} } const chip = el("liveChip"); if (chip) chip.classList.remove("on"); }
 function surfaceOf(m){ return m.kind==="email"?"mail":m.kind==="ticket"?"ticket":m.kind==="event"?"sig":"chat"; }
 function applyFilter(){ filtered = rows.filter(m=> filters[surfaceOf(m)]); }
 function nameOf(k){ const p=meta.personas.find(x=>x.key===k); return p?p.name:(k==="tester"?"You":k); }

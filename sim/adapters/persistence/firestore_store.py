@@ -10,6 +10,8 @@ from sim.core.ports.cohorts import CohortRecord
 from sim.core.ports.grades import StoredGrade
 from sim.core.grading.review import HumanReview
 from sim.core.ports.calibration import CalibrationRun
+from sim.core.ports.audit import AuditEntry
+from sim.core.ports.archive import ArchiveRecord
 from sim.core.ports.mail import MailThread
 from sim.core.ports.repository import StoredMessage
 from sim.core.ports.session_registry import SessionRecord
@@ -488,6 +490,77 @@ class FirestoreCalibrationRunStore:
             return CalibrationRun(**d)
         except TypeError:
             return None
+
+
+class FirestoreAuditLog:
+    """audit/{ts-uuid}: append-only administrative writes."""
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    def append(self, entry: AuditEntry) -> AuditEntry:
+        doc_id = f"{entry.ts}-{uuid.uuid4().hex[:6]}"
+        self._db.collection("audit").document(doc_id).set(entry.as_dict())
+        return entry
+
+    def list(self, limit: int = 100, before: str = "") -> Sequence[AuditEntry]:
+        col = self._db.collection("audit")
+        query = col
+        try:
+            if before:
+                query = query.where("ts", "<", before)
+            query = query.order_by("ts", direction="DESCENDING").limit(int(limit))
+            snaps = list(query.stream())
+        except (AttributeError, TypeError):      # the fake has no order_by
+            snaps = [s for s in col.stream() if not before or (_data(s).get("ts") or "") < before]
+            snaps.sort(key=lambda s: _data(s).get("ts") or "", reverse=True)
+            snaps = snaps[:int(limit)]
+        out = []
+        for s in snaps:
+            d = _data(s)
+            out.append(AuditEntry(d.get("ts") or "", d.get("actor") or "", d.get("action") or "",
+                                  d.get("target") or "", d.get("summary") or "", int(d.get("status") or 200)))
+        return out
+
+
+class FirestoreArchiveStore:
+    """archives/{sid}: the markdown audit of a deleted session (under 900 KB)."""
+
+    MAX_BYTES = 900_000
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    def put(self, record: ArchiveRecord) -> ArchiveRecord:
+        md = record.markdown
+        raw = md.encode("utf-8")
+        if len(raw) > self.MAX_BYTES:
+            md = raw[: self.MAX_BYTES - 64].decode("utf-8", "ignore") + "\n\n... (truncated for storage)"
+        self._db.collection("archives").document(record.session_id).set({
+            "session_id": record.session_id, "ts": record.ts, "title": record.title,
+            "scenario": record.scenario, "assignee": record.assignee, "state": record.state,
+            "size": len(md.encode("utf-8")), "markdown": md,
+        })
+        return record
+
+    def get(self, session_id: str) -> Optional[ArchiveRecord]:
+        d = _data(self._db.collection("archives").document(session_id).get())
+        if not d:
+            return None
+        return ArchiveRecord(session_id=session_id, ts=d.get("ts") or "", title=d.get("title") or "",
+                             scenario=d.get("scenario") or "", assignee=d.get("assignee") or "",
+                             state=d.get("state") or "", size=int(d.get("size") or 0),
+                             markdown=d.get("markdown") or "")
+
+    def list(self) -> Sequence[ArchiveRecord]:
+        rows = []
+        for s in self._db.collection("archives").stream():
+            d = _data(s)
+            rows.append(ArchiveRecord(session_id=s.id, ts=d.get("ts") or "", title=d.get("title") or "",
+                                      scenario=d.get("scenario") or "", assignee=d.get("assignee") or "",
+                                      state=d.get("state") or "", size=int(d.get("size") or 0)))
+        rows.sort(key=lambda r: r.ts, reverse=True)
+        return rows
 
 
 class FirestoreSubmissionStore:

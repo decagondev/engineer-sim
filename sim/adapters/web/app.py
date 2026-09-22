@@ -35,6 +35,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.submissions = manager.submissions
     app.state.grades = getattr(manager, "grades", None)
     app.state.reviews = getattr(manager, "reviews", None)
+    app.state.audit = getattr(manager, "audit", None)
+    app.state.archive = getattr(manager, "archive", None)
+    from sim.adapters.web.live import SessionBus
+    app.state.bus = SessionBus()
     app.state.github_observer = github_observer
     if auth is None:
         from sim.adapters.auth.services import AuthServices
@@ -140,11 +144,15 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         uid_token = current_uid.set(principal.uid)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             _after_mutation(path)
+        audit_this = request.method not in ("GET", "HEAD", "OPTIONS") and path.startswith("/api/admin")
         try:
             if path.startswith("/api/admin"):
                 if not auth.allow_admin(principal):
                     return JSONResponse({"error": "forbidden"}, status_code=403)
-                return await call_next(request)
+                resp = await call_next(request)
+                if audit_this:
+                    _audit_write(request, principal, path, resp.status_code)
+                return resp
             if path.startswith("/api/instructor"):
                 if not auth.allow_instructor(principal):
                     return JSONResponse({"error": "forbidden"}, status_code=403)
@@ -156,6 +164,10 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             if path == "/api/scenarios" and principal.role == "challenger":
                 return JSONResponse({"error": "forbidden"}, status_code=403)
             m = _SESSION_API.match(path)
+            if audit_this:
+                resp = await call_next(request)
+                _audit_write(request, principal, path, resp.status_code)
+                return resp
             if m:
                 sid = m.group(1)
                 if path.endswith("/claim") and request.method == "POST":
@@ -511,6 +523,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         body = await run_in_threadpool(
             _grade_body, session_id, payload, build_record)
         body = await run_in_threadpool(_store_grade, session_id, body, request)
+        app.state.bus.notify(session_id, "grade")
         return JSONResponse(body)
 
     @app.get("/api/session/{session_id}/grade")
@@ -647,6 +660,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             svc.remember_design(session_id, content)
             _maybe_diagram(session_id, content)
         svc.after_submission(session_id)
+        app.state.bus.notify(session_id, "submission")
         return {"ok": True, "seq": sub.seq, "filename": filename, "lines": sub.lines}
 
     @app.get("/api/session/{session_id}/workspace/repo")
@@ -707,6 +721,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             svc.remember_design(session_id, design)
             _maybe_diagram(session_id, design)
         svc.after_submission(session_id)
+        app.state.bus.notify(session_id, "submission")
         return {"ok": True, "message": msg}
 
     @app.get("/api/session/{session_id}/submissions")
@@ -904,6 +919,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             content=f"[reveal] Submitted work: workspace{(' @ ' + rev) if rev else ''}.",
             ts=ts, kind="event"))
         b(session_id).session_service.after_submission(session_id)
+        app.state.bus.notify(session_id, "submission")
         return {"ok": True, "seq": sub.seq, "revision": rev}
 
     @app.post("/api/session/{session_id}/submit-doc")
@@ -940,6 +956,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         bundle.session_service.remember_design(session_id, text)
         _maybe_diagram(session_id, text)
         bundle.session_service.after_submission(session_id)
+        app.state.bus.notify(session_id, "submission")
         return {"ok": True, "seq": sub.seq, "lines": sub.lines, "revision": rev}
 
     # ---- tickets --------------------------------------------------------
@@ -1626,6 +1643,27 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         out["cached_at"] = stamp
         return out
 
+    def _audit_write(request: Request, principal, path: str, status: int) -> None:
+        """Record an admin write. Routes may set request.state.audit = (target, summary)."""
+        log_store = app.state.audit
+        if log_store is None:
+            return
+        from datetime import datetime, timezone
+        from sim.core.ports.audit import AuditEntry
+        extra = getattr(request.state, "audit", None) or ("", "")
+        target, summary = (extra + ("", ""))[:2] if isinstance(extra, tuple) else ("", str(extra))
+        if not target:
+            parts = path.split("/")
+            target = parts[4] if len(parts) > 4 else ""
+        try:
+            log_store.append(AuditEntry(
+                ts=datetime.now(timezone.utc).isoformat(),
+                actor=getattr(principal, "email", "") or getattr(principal, "uid", "") or "?",
+                action=f"{request.method} {path}", target=target, summary=summary,
+                status=int(status)))
+        except Exception as e:
+            log.warning("audit append failed: %s", e)
+
     def _after_mutation(path: str) -> None:
         """A write happened: the sessions list must not serve a stale copy, and
         the overviews should recount on their next read (served stale meanwhile)."""
@@ -1756,6 +1794,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         if not _instr_ok(x_instructor_token):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
         from fastapi.responses import Response
+        md = _audit_markdown(sid, include_tickets)
+        return Response(
+            content=md, media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition":
+                     f'attachment; filename="{sid}-audit.md"'})
+
+    def _audit_markdown(sid: str, include_tickets: bool = False, regrade: bool = True) -> str:
+        """The session's markdown audit; used by Export and by archiving."""
         from sim.core.levels import profile
         from sim.core.session.audit_export import build_audit_markdown
         bundle = b(sid)
@@ -1763,15 +1809,16 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         stored = app.state.grades.get(sid) if app.state.grades is not None else None
         if stored is not None:
             grade = _grade_payload(stored)      # the grade the instructor saw
-        else:
+        elif regrade:
             build_record = _build_record_for(sid)
             try:
                 grade = _grade_body(sid, {"include_tickets": include_tickets}, build_record)
             except Exception:
                 grade = None
+        else:
+            grade = None
         lvl = _session_level(sid)
-        mermaid = svc.diagram_text(sid)
-        md = build_audit_markdown(
+        return build_audit_markdown(
             session_id=sid,
             title=bundle.scenario.title,
             track=bundle.scenario.track,
@@ -1782,14 +1829,100 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             rows=app.state.repo.list_for_session(sid),
             grade=grade,
             design=svc.design_text(sid),
-            mermaid=mermaid,
+            mermaid=svc.diagram_text(sid),
             tickets=_flatten_tickets(sid),
             submissions=app.state.submissions.list(sid) if app.state.submissions else [],
         )
-        return Response(
-            content=md, media_type="text/markdown; charset=utf-8",
-            headers={"Content-Disposition":
-                     f'attachment; filename="{sid}-audit.md"'})
+
+    # ---- audit log ------------------------------------------------------
+    @app.get("/api/admin/audit")
+    def admin_audit(limit: int = 200, before: str = ""):
+        store = app.state.audit
+        if store is None:
+            return {"entries": []}
+        rows = store.list(limit=max(1, min(int(limit), 1000)), before=before)
+        return {"entries": [e.as_dict() for e in rows]}
+
+    # ---- archive: export, then cascade-delete, old finished sessions ----
+    def _archive_candidates(older_than_days: int, states: list) -> list:
+        from datetime import datetime, timedelta, timezone
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max(0, int(older_than_days)))
+        rows = _enrich_sessions(_merge_known_sessions(all_registered=True))
+        out = []
+        for s in rows:
+            if states and s.get("state") not in states:
+                continue
+            last = _parse_ts(s.get("last_ts") or s.get("first_ts") or "")
+            if last is None or last > cutoff:
+                continue
+            out.append(s)
+        return out
+
+    def _archive_one(s: dict) -> None:
+        from datetime import datetime, timezone
+        from sim.core.ports.archive import ArchiveRecord
+        sid = s["session_id"]
+        md = _audit_markdown(sid, regrade=False)
+        app.state.archive.put(ArchiveRecord(
+            session_id=sid, ts=datetime.now(timezone.utc).isoformat(),
+            title=s.get("title") or "", scenario=s.get("scenario") or "",
+            assignee=s.get("assignee") or "", state=s.get("state") or "",
+            size=len(md.encode("utf-8")), markdown=md))
+        _cascade_delete_session(sid)
+
+    @app.post("/api/admin/sessions/archive")
+    def admin_archive_sessions(request: Request, payload: dict):
+        """Archive finished sessions older than N days: keep the markdown audit,
+        delete everything else. dry_run reports what would go."""
+        import threading
+        if app.state.archive is None:
+            return JSONResponse({"error": "archive store not configured"}, status_code=501)
+        days = int((payload or {}).get("older_than_days", 30))
+        states = list((payload or {}).get("states") or ["graded", "reviewed"])
+        dry = bool((payload or {}).get("dry_run", True))
+        job = getattr(app.state, "archive_job", None)
+        if job and job.get("status") == "running":
+            return JSONResponse({"error": "an archive job is already running"}, status_code=409)
+        cands = _archive_candidates(days, states)
+        preview = [{"session_id": s["session_id"], "title": s.get("title"), "assignee": s.get("assignee"),
+                    "state": s.get("state"), "last_ts": s.get("last_ts")} for s in cands]
+        request.state.audit = ("", f"{'previewed' if dry else 'started'} archive of {len(cands)} "
+                                   f"session(s) older than {days} d in {','.join(states)}")
+        if dry:
+            return {"dry_run": True, "count": len(cands), "sessions": preview}
+        job = {"status": "running", "total": len(cands), "done": 0, "failed": [], "started": ""}
+        app.state.archive_job = job
+
+        def run():
+            for s in cands:
+                try:
+                    _archive_one(s)
+                except Exception as e:
+                    job["failed"].append({"session_id": s["session_id"], "error": str(e)[:200]})
+                job["done"] += 1
+            job["status"] = "done"
+            _overview_cache.clear()
+        threading.Thread(target=run, name="archive", daemon=True).start()
+        return {"dry_run": False, "count": len(cands), "job": job}
+
+    @app.get("/api/admin/sessions/archive")
+    def admin_archive_status():
+        return {"job": getattr(app.state, "archive_job", None)}
+
+    @app.get("/api/admin/archives")
+    def admin_archives():
+        store = app.state.archive
+        return {"archives": [a.meta() for a in store.list()] if store is not None else []}
+
+    @app.get("/api/admin/archives/{sid}.md")
+    def admin_archive_md(sid: str):
+        from fastapi.responses import Response
+        store = app.state.archive
+        rec = store.get(sid) if store is not None else None
+        if rec is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return Response(content=rec.markdown, media_type="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{sid}-audit.md"'})
 
     def _cascade_delete_session(sid: str) -> None:
         auth = app.state.auth
@@ -2325,7 +2458,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"ok": True}
 
     @app.delete("/api/admin/sessions/{sid}")
-    def admin_delete_session(sid: str):
+    def admin_delete_session(sid: str, request: Request):
+        request.state.audit = (sid, f"deleted session {sid} and everything attached to it")
         _cascade_delete_session(sid)
         return {"ok": True}
 
@@ -2634,8 +2768,49 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                     await websocket.send_json(
                         {"id": m.id, "sender": m.sender, "content": m.content,
                          "channel": m.channel, "ts": m.ts, "kind": m.kind})
+                app.state.bus.notify(session_id, "turn")
         except WebSocketDisconnect:
             return
+
+    @app.websocket("/ws/watch/{session_id}")
+    async def ws_watch(websocket: WebSocket, session_id: str):
+        """Read-only live feed for instructors: replays the transcript, then
+        sends new rows as they land (woken by the bus, re-checked every 20 s)."""
+        import asyncio
+        auth = app.state.auth
+        if auth.gated:
+            token = websocket.query_params.get("token") or ""
+            try:
+                principal = auth.principal_from_token(token)
+            except IdentityError:
+                await websocket.close(code=4401)
+                return
+            if not auth.allow_session(principal, session_id, grade=True):
+                await websocket.close(code=4403)
+                return
+        elif not _instr_ok(websocket.query_params.get("itoken") or ""):
+            await websocket.close(code=4401)
+            return
+        await websocket.accept()
+        q = app.state.bus.subscribe(session_id)
+        last_id = 0
+        try:
+            while True:
+                rows = await run_in_threadpool(app.state.repo.list_for_session, session_id)
+                fresh = [m for m in rows if (m.id or 0) > last_id]
+                if fresh:
+                    last_id = max((m.id or 0) for m in fresh)
+                    await websocket.send_json({"rows": [
+                        {"id": m.id, "sender": m.sender, "content": m.content,
+                         "channel": m.channel, "ts": m.ts, "kind": m.kind} for m in fresh]})
+                try:
+                    await asyncio.wait_for(q.get(), timeout=20.0)
+                except asyncio.TimeoutError:
+                    pass
+        except WebSocketDisconnect:
+            return
+        finally:
+            app.state.bus.unsubscribe(session_id, q)
 
     if getattr(manager, "_config", None) is not None and \
             getattr(manager._config, "persistence", "sqlite") in ("firestore", "firebase"):

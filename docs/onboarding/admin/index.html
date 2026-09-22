@@ -154,7 +154,19 @@
       </div>
       <div class="body">
         <p>The admin list shows all sessions across all instructors: owner, assignee, scenario, level, status, message count, last activity. <b>Replay via instructor</b> opens the same replay view instructors use, including the drawn design diagram and grading. <b>Delete</b> removes the session and everything attached to it: transcript, unlock state, mail, tickets, submissions, browser-edited files, and its workspace folder.</p>
-        <div class="warn"><span class="lab">Delete is permanent</span>There is no undo and no archive. Export the session from the instructor replay first if you want a record.</div>
+        <p><b>Archive…</b> keeps the ledger tidy at the end of a term: choose an age and the states to include (graded and reviewed by default), <b>Preview</b> the list, then <b>Archive</b>. Each session's markdown audit is stored and downloadable from the Archived sessions list below the table; the live session, transcript, files, grade and review are deleted.</p>
+        <div class="warn"><span class="lab">Delete is permanent</span>Single-session Delete has no undo and keeps no audit. Prefer Archive for finished work.</div>
+      </div>
+    </section>
+
+    <section class="step" id="audit" data-short="Audit log">
+      <div class="head">
+        <div class="num">06b</div>
+        <div class="t"><h2>Audit log</h2><span class="where">Where: <b>Audit</b></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Every administrative write is recorded: who, when, the action, the target, the HTTP result, and a summary when the action supplies one (session deletes, archives). It is append-only and cannot be edited from the app. Filter by person, action or target.</p>
       </div>
     </section>
 
