@@ -219,7 +219,11 @@ closures). Static desktop shell in `static/`: `shell.js` is the app registry; ea
 - Firestore round trips from Railway are slow (hundreds of ms). Anything that loops over
   sessions or members must read from one listing, not one document per row; see Dashboards.
 - Static files and `/onboarding` are served with `Cache-Control: no-cache`; `/health` reports
-  the running commit and model, which is how to tell whether a deploy has landed.
+  the running commit and model (how to tell whether a deploy has landed) plus `checks`: a 3 s
+  store read (fails the check with 503) and a 5 s model ping (warns only), cached 30 s.
+- Firestore session listings take `owner_uid` / `assignee_uid` and push the filter into the
+  query; instructor and challenger listings must go through `_merge_known_sessions` with the
+  scope set, never `list_all()`.
 - `sim.db`, `.sandboxes/`, and `*-firebase-adminsdk-*.json` are git-ignored; never commit them.
 - Never add a third database. SQLite is local/test, Firestore is hosted (decision recorded in
   `DEPLOYMENT-PLAN.md`).

@@ -130,3 +130,78 @@ def test_cohort_screens_reads_are_bounded(tmp_path, monkeypatch):
     r = c.post(f"/api/instructor/cohorts/{co}/sessions", json={"scenario": "iv_chat"}, headers=inst).json()
     assert len(r["created"]) == 20
     assert counts["stream"] <= 4, f"cohort create: {counts}"
+
+
+def test_scoped_listings_use_firestore_filters(tmp_path, monkeypatch):
+    """Instructor and challenger listings query by owner / assignee instead of
+    streaming the whole sessions collection (roadmap items 11 and 12)."""
+    db, counts = _counting_db(monkeypatch)
+    where_calls = []
+    orig_where = fake_firestore._Col.where
+
+    def where(self, field, op, value):
+        where_calls.append((field, value))
+        return orig_where(self, field, op, value)
+    monkeypatch.setattr(fake_firestore._Col, "where", where)
+
+    cfg = Config(llm_provider="fake", auth_mode="fake", persistence="firestore",
+                 firebase_project_id="x", sandbox_root=str(tmp_path / "b"),
+                 bootstrap_admin_email="admin@t.local")
+    c = TestClient(build_app(cfg))
+    admin = {"Authorization": "Bearer fake:a1:admin:admin@t.local"}
+    c.get("/api/auth/me", headers=admin)
+    insts = []
+    for i in range(2):
+        c.post("/api/admin/users", json={"email": f"i{i}@t.local", "role": "instructor"}, headers=admin)
+        insts.append({"Authorization": f"Bearer fake:i{i}:instructor:i{i}@t.local"})
+    ch = c.post("/api/admin/users", json={"email": "c@t.local", "role": "challenger"}, headers=admin).json()
+    chal = {"Authorization": f"Bearer fake:{ch['uid']}:challenger:c@t.local"}
+    for i, h in enumerate(insts):
+        for _ in range(3):
+            c.post("/api/instructor/sessions", json={"scenario": "iv_parking",
+                                                     "assignee_email": "c@t.local" if i == 0 else ""}, headers=h)
+
+    where_calls.clear(); counts["stream"] = 0
+    rows = c.get("/api/instructor/sessions", headers=insts[0]).json()["sessions"]
+    assert len(rows) == 3 and all(r["owner"] == "i0@t.local" for r in rows)
+    assert any(f == "owner_uid" for f, _ in where_calls), "instructor listing must be scoped in the query"
+    assert counts["stream"] <= 3, counts
+
+    where_calls.clear()
+    mine = c.get("/api/me/sessions", headers=chal).json()["sessions"]
+    assert len(mine) == 3 and all(m["state"] == "not_started" for m in mine)
+    assert ("assignee_uid", ch["uid"]) in where_calls, where_calls
+    # a grade shows up on the challenger's own list
+    sid = mine[0]["session_id"]
+    c.post(f"/api/session/{sid}/start", headers=chal)
+    c.post(f"/api/session/{sid}/grade", json={}, headers=insts[0])
+    mine = {m["session_id"]: m for m in c.get("/api/me/sessions", headers=chal).json()["sessions"]}
+    assert mine[sid]["state"] == "graded" and isinstance(mine[sid]["grade_total"], float)
+
+
+def test_health_reports_checks(tmp_path, monkeypatch):
+    cfg = Config(llm_provider="fake", db_path=str(tmp_path / "s.db"), sandbox_root=str(tmp_path / "b"))
+    c = TestClient(build_app(cfg))
+    r = c.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok" and body["checks"]["store"]["ok"] is True
+    assert body["checks"]["model"]["checked"] is False and "keys" in body["checks"]
+    # a broken store turns the check red and the status code to 503
+    c.app.state._health_cache = None
+    from sim.adapters.web import app as webapp  # noqa: F401  (module import keeps linters quiet)
+    class Broken:
+        def get_instructor(self):
+            raise RuntimeError("firestore unreachable")
+    good = c.app.state.settings
+    c.app.state.settings = Broken()
+    # bust the 30 s cache by rebuilding the app state cache dict
+    import time
+    c.app.state.settings = Broken()
+    # find the closure cache through a fresh app instead of poking closures
+    c2 = TestClient(build_app(cfg))
+    c2.app.state.settings = Broken()
+    r = c2.get("/health")
+    assert r.status_code == 503 and r.json()["status"] == "degraded"
+    assert "unreachable" in r.json()["checks"]["store"]["error"]
+    c.app.state.settings = good

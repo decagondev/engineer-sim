@@ -78,6 +78,9 @@ function setWho(){
   el("who").textContent = label;
 }
 
+const STATE_LABEL = {reviewed:"✓ reviewed", graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {reviewed:"#9085e9", graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = ((k==="graded"||k==="reviewed") && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="badge" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
 function renderSessions(sessions){
   if (!sessions || !sessions.length) {
     return `<h1 style="font-size:18px;margin:0 0 6px">Your sessions</h1>
@@ -92,7 +95,7 @@ function renderSessions(sessions){
         <div class="id">${esc(s.session_id)}</div>
       </div>
       <span class="badge">${esc(s.level || "")}</span>
-      <span class="badge">${esc(s.status || "")}</span>
+      ${stateChip(s.state, s.grade_total)}
       <span class="spacer"></span>
       <a href="/#${esc(s.session_id)}"><button class="primary">Open</button></a>
     </div>`).join("")}`;

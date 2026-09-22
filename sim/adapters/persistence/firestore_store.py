@@ -87,11 +87,17 @@ class FirestoreMessageRepository:
                     "reviewed_ts", "review_total",
                     "owner_uid", "assignee_uid", "status", "created_at")
 
-    def list_sessions(self, include_empty: bool = False) -> list[dict]:
+    def list_sessions(self, include_empty: bool = False, owner_uid: str = "",
+                      assignee_uid: str = "") -> list[dict]:
         """Message-bearing sessions; with include_empty also the assigned-but-
-        unstarted ones, so a dashboard listing is a single stream."""
+        unstarted ones, so a dashboard listing is a single stream. owner_uid /
+        assignee_uid narrow the query server-side (single-field equality needs
+        no composite index)."""
         out = []
-        for snap in self._db.collection("sessions").stream():
+        col = self._db.collection("sessions")
+        query = (col.where("owner_uid", "==", owner_uid) if owner_uid else
+                 col.where("assignee_uid", "==", assignee_uid) if assignee_uid else col)
+        for snap in query.stream():
             d = _data(snap)
             count = int(d.get("message_count") or 0)
             if count <= 0 and not include_empty:
@@ -603,10 +609,20 @@ class FirestoreSessionRegistry:
         return rows
 
     def list_by_owner(self, uid: str) -> Sequence[SessionRecord]:
-        return [r for r in self.list_all() if r.owner_uid == uid]
+        if not uid:
+            return []
+        rows = [self._row(s) for s in
+                self._db.collection("sessions").where("owner_uid", "==", uid).stream()]
+        rows.sort(key=lambda r: r.created_at, reverse=True)
+        return rows
 
     def list_by_assignee(self, uid: str) -> Sequence[SessionRecord]:
-        return [r for r in self.list_all() if r.assignee_uid == uid]
+        if not uid:
+            return []
+        rows = [self._row(s) for s in
+                self._db.collection("sessions").where("assignee_uid", "==", uid).stream()]
+        rows.sort(key=lambda r: r.created_at, reverse=True)
+        return rows
 
     def delete(self, session_id: str) -> bool:
         ref = session_doc(self._db, session_id)

@@ -176,14 +176,60 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             current_uid.reset(uid_token)
 
     # ---- static / shell -------------------------------------------------
+    _health_cache: dict = {}
+
+    def _health_checks() -> dict:
+        """store: one cheap read (3 s budget; failure = 503). model: a ping of
+        the provider when a classroom key is set (5 s; failure only warns, so a
+        provider outage never takes the site down). Cached for 30 s."""
+        import time
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as _Timeout
+        hit = _health_cache.get("checks")
+        if hit and time.monotonic() - hit[0] < 30:
+            return hit[1]
+        cfg = manager._config
+        checks: dict = {"store": {"ok": True}, "model": {"ok": True, "checked": False},
+                        "keys": {"groq": bool(os.environ.get("GROQ_API_KEY")),
+                                 "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                                 "github": bool(cfg.github_token),
+                                 "byok_secret": bool(cfg.byok_secret)}}
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut = ex.submit(lambda: app.state.settings.get_instructor())
+            t0 = time.monotonic()
+            try:
+                fut.result(timeout=3.0)
+                checks["store"]["ms"] = int((time.monotonic() - t0) * 1000)
+            except _Timeout:
+                checks["store"] = {"ok": False, "error": "store read timed out after 3 s"}
+            except Exception as e:
+                checks["store"] = {"ok": False, "error": str(e)[:200]}
+            if cfg.llm_provider == "groq" and os.environ.get("GROQ_API_KEY"):
+                from sim.adapters.llm.groq_client import validate_groq_key
+                fut = ex.submit(validate_groq_key, os.environ.get("GROQ_API_KEY", ""))
+                t0 = time.monotonic()
+                try:
+                    fut.result(timeout=5.0)
+                    checks["model"] = {"ok": True, "checked": True,
+                                       "ms": int((time.monotonic() - t0) * 1000)}
+                except _Timeout:
+                    checks["model"] = {"ok": False, "checked": True, "error": "model ping timed out after 5 s"}
+                except Exception as e:
+                    checks["model"] = {"ok": False, "checked": True, "error": str(e)[:200]}
+        _health_cache["checks"] = (time.monotonic(), checks)
+        return checks
+
     @app.get("/health")
     def health():
         cfg = manager._config
-        return {"status": "ok",
+        checks = _health_checks()
+        ok = bool(checks["store"]["ok"])
+        body = {"status": "ok" if ok else "degraded",
                 "commit": (os.environ.get("RAILWAY_GIT_COMMIT_SHA") or os.environ.get("GIT_COMMIT") or "")[:12],
                 "llm_provider": cfg.llm_provider,
                 "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
-                          "ollama": cfg.ollama_model}.get(cfg.llm_provider, "")}
+                          "ollama": cfg.ollama_model}.get(cfg.llm_provider, ""),
+                "checks": checks}
+        return JSONResponse(body, status_code=200 if ok else 503)
 
     @app.get("/")
     def index():
@@ -1018,23 +1064,33 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     @app.get("/api/me/sessions")
     def my_sessions(request: Request):
+        """The caller's sessions with state and grade, from the session index
+        (one scoped stream; never a read per session)."""
         auth = app.state.auth
         p = _actor(request)
         if auth.sessions is None:
             return {"sessions": []}
-        rows = list(auth.sessions.list_by_assignee(p.uid))
-        if p.role in ("instructor", "admin"):
-            rows = list(auth.sessions.list_by_owner(p.uid)) if p.role == "instructor" else list(auth.sessions.list_all())
+        if p.role == "admin":
+            rows = _merge_known_sessions(all_registered=True)
+        elif p.role == "instructor":
+            rows = _merge_known_sessions(all_registered=False, owner_uid=p.uid)
+        else:
+            rows = _merge_known_sessions(all_registered=False, assignee_uid=p.uid)
+            rows = [r for r in rows if r.get("assignee_uid") == p.uid]
         out = []
-        for rec in rows:
-            title = rec.scenario_key
-            if rec.scenario_key in manager.registry:
-                title = manager.registry[rec.scenario_key].title
+        for s in rows:
+            sc = manager.registry.get(s.get("scenario") or "")
+            s = _apply_state(dict(s))
             out.append({
-                "session_id": rec.id, "scenario": rec.scenario_key, "title": title,
-                "level": rec.level, "status": rec.status,
-                "owner_uid": rec.owner_uid, "assignee_uid": rec.assignee_uid,
-                "created_at": rec.created_at,
+                "session_id": s["session_id"], "scenario": s.get("scenario") or "",
+                "title": sc.title if sc else (s.get("scenario") or ""),
+                "track": sc.track if sc else "product",
+                "level": s.get("level") or "", "status": s.get("status") or "",
+                "owner_uid": s.get("owner_uid") or "", "assignee_uid": s.get("assignee_uid") or "",
+                "created_at": s.get("first_ts") or "", "last_ts": s.get("last_ts") or "",
+                "count": s.get("count") or 0, "state": s["state"],
+                "grade_total": s.get("review_total") if s.get("review_total") is not None else s.get("grade_total"),
+                "reviewed": s["reviewed"],
             })
         return {"sessions": out}
 
@@ -1292,15 +1348,22 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             session_id, owner_uid=_actor(request).uid, scenario_key=key)
         return {"ok": True, "scenario": key}
 
-    def _merge_known_sessions(*, all_registered: bool, owner_uid: str = ""):
-        """Message-store runs (legacy classroom) plus assignment-registry rows."""
+    def _merge_known_sessions(*, all_registered: bool, owner_uid: str = "",
+                              assignee_uid: str = ""):
+        """Message-store runs (legacy classroom) plus assignment-registry rows.
+        On Firestore an owner/assignee scope is pushed into the query so an
+        instructor never streams the whole server."""
         by_id = {}
         repo = app.state.repo
         msg_sessions = []
         if hasattr(repo, "list_sessions"):
             try:
                 # Firestore: every session doc (index fields included) in one stream
-                msg_sessions = repo.list_sessions(include_empty=True)
+                if all_registered:
+                    msg_sessions = repo.list_sessions(include_empty=True)
+                else:
+                    msg_sessions = repo.list_sessions(include_empty=True, owner_uid=owner_uid,
+                                                      assignee_uid=assignee_uid)
             except TypeError:
                 msg_sessions = repo.list_sessions()
         complete = bool(msg_sessions) and all(s.get("complete") for s in msg_sessions)
@@ -1316,8 +1379,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 row["last_ts"] = row.get("first_ts") or ""
             by_id[s["session_id"]] = row
         auth = app.state.auth
-        if auth.sessions is not None and not (complete and all_registered):
+        if auth.sessions is not None and not complete:
             recs = (list(auth.sessions.list_all()) if all_registered
+                    else list(auth.sessions.list_by_assignee(assignee_uid)) if assignee_uid
                     else list(auth.sessions.list_by_owner(owner_uid)))
             for rec in recs:
                 row = by_id.get(rec.id, {"session_id": rec.id, "count": 0,
@@ -1431,20 +1495,25 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                     indexer(sid, **patch)
                 except Exception:
                     pass
-            s["submitted"] = bool(s.get("submitted_ts"))
-            s["graded"] = bool(s.get("graded_ts"))
-            s["reviewed"] = bool(s.get("reviewed_ts"))
-            s.setdefault("grade_total", None)
-            s.setdefault("review_total", None)
-            s.setdefault("graded_by", "")
-            # a submission newer than the grade needs another look
-            current = s["graded"] and (not s["submitted"] or s["graded_ts"] >= s["submitted_ts"])
-            s["state"] = ("reviewed" if current and s["reviewed"] else
-                          "graded" if current else
-                          "submitted" if s["submitted"] else
-                          "active" if (s.get("count") or 0) > 0 else "not_started")
+            _apply_state(s)
         _parallel(fill, rows)
         return rows
+
+    def _apply_state(s: dict) -> dict:
+        """The one place a session's state is decided from its index fields."""
+        s["submitted"] = bool(s.get("submitted_ts"))
+        s["graded"] = bool(s.get("graded_ts"))
+        s["reviewed"] = bool(s.get("reviewed_ts"))
+        s.setdefault("grade_total", None)
+        s.setdefault("review_total", None)
+        s.setdefault("graded_by", "")
+        # a submission newer than the grade needs another look
+        current = s["graded"] and (not s["submitted"] or s["graded_ts"] >= s["submitted_ts"])
+        s["state"] = ("reviewed" if current and s["reviewed"] else
+                      "graded" if current else
+                      "submitted" if s["submitted"] else
+                      "active" if (s.get("count") or 0) > 0 else "not_started")
+        return s
 
     _overview_cache: dict = {}
     _overview_refreshing: set = set()
