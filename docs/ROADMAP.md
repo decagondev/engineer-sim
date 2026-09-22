@@ -1,6 +1,8 @@
 # Roadmap
 
-What to build next, in the order that pays off soonest. Sizes are honest guesses
+What to build next, in the order that pays off soonest. The implementation
+design for every item, following the ports-and-adapters rules, is in
+`docs/ROADMAP-PLAN.md`. Sizes are honest guesses
 for one person: **S** under a day, **M** two to four days, **L** a week or more.
 Each item names the files it touches so it can be picked up cold. Delivered work is
 summarised at the end of `PLANNING.md`.
@@ -63,8 +65,9 @@ behind, which is the one caveat still printed on every grade.
     full stream in memory; use `where("owner_uid", "==", uid)` with a composite index
     so an instructor with ten sessions on a server with a thousand does not stream them
     all. `firestore_store.py`, plus an index in the Firebase console.
-12. **Challenger dashboard reads (S).** `/api/me/sessions` resolves each session's
-    scenario individually; use the session index like the dashboards do.
+12. **Challenger dashboard (S).** `/api/me/sessions` already avoids per-session
+    reads (verified); show each session's state and grade there so a challenger
+    sees "graded 78%" on their own list.
 13. **Session retention (M).** Admin action "archive sessions older than N days":
     export the markdown audit to the asset store, then cascade-delete. Keeps Firestore
     reads bounded as terms accumulate.

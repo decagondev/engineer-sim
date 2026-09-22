@@ -186,7 +186,8 @@ closures). Static desktop shell in `static/`: `shell.js` is the app registry; ea
   sandbox / repo), the in-browser editor, and repo-only submission when hosted.
 - `docs/CLASSROOM.md`, `docs/INSTRUCTOR.md`, `GET_STARTED_*.md`: operator-facing run guides.
 - `docs/onboarding/<role>/`: the in-app onboarding guides (served at `/onboarding`).
-- `docs/ROADMAP.md`: what comes next, with sizes and the files each item touches.
+- `docs/ROADMAP.md`: what comes next, with sizes and the files each item touches;
+  `docs/ROADMAP-PLAN.md`: the per-item design (ports, adapters, routes, tests, order).
 
 ## Things that bite
 
