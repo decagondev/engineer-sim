@@ -36,12 +36,9 @@ class ScopedLLMClient:
 
 def user_key_resolver(users, secret: str):
     def resolve() -> str:
-        from sim.adapters.llm.request_context import current_uid
+        from sim.adapters.llm.request_context import current_user
         from sim.adapters.auth.secretbox import decrypt_secret
-        uid = current_uid.get()
-        if not uid or users is None:
-            return ""
-        rec = users.get(uid)
+        rec = current_user(users)
         if rec is None or not rec.groq_key_enc:
             return ""
         try:

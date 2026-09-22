@@ -130,6 +130,8 @@ class AuthServices:
                 ))
         if rec.disabled:
             raise IdentityError("account disabled", status=403)
+        from sim.adapters.llm.request_context import prime_user
+        prime_user(rec)
         return Principal(
             uid=rec.uid, email=rec.email, role=rec.role,
             disabled=False, email_verified=p.email_verified,

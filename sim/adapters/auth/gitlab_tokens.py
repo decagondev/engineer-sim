@@ -45,12 +45,9 @@ def user_token_resolver(users, secret: str, server_token: str = "", broker=None,
     """The signed-in user's GitLab token when they stored one (refreshed if it
     is about to expire), else the classroom token."""
     def resolve() -> str:
-        from sim.adapters.llm.request_context import current_uid
+        from sim.adapters.llm.request_context import current_user, prime_user
         from sim.adapters.auth.secretbox import decrypt_secret, encrypt_secret
-        uid = current_uid.get()
-        if not uid or users is None:
-            return server_token or ""
-        rec = users.get(uid)
+        rec = current_user(users)
         enc = getattr(rec, "gitlab_token_enc", "") if rec else ""
         if not enc:
             return server_token or ""
@@ -65,8 +62,8 @@ def user_token_resolver(users, secret: str, server_token: str = "", broker=None,
                 fresh = broker.refresh(bundle["refresh_token"])
             except OAuthError:
                 return tok if now() < exp else (server_token or "")
-            users.upsert(dataclasses.replace(rec, gitlab_token_enc=encrypt_secret(
-                secret, pack_token(fresh, now()))))
+            prime_user(users.upsert(dataclasses.replace(rec, gitlab_token_enc=encrypt_secret(
+                secret, pack_token(fresh, now())))))
             tok = fresh.access_token
         return tok or server_token or ""
     return resolve

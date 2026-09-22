@@ -1090,7 +1090,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         p = getattr(request.state, "principal", None)
         if p is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        rec = app.state.auth.users.get(p.uid) if app.state.auth.users else None
+        from sim.adapters.llm.request_context import current_user
+        rec = current_user(app.state.auth.users)
         return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
                 "name": rec.name if rec else "",
                 "has_groq_key": bool(rec.groq_key_enc) if rec else False,
@@ -1114,13 +1115,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     @app.patch("/api/me")
     def patch_me(request: Request, payload: dict):
         from sim.core.ports.users import UserRecord
+        from sim.adapters.llm.request_context import current_user, prime_user
         auth = app.state.auth
         if not auth.gated:
             return JSONResponse({"error": "sign-in required"}, status_code=400)
         p = getattr(request.state, "principal", None)
         if p is None or auth.users is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
-        rec = auth.users.get(p.uid)
+        rec = current_user(auth.users)
         if rec is None:
             return JSONResponse({"error": "not found"}, status_code=404)
         name = rec.name
@@ -1179,6 +1181,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             name=name, groq_key_enc=enc, github_token_enc=gh, github_scope=scope,
             gitlab_token_enc=gl, gitlab_scope=gl_scope,
         ))
+        prime_user(rec)
         return {"ok": True, "name": rec.name,
                 "has_groq_key": bool(rec.groq_key_enc),
                 "has_github_token": bool(rec.github_token_enc),
@@ -1188,11 +1191,12 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     # ---- GitHub connect (device flow) -------------------------------------
     def _me_record(request: Request):
+        from sim.adapters.llm.request_context import current_user
         auth = app.state.auth
         p = getattr(request.state, "principal", None) if auth.gated else None
         if p is None or auth.users is None:
             return None, JSONResponse({"error": "sign-in required"}, status_code=400)
-        rec = auth.users.get(p.uid)
+        rec = current_user(auth.users)
         if rec is None:
             return None, JSONResponse({"error": "not found"}, status_code=404)
         return rec, None
@@ -1207,6 +1211,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         import time
         from sim.core.ports.oauth import OAuthError
         from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
+        from sim.adapters.llm.request_context import prime_user
         pack = pack or (lambda t: t.access_token)
 
         def broker():
@@ -1256,7 +1261,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             pending().pop(rec.uid, None)
             enc = encrypt_secret(secret_from_config(manager._config), pack(token))
             got = token.scope or scope
-            app.state.auth.users.upsert(dataclasses.replace(rec, **{token_field: enc, scope_field: got}))
+            prime_user(app.state.auth.users.upsert(
+                dataclasses.replace(rec, **{token_field: enc, scope_field: got})))
             return {"status": "connected", "scope": got}
 
         @app.delete(f"/api/me/{forge}/connect", name=f"{forge}_disconnect")
@@ -1265,7 +1271,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             if err:
                 return err
             pending().pop(rec.uid, None)
-            app.state.auth.users.upsert(dataclasses.replace(rec, **{token_field: "", scope_field: ""}))
+            prime_user(app.state.auth.users.upsert(
+                dataclasses.replace(rec, **{token_field: "", scope_field: ""})))
             return {"ok": True}
 
     _connect_routes("github", "github_oauth", "github_pending", "github_token_enc", "github_scope",
@@ -3057,6 +3064,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             current_uid.reset(uid_token)
 
     async def _ws_loop(websocket: WebSocket, session_id: str):
+        from sim.adapters.llm.request_context import forget_user
         await websocket.accept()
         svc = b(session_id).session_service
         try:
@@ -3066,6 +3074,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 target = (data or {}).get("target")
                 if not content:
                     continue
+                forget_user()          # a key saved mid-chat is picked up next turn
                 try:
                     msgs = await run_in_threadpool(
                         svc.post_tester_message, session_id, content, target)

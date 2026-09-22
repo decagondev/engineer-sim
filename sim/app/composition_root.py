@@ -408,11 +408,8 @@ def _gitlab_can_write(users):
     """True when the current request's user connected GitLab with the `api`
     scope (the only scope that lets the REST file API commit)."""
     def can_write() -> bool:
-        from sim.adapters.llm.request_context import current_uid
-        uid = current_uid.get()
-        if not uid or users is None:
-            return False
-        rec = users.get(uid)
+        from sim.adapters.llm.request_context import current_user
+        rec = current_user(users)
         scope = (getattr(rec, "gitlab_scope", "") or "") if rec else ""
         return bool(getattr(rec, "gitlab_token_enc", "")) and "api" in scope.replace(",", " ").split()
     return can_write
@@ -422,11 +419,8 @@ def _github_can_write(users):
     """True when the current request's user connected GitHub with a scope that
     allows commits (public_repo or repo). Pasted read-only tokens never write."""
     def can_write() -> bool:
-        from sim.adapters.llm.request_context import current_uid
-        uid = current_uid.get()
-        if not uid or users is None:
-            return False
-        rec = users.get(uid)
+        from sim.adapters.llm.request_context import current_user
+        rec = current_user(users)
         scope = (getattr(rec, "github_scope", "") or "") if rec else ""
         return bool(getattr(rec, "github_token_enc", "")) and any(
             s in ("public_repo", "repo") for s in scope.replace(",", " ").split())

@@ -86,19 +86,17 @@ def user_token_resolver(users, secret: str, server_token: str = "") -> Callable[
     server's. Same shape as the Groq BYOK resolver: spreads API rate limits
     across the class instead of one shared bucket."""
     def resolve() -> str:
-        from sim.adapters.llm.request_context import current_uid
+        from sim.adapters.llm.request_context import current_user
         from sim.adapters.auth.secretbox import decrypt_secret
-        uid = current_uid.get()
-        if uid and users is not None:
-            rec = users.get(uid)
-            enc = getattr(rec, "github_token_enc", "") if rec else ""
-            if enc:
-                try:
-                    tok = decrypt_secret(secret, enc)
-                    if tok:
-                        return tok
-                except ValueError:
-                    pass
+        rec = current_user(users)
+        enc = getattr(rec, "github_token_enc", "") if rec else ""
+        if enc:
+            try:
+                tok = decrypt_secret(secret, enc)
+                if tok:
+                    return tok
+            except ValueError:
+                pass
         return server_token or ""
     return resolve
 
