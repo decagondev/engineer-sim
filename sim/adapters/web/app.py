@@ -259,7 +259,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "llm_provider": cfg.llm_provider,
                 "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
                           "ollama": cfg.ollama_model}.get(cfg.llm_provider, ""),
-                "checks": checks, "llm_failover": _failover_status()}
+                "checks": checks, "llm_failover": _failover_status(),
+                "github_oauth": bool(cfg.github_oauth_client_id)}
         return JSONResponse(body, status_code=200 if ok else 503)
 
     @app.get("/")
@@ -2633,6 +2634,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "github_token_set": bool(cfg.github_token),
                 "byok_secret_set": bool(cfg.byok_secret),
                 "bootstrap_admin_email": cfg.bootstrap_admin_email,
+                "github_oauth_set": bool(cfg.github_oauth_client_id),
                 "llm_fallback_providers": cfg.llm_fallback_providers,
                 "llm_failover": _failover_status(),
             },

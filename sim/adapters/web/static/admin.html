@@ -857,6 +857,7 @@ ${(d.scenarios||[]).map(s=>`<div class="row" style="border-bottom:1px solid var(
             <tr><td>Build</td><td class="muted">${esc(dep.commit||"(unknown)")}</td></tr>
             <tr><td>Classroom Groq key</td><td>${yes(dep.groq_key_set)} <span class="muted">GROQ_API_KEY</span></td></tr>
             <tr><td>Classroom GitHub token</td><td>${yes(dep.github_token_set)} <span class="muted">GITHUB_TOKEN</span></td></tr>
+            <tr><td>GitHub connect (OAuth app)</td><td>${yes(dep.github_oauth_set)} <span class="muted">GITHUB_OAUTH_CLIENT_ID${dep.github_oauth_set ? " · challengers can edit their fork from Files" : ""}</span></td></tr>
             <tr><td>Key encryption secret</td><td>${yes(dep.byok_secret_set)} <span class="muted">BYOK_SECRET${dep.byok_secret_set?"":" — set it before people save personal keys"}</span></td></tr>
             <tr><td>Work mode</td><td>${esc(dep.work_mode)} → ${dep.hosted?"hosted (repo path for build scenarios)":"local (dev box)"}</td></tr>
             <tr><td>Sandbox</td><td>${esc(dep.env_provider)}</td></tr>
