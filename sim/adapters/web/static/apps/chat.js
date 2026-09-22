@@ -124,6 +124,7 @@ SimApps.register({
     const interview = ctx.scenario && ctx.scenario.track === "interview";
     if (interview) q(".ticketsToggle").hidden = false;
     let meta = {}, primaryKey = null, active = null, awaiting = null, watchdog = null, ws = null, closed = false, seen = new Set(), pollTimer = null;
+    let retries = 0, retryTimer = null;      // reconnect backoff state
     const channels = {};
     const HUES = [210, 28, 150, 280, 340, 95];
     const hueFor = k => { let h = 0; for (const c of k) h = (h * 31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
@@ -227,7 +228,20 @@ SimApps.register({
     function clearAwaiting() { awaiting = null; clearTimeout(watchdog); sendBtn.disabled = false; input.disabled = false; input.focus(); if (active) renderLog(); }
 
     function connect() {
+      if (closed) return;
       ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/${sid}${window.SimAuth && SimAuth.token() ? "?token="+encodeURIComponent(SimAuth.token()) : ""}`);
+      ws.onopen = async () => {
+        const wasRetry = retries > 0;
+        retries = 0;
+        if (!awaiting) { sendBtn.disabled = false; input.disabled = false; }
+        if (wasRetry) {
+          // anything that landed while we were away (a reply to an in-flight turn,
+          // a director beat) is in the transcript; replay dedups through `seen`
+          try { await pollTranscript(); } catch (e) {}
+          if (primaryKey) signal(active || primaryKey, "reconnected");
+          if (awaiting) clearAwaiting();
+        }
+      };
       ws.onmessage = e => {
         const m = JSON.parse(e.data);
         if (m.error || m.kind === "error") {
@@ -238,7 +252,17 @@ SimApps.register({
         }
         incoming(m);
       };
-      ws.onclose = () => { if (!closed && primaryKey) signal(primaryKey, "disconnected — reopen Team Chat to reconnect"); sendBtn.disabled = true; };
+      ws.onclose = () => {
+        if (closed) return;
+        sendBtn.disabled = true;
+        // 1 s doubling to 30 s with jitter: a dropped wifi link or a redeploy
+        // comes back on its own without anyone reloading the page
+        const delay = Math.min(30000, 1000 * Math.pow(2, retries)) * (0.7 + Math.random() * 0.6);
+        if (retries === 0 && primaryKey) signal(active || primaryKey, "connection lost — reconnecting…");
+        retries++;
+        clearTimeout(retryTimer);
+        retryTimer = setTimeout(connect, delay);
+      };
     }
 
     (async function boot() {
@@ -335,6 +359,6 @@ SimApps.register({
     pollTimer = setInterval(pollTranscript, 4000);
     if (interview) refreshDiagram();
 
-    return { unmount() { if (synth) synth.cancel(); closed = true; if (ws) { ws.onclose = null; ws.close(); } clearTimeout(watchdog); clearInterval(pollTimer); } };
+    return { unmount() { if (synth) synth.cancel(); closed = true; clearTimeout(retryTimer); if (ws) { ws.onclose = null; ws.close(); } clearTimeout(watchdog); clearInterval(pollTimer); } };
   }
 });

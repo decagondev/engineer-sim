@@ -137,7 +137,7 @@ class RepoWorkspaceFiles:
         if rel in snap.dirs:
             raise IsADirectoryError(relpath)
         existing = (snap.blob_shas or {}).get(rel, "") or ("exists" if rel in snap.blobs else "")
-        out = self._host.put_file(ref, rel, text, message=f"Edit {rel} from the workstation",
+        out = self._host.put_file(ref, rel, text, message=commit_message(rel),
                                   sha=existing, branch=snap.branch)
         # keep the cache truthful without another tree fetch
         snap.blobs[rel] = len(text.encode("utf-8"))
@@ -182,6 +182,11 @@ class GitHubWorkspaceFiles(RepoWorkspaceFiles):
     @property
     def _api(self):
         return self._host.api
+
+
+def commit_message(rel: str) -> str:
+    """One line, the file first, so a fork's history reads like a change log."""
+    return f"Update {rel} via the workstation"
 
 
 def _norm(relpath: str) -> str:

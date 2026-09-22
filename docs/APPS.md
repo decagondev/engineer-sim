@@ -91,8 +91,10 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
   code, mermaid drawn; opens by itself for DESIGN.md on a wide window). Writes
   are path-safe and, when hosted, kept in the database so a redeploy does not
   lose them. A linked repo is read-only until the learner connects their
-  GitHub or GitLab account; then Save is a commit to their fork, and **What
-  changed** shows the net diff against the starter.
+  GitHub or GitLab account; then the button reads **Save & commit**, each save
+  is one commit to their fork (autosave is off there so the history stays
+  readable), and **What changed** shows the net diff against the starter.
+  Mermaid is fetched the first time a diagram is drawn, not on page load.
 - **Tickets** — real: a To Do / In Progress / Done board seeded with the client's
   asks; create and move tickets. Scoping actions are recorded in the transcript
   and graded.

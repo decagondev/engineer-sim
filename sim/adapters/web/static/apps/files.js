@@ -182,6 +182,7 @@ SimApps.register({
             updateWordCount(); },
         });
         saveBtn.hidden = !wf.editable; pvBtn.hidden = false;
+        saveBtn.textContent = wf.writes_to_repo ? "Save & commit" : "Save";
       } else { editor.setPath(path); editor.setValue(t.text); }
       if (previewOn) renderPreview();
       renderTabs(); editor.focus();
@@ -309,8 +310,9 @@ SimApps.register({
       body.querySelector("#tows").onclick = () => SimApps.open(target);
     }
 
-    // autosave dirty tabs every 20s in editable workspaces (design docs are precious)
-    if (wf.editable) timer = setInterval(() => { if (!dead) saveAllDirty(); }, 20000);
+    // autosave dirty tabs every 20s in editable workspaces (design docs are precious);
+    // never on a connected repo, where every save is a commit in the learner's history
+    if (wf.editable && !wf.writes_to_repo) timer = setInterval(() => { if (!dead) saveAllDirty(); }, 20000);
 
     (async () => {
       const ok = await nav("");

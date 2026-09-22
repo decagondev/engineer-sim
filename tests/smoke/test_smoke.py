@@ -451,3 +451,16 @@ def test_smk_onboarding_guides_are_served(tmp_path):
         r = c.get(f"/onboarding/{role}/")
         assert r.status_code == 200 and "guide.js" in r.text, role
     assert c.get("/onboarding/").status_code == 200
+
+
+def test_smk20_mermaid_is_lazy_and_commit_message_shape():
+    """A3: no page ships the 3 MB mermaid build; diagram.js fetches it on first
+    draw. A2: repo commits from Files carry the file name first."""
+    import pathlib
+    static = pathlib.Path("sim/adapters/web/static")
+    for page in static.glob("*.html"):
+        assert "mermaid.min.js" not in page.read_text(encoding="utf-8"), page.name
+    assert "/static/vendor/mermaid/mermaid.min.js" in (static / "diagram.js").read_text(encoding="utf-8")
+    assert (static / "vendor" / "mermaid" / "mermaid.min.js").exists()
+    from sim.adapters.workspace.github_files import commit_message
+    assert commit_message("docs/DESIGN.md").startswith("Update docs/DESIGN.md")

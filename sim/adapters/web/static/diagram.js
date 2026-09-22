@@ -7,7 +7,22 @@
      SimDiagram.hydrate(root)     // draw every ```mermaid fence under root, now and as they arrive
 */
 window.SimDiagram = (function () {
-  let ready = false, seq = 0;
+  let ready = false, seq = 0, loading = null;
+  // 3 MB, so it is fetched the first time a diagram is actually drawn, not on
+  // every page load. Pages no longer ship a <script> tag for it.
+  const SRC = "/static/vendor/mermaid/mermaid.min.js";
+  function ensure() {
+    if (window.mermaid) return Promise.resolve(true);
+    if (loading) return loading;
+    loading = new Promise(resolve => {
+      const s = document.createElement("script");
+      s.src = SRC; s.async = true;
+      s.onload = () => resolve(!!window.mermaid);
+      s.onerror = () => { loading = null; resolve(false); };
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
   const CSS = `
   .sim-diagram{margin:6px 0;padding:10px 12px;border:1px solid var(--line,#272e3a);border-radius:10px;background:var(--ink,#12151b);overflow-x:auto}
   .sim-diagram svg{max-width:100%;height:auto;display:block}
@@ -53,7 +68,7 @@ window.SimDiagram = (function () {
     css();
     const text = String(src || "").trim();
     if (!text) return false;
-    if (!init()) {
+    if (!(await ensure()) || !init()) {
       // no mermaid: leave a highlighted code block so nothing is lost
       el.innerHTML = window.SimMD ? SimMD.render("```mermaid\n" + text + "\n```") : "<pre></pre>";
       if (!window.SimMD) el.querySelector("pre").textContent = text;
@@ -105,5 +120,5 @@ window.SimDiagram = (function () {
       mo.observe(root, { childList: true, subtree: true });
     }
   }
-  return { render, hydrate, available: () => !!window.mermaid };
+  return { render, hydrate, ensure, available: () => !!window.mermaid };
 })();
