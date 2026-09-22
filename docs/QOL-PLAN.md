@@ -1,5 +1,10 @@
 # Quality-of-life and optimisation plan
 
+**Status, 2026-09-22: all twelve items are built** (commits from "Read the caller's
+directory record once per request" through "One CodeMirror bundle and a green suite on
+Windows"). `CLAUDE.md` records where each piece lives; this file stays as the record of
+what was asked and why.
+
 Twelve items from a read of the codebase on 2026-09-22, in the order they are
 built. Each keeps the existing shape: a pure decision in `sim/core/`, I/O behind a
 port, one adapter per concern, wiring only in the composition root, and a test

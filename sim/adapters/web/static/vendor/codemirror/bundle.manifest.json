@@ -1,0 +1,85 @@
+{
+ "parts": [
+  {
+   "path": "codemirror.min.js",
+   "sha256": "f102bb61fb2ac45c3a611847edd9948faad0ab22a83a2dfa9974be5031079b15",
+   "bytes": 170535
+  },
+  {
+   "path": "mode/xml.min.js",
+   "sha256": "1403f6fc04264c38e933891710636ed07761898aa764de95a39a832d433cbe66",
+   "bytes": 5981
+  },
+  {
+   "path": "mode/javascript.min.js",
+   "sha256": "99b46f351b4b1ce8a14cdf04fe4235ecb429b5b7b986867034a7dc195a710a58",
+   "bytes": 17315
+  },
+  {
+   "path": "mode/css.min.js",
+   "sha256": "ee0ce00f346a6d7e345a74ab32f2cc600e8b7df878b28715d7d52192fa274eee",
+   "bytes": 27098
+  },
+  {
+   "path": "mode/htmlmixed.min.js",
+   "sha256": "506e12c1fc68437c2f5d45b2d7c8cd341f231ad94c5126667c0272bfe6359e6a",
+   "bytes": 2870
+  },
+  {
+   "path": "mode/markdown.min.js",
+   "sha256": "6d31310a4719d151d198b604864fa7cb7dcaa5013888863585e06d7c7085f3d8",
+   "bytes": 14631
+  },
+  {
+   "path": "mode/python.min.js",
+   "sha256": "6d19a4ba8b05a354935ceebf490582faffa047c86c4715a2b504b14319eb6399",
+   "bytes": 6500
+  },
+  {
+   "path": "mode/yaml.min.js",
+   "sha256": "a6925495d3ccd0197fbc85df616cae466f3ba7a04b885db3c4e7d6952a859623",
+   "bytes": 1819
+  },
+  {
+   "path": "mode/sql.min.js",
+   "sha256": "8b2eb6ce3ada53b11cef6e80afb0b290de6a57a3722c08f8efb3d1dc06a80919",
+   "bytes": 47294
+  },
+  {
+   "path": "mode/shell.min.js",
+   "sha256": "08aed7c67ef9d68f8f99eec9af2da275da760b3296615f341f44a5ebae3fbbd7",
+   "bytes": 2753
+  },
+  {
+   "path": "addon/active-line.min.js",
+   "sha256": "bbca0b4ba03a94163a1eaa604b45ef038c12d8572b7cc16a41dd287b40cc998c",
+   "bytes": 1328
+  },
+  {
+   "path": "addon/matchbrackets.min.js",
+   "sha256": "f359c5f395a2a08191557d40b61ef8c3893803da9019171cc44b8d9c8c7d4a3a",
+   "bytes": 3096
+  },
+  {
+   "path": "addon/closebrackets.min.js",
+   "sha256": "df4a87dd3b175b509468755b74d06f0e82ff56f213f341f776c26ff0f0d27b37",
+   "bytes": 3523
+  },
+  {
+   "path": "addon/searchcursor.min.js",
+   "sha256": "0b5f19d72d5febca9b2bb3d471489eadd92ff2c18d29fef5335bbb536cba6692",
+   "bytes": 5277
+  },
+  {
+   "path": "addon/dialog.min.js",
+   "sha256": "b11516c9c96f4d593f4427d4d70cddcb3520ebe6c19048cd62db641250ea2dc4",
+   "bytes": 2326
+  },
+  {
+   "path": "addon/search.min.js",
+   "sha256": "59c16a8249700b3b6d6c23693e09fb7fbec58c13e330c7815008e77b91da025e",
+   "bytes": 5804
+  }
+ ],
+ "bundle_sha256": "f7dcd8b2f4cd7c8ee285628d5496d0b275740362dc19d5db1237b1bda86681e4"
+}

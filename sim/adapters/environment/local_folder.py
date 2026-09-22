@@ -54,7 +54,8 @@ class LocalFolderEnvironment:
         return None
 
     def teardown(self, session_id: str) -> None:
-        shutil.rmtree(self._dir(session_id), ignore_errors=True)
+        from sim.adapters.environment.fsutil import remove_tree
+        remove_tree(self._dir(session_id))
 
     @staticmethod
     def _baseline(d: Path) -> None:

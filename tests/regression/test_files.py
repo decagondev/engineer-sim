@@ -7,7 +7,7 @@ from sim.adapters.workspace.local_reader import LocalWorkspaceReader
 @pytest.fixture
 def wd(tmp_path):
     (tmp_path / "data").mkdir()
-    (tmp_path / "README.md").write_text("hello world\n")
+    (tmp_path / "README.md").write_bytes(b"hello world\n")     # bytes: no CRLF on Windows
     (tmp_path / "data" / "x.csv").write_text("a,b\n1,2\n")
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "HEAD").write_text("ref\n")

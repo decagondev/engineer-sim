@@ -31,11 +31,10 @@ LLM_PROVIDER=ollama pytest -m eval tests/evals                 # real-model eval
 and `firestore` gate live tests behind `FIREBASE_TEST=1` / `FIRESTORE_TEST=1`; all normal tests run
 on fakes (`FakeLLMClient`, `AUTH_MODE=fake`, `tests/unit/fake_firestore.py`). No conftest.
 
-Python 3.11+ is required. On Windows, three tests fail for platform reasons only (CRLF in
-`test_files02_read_text`, read-only `.git` objects blocking rmtree in `test_env02_teardown` and
-`test_dock03_teardown`); do not treat those as regressions. Git also reports every LF file as
-modified on Windows because of CRLF normalisation; check `git diff --numstat` before assuming
-there are real changes.
+Python 3.11+ is required and the suite is green on Windows too (sandbox teardown clears the
+read-only bit git sets on its objects; see `adapters/environment/fsutil.py`). Git reports every
+LF file as modified on Windows because of CRLF normalisation; check `git diff --numstat` before
+assuming there are real changes.
 
 Other tools:
 - `python -m sim.app.calibrate --consistency` (real provider) grades the fixtures in
@@ -45,6 +44,9 @@ Other tools:
   the `SCENARIOS` table inside the script. Edit the script, not the generated YAML.
 - `python tools/email_templates.py show|apply` reads/updates the Firebase Auth email templates.
 - `tools/migrate_sqlite_to_firestore.py`: one-shot copy of `sim.db` into Firestore.
+- `python tools/bundle_vendor.py` rebuilds `static/vendor/codemirror/bundle.min.js` (the one
+  CodeMirror script the pages load) after any vendored CodeMirror file changes; the smoke
+  suite runs `--check` and fails when the bundle is stale.
 
 ## Architecture (ports & adapters)
 

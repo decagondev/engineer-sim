@@ -496,3 +496,18 @@ def test_smk22_route_inventory_is_complete(tmp_path):
     assert not missing, f"routes lost: {missing}"
     from sim.adapters.web.app import ROUTE_MODULES
     assert len(ROUTE_MODULES) >= 10 and all(hasattr(m, "register") for m in ROUTE_MODULES)
+
+
+def test_smk23_vendor_bundle_is_current():
+    """C12: the pages load one CodeMirror bundle; it must match its parts."""
+    import pathlib
+    import sys
+    sys.path.insert(0, str(pathlib.Path("tools").resolve()))
+    import bundle_vendor
+    assert bundle_vendor.is_current(), "run python tools/bundle_vendor.py"
+    for page in ("index.html", "admin.html"):
+        text = pathlib.Path("sim/adapters/web/static", page).read_text(encoding="utf-8")
+        assert "/static/vendor/codemirror/bundle.min.js" in text
+        import re
+        srcs = re.findall(r'<script src="([^"]+)"', text)
+        assert not [u for u in srcs if "codemirror/mode/" in u or "codemirror/addon/" in u], srcs
