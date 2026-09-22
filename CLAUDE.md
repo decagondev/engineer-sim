@@ -161,6 +161,13 @@ in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
 sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
 `grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
+**Model failover:** `build_llm` wraps the primary in `adapters/llm/failover.py::FailoverLLMClient`
+when `LLM_FALLBACK_PROVIDERS` is set; `is_transient` decides which errors fail over (429, quota,
+5xx, timeouts) and the chain records its last failover for the admin panel and `/health`. A
+learner's own Groq key falls back to the classroom chain on a transient error. Browser TTS lives
+in `chat.js` (`speak`), off by default; phone layouts are media queries in `index.html`, `chat.js`
+and `files.js`.
+
 **GitHub connect** (`ports/oauth.py`, `adapters/auth/github_oauth.py` device flow behind
 `GITHUB_OAUTH_CLIENT_ID`): `/api/me/github/connect` POST/GET/DELETE stores the OAuth token in the
 same encrypted field as a pasted token plus `UserRecord.github_scope`. `GitHubWorkspaceFiles.write_file`

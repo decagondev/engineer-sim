@@ -90,6 +90,17 @@
   .stub .tag{font:11px/1 var(--mono);color:var(--faint);border:1px solid var(--line);
              border-radius:999px;padding:5px 10px}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  /* phone: the window fills the stage, the dock shrinks, the timer stays visible */
+  @media (max-width:640px){
+    #menubar{padding:0 10px;gap:8px}
+    #menubar .who,#menubar .app-name{display:none}
+    #window{top:6px;left:6px;right:6px;bottom:78px;border-radius:10px}
+    #dock{bottom:10px;gap:6px;padding:7px 8px;max-width:calc(100% - 16px)}
+    .dockitem{width:40px;height:40px;border-radius:11px}
+    .dockitem svg{width:20px;height:20px}
+    #desktop{padding:0 20px 96px}
+    #desktop h1{font-size:19px}
+  }
 </style>
 </head>
 <body>

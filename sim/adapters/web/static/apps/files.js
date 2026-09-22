@@ -50,6 +50,12 @@ SimApps.register({
   .files .preview .md{max-width:72ch}
   .files .preview .pvlab{font:10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
   @media (max-width:900px){.files .edwrap.split{flex-direction:column}.files .preview{border-left:0;border-top:1px solid var(--line)}}
+  @media (max-width:640px){
+    .files .body{flex-direction:column}
+    .files .listing{width:100%;max-height:34%;border-right:0;border-bottom:1px solid var(--line)}
+    .files .bar{padding:6px 8px}
+    .files .status{flex-wrap:wrap;gap:6px}
+  }
   .files .status{display:flex;align-items:center;gap:10px;padding:6px 12px;border-top:1px solid var(--line);font:11.5px var(--mono);color:var(--muted);background:var(--panel)}
   .files .status .sp{flex:1}
   .files .status .ok{color:var(--ok,#37d67a)}

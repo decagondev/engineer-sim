@@ -259,7 +259,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "llm_provider": cfg.llm_provider,
                 "model": {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
                           "ollama": cfg.ollama_model}.get(cfg.llm_provider, ""),
-                "checks": checks}
+                "checks": checks, "llm_failover": _failover_status()}
         return JSONResponse(body, status_code=200 if ok else 503)
 
     @app.get("/")
@@ -2633,8 +2633,19 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "github_token_set": bool(cfg.github_token),
                 "byok_secret_set": bool(cfg.byok_secret),
                 "bootstrap_admin_email": cfg.bootstrap_admin_email,
+                "llm_fallback_providers": cfg.llm_fallback_providers,
+                "llm_failover": _failover_status(),
             },
         }
+
+    def _failover_status():
+        chain = getattr(manager, "llm", None)
+        inner = getattr(chain, "_fallback", chain)          # ScopedLLMClient wraps the chain
+        fn = getattr(inner, "status", None)
+        try:
+            return fn() if fn else None
+        except Exception:
+            return None
 
     @app.get("/api/admin/settings")
     def admin_get_settings():

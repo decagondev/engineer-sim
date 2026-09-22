@@ -783,6 +783,7 @@ async function show(v){
         <div class="viz-card"><h3>Deployment</h3><div class="sub">Read-only; these come from the server's environment variables.</div>
           <table class="rtable"><tbody>
             <tr><td>Model</td><td>${esc(dep.llm_provider)}${dep.model?` · ${esc(dep.model)}`:""} <span class="muted">${dep.model_from_env ? "(set by the GROQ_MODEL / *_MODEL variable)" : "(code default)"}</span></td></tr>
+            <tr><td>Fallback models</td><td>${dep.llm_fallback_providers ? esc(dep.llm_fallback_providers) : `<span class="muted">none · set LLM_FALLBACK_PROVIDERS (e.g. anthropic)</span>`}${dep.llm_failover && dep.llm_failover.failovers ? `<div class="muted">${dep.llm_failover.failovers} failover${dep.llm_failover.failovers===1?"":"s"}; last ${ago(dep.llm_failover.last.ts)} ${esc(dep.llm_failover.last.from)} → ${esc(dep.llm_failover.last.to)}</div>` : ""}</td></tr>
             <tr><td>Build</td><td class="muted">${esc(dep.commit||"(unknown)")}</td></tr>
             <tr><td>Classroom Groq key</td><td>${yes(dep.groq_key_set)} <span class="muted">GROQ_API_KEY</span></td></tr>
             <tr><td>Classroom GitHub token</td><td>${yes(dep.github_token_set)} <span class="muted">GITHUB_TOKEN</span></td></tr>

@@ -152,6 +152,25 @@ _DEMO_SCENARIO = {
 
 
 def build_llm(config: Config) -> LLMClient:
+    """The primary provider, wrapped in a failover chain when
+    LLM_FALLBACK_PROVIDERS names others to try on rate limits or outages."""
+    import dataclasses
+    primary = _build_single_llm(config)
+    names = [p.strip().lower() for p in (config.llm_fallback_providers or "").split(",") if p.strip()]
+    names = [n for n in names if n != config.llm_provider.lower()]
+    if not names:
+        return primary
+    from sim.adapters.llm.failover import FailoverLLMClient
+    fallbacks = []
+    for n in names:
+        try:
+            fallbacks.append((n, _build_single_llm(dataclasses.replace(config, llm_provider=n))))
+        except Exception:
+            continue
+    return FailoverLLMClient(primary, fallbacks, primary_name=config.llm_provider.lower())
+
+
+def _build_single_llm(config: Config) -> LLMClient:
     provider = config.llm_provider.lower()
     if provider == "fake":
         from sim.adapters.llm.fake_client import FakeLLMClient

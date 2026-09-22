@@ -149,6 +149,7 @@ FIREBASE_CREDENTIALS_JSON={"type":"service_account",...}
 LLM_PROVIDER=groq
 GROQ_API_KEY=...          # classroom key; challengers can add their own in Settings (H2, done)
 GROQ_MODEL=openai/gpt-oss-120b  # optional; this is the code default
+LLM_FALLBACK_PROVIDERS=anthropic # optional; tried in order on rate limits / outages (needs ANTHROPIC_API_KEY)
 PUBLIC_BASE_URL=https://worksim.decadev.co.uk   # optional; set-password emails
   # link back here. Omitted, the app uses the host of incoming requests.
 GITHUB_OAUTH_CLIENT_ID=Iv1...   # optional; GitHub OAuth app with device flow so Files can commit to a fork

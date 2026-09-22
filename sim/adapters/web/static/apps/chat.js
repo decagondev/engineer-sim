@@ -27,6 +27,8 @@ SimApps.register({
   .chat-app .ctop .gradeBtn:hover{border-color:#3a4353}
   .chat-app .ctop .gopts{margin-left:auto;display:flex;align-items:center;gap:10px}
   .chat-app .ctop .gopts label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+  .chat-app .ctop .voiceBtn{background:var(--panel-2);border:1px solid var(--line);color:var(--muted);border-radius:9px;padding:6px 10px;font-size:12px;cursor:pointer}
+  .chat-app .ctop .voiceBtn.on{color:var(--text);border-color:#37d67a}
   .chat-app .panel{display:none;margin:8px 16px 4px;border:1px solid var(--line);border-radius:10px;background:var(--panel);flex:none}
   .chat-app .panel.on{display:block}
   .chat-app .panelbar{display:flex;align-items:center;gap:10px;padding:7px 10px 7px 12px;font-size:12.5px;color:var(--muted)}
@@ -65,6 +67,18 @@ SimApps.register({
   .chat-app .composer input:focus{border-color:var(--me)}
   .chat-app .composer .send{background:var(--me);border:1px solid var(--me);color:#fff;font-weight:600;border-radius:11px;padding:0 16px;cursor:pointer}
   @media (max-width:720px){.chat-app .roster{width:190px}.chat-app .row{max-width:88%}}
+  @media (max-width:640px){
+    .chat-app{flex-direction:column}
+    .chat-app .roster{width:100%;flex:none;border-right:0;border-bottom:1px solid var(--line)}
+    .chat-app .who-label{display:none}
+    .chat-app .people{display:flex;gap:4px;overflow-x:auto;padding:8px}
+    .chat-app .person{flex:none;padding:6px 8px}
+    .chat-app .person .role{display:none}
+    .chat-app .person.active::before{left:8px;right:8px;top:auto;bottom:0;width:auto;height:3px}
+    .chat-app .ctop{padding:8px 10px;flex-wrap:wrap}
+    .chat-app .row{max-width:94%}
+    .chat-app .composer{padding:8px 10px}
+  }
   `,
   mount(root, ctx) {
     root.innerHTML = `<div class="chat-app">
@@ -75,6 +89,7 @@ SimApps.register({
       <section class="cmain">
         <div class="ctop"><div class="peer"></div>
           <div class="gopts">
+            <button class="voiceBtn" type="button" title="Read replies aloud (browser voice)" hidden>🔈 Voice off</button>
             <label class="ticketsToggle" hidden><input type="checkbox" class="includeTickets"/> Include tickets extra credit</label>
             <button class="gradeBtn" type="button">Grade run</button>
           </div>
@@ -183,7 +198,30 @@ SimApps.register({
       const key = m.channel.startsWith("dm:") ? m.channel.slice(3) : m.channel;
       if (m.kind === "event") { ensureChannel(key, o); signal(key, m.content.replace(/^\[reveal\]\s*/, "")); return; }
       ensureChannel(key, o); push(key, m);
+      if (!o.replay && m.sender !== "tester" && m.kind !== "event") speak(m.sender, m.content);
       if (!o.replay && m.sender === awaiting) clearAwaiting();
+    }
+    // ---- voice: read persona replies aloud with the browser's own speech ----
+    const synth = window.speechSynthesis;
+    let voiceOn = false;
+    try { voiceOn = localStorage.getItem("sim-voice") === "on"; } catch (e) {}
+    const voiceBtn = q(".voiceBtn");
+    if (synth && voiceBtn) {
+      voiceBtn.hidden = false;
+      const paint = () => { voiceBtn.textContent = voiceOn ? "🔊 Voice on" : "🔈 Voice off"; voiceBtn.classList.toggle("on", voiceOn); };
+      paint();
+      voiceBtn.onclick = () => { voiceOn = !voiceOn; try { localStorage.setItem("sim-voice", voiceOn ? "on" : "off"); } catch (e) {} if (!voiceOn) synth.cancel(); paint(); };
+    }
+    function speak(personaKey, text) {
+      if (!synth || !voiceOn || !text) return;
+      const plain = String(text).replace(/```[\s\S]*?```/g, " (diagram) ").replace(/[*_`#>|]/g, "").replace(/\s+/g, " ").trim().slice(0, 1200);
+      if (!plain) return;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(plain);
+      const voices = synth.getVoices ? synth.getVoices().filter(v => /^en/i.test(v.lang)) : [];
+      if (voices.length) u.voice = voices[[...personaKey].reduce((a, c) => a + c.charCodeAt(0), 0) % voices.length];
+      u.rate = 1.02; u.pitch = 0.9 + (([...personaKey].reduce((a, c) => a + c.charCodeAt(0), 0) % 5) * 0.06);
+      synth.speak(u);
     }
     function setActive(key) { active = key; if (channels[key]) channels[key].unread = 0; renderRoster(); renderPeer(); renderLog(); input.focus(); }
     function clearAwaiting() { awaiting = null; clearTimeout(watchdog); sendBtn.disabled = false; input.disabled = false; input.focus(); if (active) renderLog(); }
@@ -297,6 +335,6 @@ SimApps.register({
     pollTimer = setInterval(pollTranscript, 4000);
     if (interview) refreshDiagram();
 
-    return { unmount() { closed = true; if (ws) { ws.onclose = null; ws.close(); } clearTimeout(watchdog); clearInterval(pollTimer); } };
+    return { unmount() { if (synth) synth.cancel(); closed = true; if (ws) { ws.onclose = null; ws.close(); } clearTimeout(watchdog); clearInterval(pollTimer); } };
   }
 });

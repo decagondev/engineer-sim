@@ -21,9 +21,16 @@ class ScopedLLMClient:
     def complete(self, *, system: str, messages: Sequence[LLMMessage]) -> str:
         key = (self._resolve_key() or "").strip()
         if key:
+            from sim.adapters.llm.failover import is_transient
             from sim.adapters.llm.groq_client import GroqClient
-            return GroqClient(model=self._groq_model, api_key=key).complete(
-                system=system, messages=messages)
+            try:
+                return GroqClient(model=self._groq_model, api_key=key).complete(
+                    system=system, messages=messages)
+            except Exception as exc:
+                # the learner's own key is rate-limited or Groq is down: use the
+                # classroom chain rather than fail their turn
+                if not is_transient(exc):
+                    raise
         return self._fallback.complete(system=system, messages=messages)
 
 
