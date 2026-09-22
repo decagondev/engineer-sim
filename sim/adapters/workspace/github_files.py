@@ -19,14 +19,19 @@ class _Snapshot:
     sha: str
     blobs: dict          # path -> size
     dirs: set            # every directory path, "" for the root
+    blob_shas: dict = None   # path -> blob sha (needed to update a file)
+    branch: str = "main"
 
 
 class GitHubWorkspaceFiles:
     def __init__(self, api: Optional[GitHubApi] = None, token: Optional[str] = None,
-                 max_bytes: int = 200_000) -> None:
+                 max_bytes: int = 200_000, can_write=None) -> None:
+        """can_write() says whether the *current request's* token may commit
+        (a personal OAuth token with repo scope); the classroom token never writes."""
         self._api = api or GitHubApi(token=token)
         self._max = max_bytes
         self._cache: dict[str, _Snapshot] = {}
+        self._can_write = can_write or (lambda: False)
 
     # -- cache ------------------------------------------------------------
     def _key(self, root: str) -> tuple[str, str]:
@@ -38,10 +43,11 @@ class GitHubWorkspaceFiles:
         snap = self._cache.get(k)
         if snap is not None and not force:
             return snap
-        _, sha = self._api.head(owner, repo)
+        branch, sha = self._api.head(owner, repo)
         if snap is not None and snap.sha == sha:
             return snap
         blobs: dict[str, int] = {}
+        blob_shas: dict[str, str] = {}
         dirs: set[str] = {""}
         for node in self._api.tree(owner, repo, sha) if sha else []:
             path = node.get("path") or ""
@@ -51,11 +57,12 @@ class GitHubWorkspaceFiles:
                 dirs.add(path)
             elif node.get("type") == "blob":
                 blobs[path] = int(node.get("size") or 0)
+                blob_shas[path] = node.get("sha") or ""
                 parent = path.rsplit("/", 1)[0] if "/" in path else ""
                 while parent and parent not in dirs:
                     dirs.add(parent)
                     parent = parent.rsplit("/", 1)[0] if "/" in parent else ""
-        snap = _Snapshot(sha=sha, blobs=blobs, dirs=dirs)
+        snap = _Snapshot(sha=sha, blobs=blobs, dirs=dirs, blob_shas=blob_shas, branch=branch)
         self._cache[k] = snap
         return snap
 
@@ -95,7 +102,33 @@ class GitHubWorkspaceFiles:
         return FileContent(rel, text, "")
 
     def write_file(self, root: str, relpath: str, text: str) -> None:
-        raise ReadOnlyWorkspace("this workspace mirrors your GitHub repo: push, then Refresh")
+        """Commit one file to the learner's fork through the contents API. Only
+        with their own OAuth token; the classroom token never writes."""
+        if not self._can_write():
+            raise ReadOnlyWorkspace("connect your GitHub account in the Workspace app to edit here; "
+                                    "otherwise push from your machine and press Refresh")
+        rel = _norm(relpath)
+        if not rel or rel.split("/")[0] == ".git":
+            raise ValueError("invalid path")
+        owner, repo = self._key(root)
+        snap = self._snapshot(root)
+        if rel in snap.dirs:
+            raise IsADirectoryError(relpath)
+        out = self._api.put_file(owner, repo, rel, text,
+                                 message=f"Edit {rel} from the workstation",
+                                 sha=(snap.blob_shas or {}).get(rel, ""), branch=snap.branch)
+        content = (out or {}).get("content") or {}
+        commit = (out or {}).get("commit") or {}
+        # keep the cache truthful without another tree fetch
+        snap.blobs[rel] = len(text.encode("utf-8"))
+        if snap.blob_shas is not None and content.get("sha"):
+            snap.blob_shas[rel] = content["sha"]
+        parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+        while parent and parent not in snap.dirs:
+            snap.dirs.add(parent)
+            parent = parent.rsplit("/", 1)[0] if "/" in parent else ""
+        if commit.get("sha"):
+            snap.sha = commit["sha"]
 
     def diff(self, root: str) -> str:
         """Net changes against the fork parent via the compare API (only a

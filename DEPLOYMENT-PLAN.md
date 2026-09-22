@@ -151,6 +151,7 @@ GROQ_API_KEY=...          # classroom key; challengers can add their own in Sett
 GROQ_MODEL=openai/gpt-oss-120b  # optional; this is the code default
 PUBLIC_BASE_URL=https://worksim.decadev.co.uk   # optional; set-password emails
   # link back here. Omitted, the app uses the host of incoming requests.
+GITHUB_OAUTH_CLIENT_ID=Iv1...   # optional; GitHub OAuth app with device flow so Files can commit to a fork
 GITHUB_TOKEN=ghp_...            # read-only; classroom-wide GitHub API limit for repo browsing
                                 # (challengers can store their own token in Settings, BYOK-style)
 WORK_MODE=auto                  # auto|local|hosted; auto = hosted when Firebase/Firestore is on

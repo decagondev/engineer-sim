@@ -29,14 +29,19 @@ def parse_repo(url: str) -> tuple[str, str]:
     raise ValueError("that doesn't look like a GitHub repo URL")
 
 
-def _default_fetch(resolve_token: Callable[[], str]) -> Callable[[str], object]:
-    def fetch(path: str):
+def _default_fetch(resolve_token: Callable[[], str]) -> Callable[..., object]:
+    def fetch(path: str, method: str = "GET", body: Optional[dict] = None):
         headers = {"Accept": "application/vnd.github+json",
                    "User-Agent": "flight-sim"}
         token = (resolve_token() or "").strip()
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        req = urllib.request.Request("https://api.github.com" + path, headers=headers)
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request("https://api.github.com" + path, headers=headers,
+                                     data=data, method=method)
         try:
             with urllib.request.urlopen(req, timeout=15) as r:
                 return json.loads(r.read().decode("utf-8"))
@@ -106,6 +111,20 @@ class GitHubApi:
 
     def get(self, path: str):
         return self._fetch(path)
+
+    def put(self, path: str, body: dict):
+        return self._fetch(path, "PUT", body)
+
+    def put_file(self, owner: str, repo: str, path: str, text: str, message: str,
+                 sha: str = "", branch: str = "") -> dict:
+        """Create or update one file through the contents API (one commit)."""
+        body = {"message": message,
+                "content": base64.b64encode(text.encode("utf-8")).decode("ascii")}
+        if sha:
+            body["sha"] = sha
+        if branch:
+            body["branch"] = branch
+        return self.put(f"/repos/{owner}/{repo}/contents/{path.strip('/')}", body) or {}
 
     # -- repo metadata ----------------------------------------------------
     def repo(self, owner: str, repo: str) -> dict:

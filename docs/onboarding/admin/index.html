@@ -85,6 +85,7 @@
             <tr><td>PUBLIC_BASE_URL</td><td>The public origin, so set-password emails link back to the right <code>/login</code>.</td><td>Set it to the class URL.</td></tr>
             <tr><td>WORK_MODE</td><td><code>auto</code> infers hosted mode from the Firebase and Firestore settings. Hosted mode hides the local dev-box path for build scenarios.</td><td>Leave on <code>auto</code>. Interview scenarios behave the same either way.</td></tr>
             <tr><td>GITHUB_TOKEN</td><td>Classroom-wide token for reading learners' public repos in build scenarios. No scopes needed.</td><td>Optional for interviews. Set it anyway; it costs nothing.</td></tr>
+            <tr><td>GITHUB_OAUTH_CLIENT_ID</td><td>A GitHub OAuth app (Settings → Developer settings → OAuth Apps, with <i>Device flow</i> enabled) so challengers can connect their account and edit their fork from the Files app.</td><td>Only for build scenarios. Without it, Files stays read-only for repos.</td></tr>
             <tr><td>GRADER_CALIBRATED</td><td>Removes the "directional" caveat from grades once the grader has been checked against human scores.</td><td>Leave unset until someone has run the calibration harness with real instructor scores.</td></tr>
           </tbody>
         </table></div>

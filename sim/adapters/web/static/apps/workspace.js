@@ -59,7 +59,13 @@ git push</div>
            </div>
            <div id="note" style="margin-top:8px">${note || ""}</div>
          </div>
+         <div class="card" id="ghcard" style="margin-top:12px">
+           <div class="row"><span class="k">Edit here</span><span class="v" id="ghstate" style="font-family:var(--ui)">Checking…</span></div>
+           <div class="actions"><button id="ghconnect">Connect GitHub</button><button id="ghdisconnect" hidden>Disconnect</button></div>
+           <div id="ghnote" class="muted" style="margin-top:8px"></div>
+         </div>
          <p class="muted">Only public repos can be read. Pushed changes show up after Refresh.</p>`;
+      wireGitHub();
       view.querySelector("#link").onclick = async () => {
         const url = view.querySelector("#url").value.trim();
         if (!url) { view.querySelector("#note").innerHTML = `<span class="err">Paste your repo URL.</span>`; return; }
@@ -76,6 +82,44 @@ git push</div>
         try { const r = await (await api(`/files/refresh`, { method: "POST" })).json();
           view.querySelector("#note").innerHTML = r.error ? `<span class="err">${esc(r.error)}</span>` : `<span class="ok">✓ Now at ${esc(r.revision)}</span>`;
         } catch (e) { view.querySelector("#note").innerHTML = `<span class="err">Refresh failed.</span>`; }
+      };
+    }
+
+    // ---- connect GitHub (device flow) so Files can commit to the fork ----------
+    let ghPoll = null;
+    async function wireGitHub() {
+      const stateEl = view.querySelector("#ghstate"), note = view.querySelector("#ghnote");
+      const btn = view.querySelector("#ghconnect"), off = view.querySelector("#ghdisconnect");
+      if (!stateEl) return;
+      let me = null;
+      try { me = await (await fetch("/api/auth/me")).json(); } catch (e) {}
+      if (!me || !me.uid || me.role === undefined) { view.querySelector("#ghcard").hidden = true; return; }
+      if (!me.github_oauth) { stateEl.textContent = "Not available on this server; push from your machine and press Refresh."; btn.hidden = true; return; }
+      const show = () => {
+        if (me.github_connected) { stateEl.innerHTML = `<span class="ok">✓ Connected. Files saves commit straight to your fork.</span>`; btn.hidden = true; off.hidden = false; }
+        else { stateEl.textContent = "Connect your GitHub account and the Files app becomes an editor for this repo: every save is a commit to your fork."; btn.hidden = false; off.hidden = true; }
+      };
+      show();
+      btn.onclick = async () => {
+        btn.disabled = true; note.textContent = "Asking GitHub for a code…";
+        let r;
+        try { r = await (await fetch("/api/me/github/connect", { method: "POST" })).json(); }
+        catch (e) { note.innerHTML = `<span class="err">Could not reach the server.</span>`; btn.disabled = false; return; }
+        if (r.error) { note.innerHTML = `<span class="err">${esc(r.error)}</span>`; btn.disabled = false; return; }
+        note.innerHTML = `Open <a href="${esc(r.verification_uri)}" target="_blank" rel="noopener" style="color:var(--me)">${esc(r.verification_uri)}</a> and enter the code <b class="cmd" style="display:inline;padding:2px 8px;font-size:15px">${esc(r.user_code)}</b>. Waiting for you to approve…`;
+        const tick = async () => {
+          let s; try { s = await (await fetch("/api/me/github/connect")).json(); } catch (e) { s = { status: "pending", interval: 5 }; }
+          if (s.status === "pending") { ghPoll = setTimeout(tick, Math.max(3, s.interval || 5) * 1000); return; }
+          btn.disabled = false;
+          if (s.status === "connected") { me.github_connected = true; note.innerHTML = `<span class="ok">✓ Connected (${esc(s.scope)}). Open Files: it is editable now.</span>`; show(); if (ctx.scenario && ctx.scenario.workflow) { ctx.scenario.workflow.editable = true; ctx.scenario.workflow.writes_to_repo = true; } }
+          else note.innerHTML = `<span class="err">${esc(s.error || s.status)}</span>`;
+        };
+        ghPoll = setTimeout(tick, Math.max(3, r.interval || 5) * 1000);
+      };
+      off.onclick = async () => {
+        await fetch("/api/me/github/connect", { method: "DELETE" });
+        me.github_connected = false; show(); note.textContent = "Disconnected. Files is read-only for this repo again.";
+        if (ctx.scenario && ctx.scenario.workflow) { ctx.scenario.workflow.editable = false; ctx.scenario.workflow.writes_to_repo = false; }
       };
     }
 
@@ -144,6 +188,6 @@ git push</div>
     if (wf.kind === "repo") repoView();
     else if (wf.kind === "doc") docView();
     else refresh();
-    return { unmount() {} };
+    return { unmount() { if (ghPoll) clearTimeout(ghPoll); } };
   }
 });

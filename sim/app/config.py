@@ -36,6 +36,7 @@ class Config:
     byok_secret: str = ""                   # Fernet secret for per-user Groq keys
     public_base_url: str = ""               # e.g. https://worksim.example.com; else derived from requests
     work_mode: str = "auto"                 # auto | local | hosted (see sim/core/workflow.py)
+    github_oauth_client_id: str = ""        # GitHub OAuth app (device flow) so Files can commit to a fork
 
     @property
     def hosted(self) -> bool:
@@ -77,4 +78,5 @@ class Config:
             byok_secret=os.environ.get("BYOK_SECRET", ""),
             public_base_url=os.environ.get("PUBLIC_BASE_URL", "").rstrip("/"),
             work_mode=os.environ.get("WORK_MODE", "auto").lower(),
+            github_oauth_client_id=os.environ.get("GITHUB_OAUTH_CLIENT_ID", ""),
         )

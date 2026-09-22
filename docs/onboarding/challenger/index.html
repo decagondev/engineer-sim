@@ -87,7 +87,9 @@
           <li>Press <b>Create API Key</b>, give it a name such as <i>flight-sim</i>, and copy the key. It starts with <code>gsk_</code> and is shown once.</li>
           <li>Back in Settings, paste it into <b>Groq API key</b> and press <b>Save key</b>. The simulator checks it against Groq immediately, then stores it encrypted. It is never displayed again; <b>Remove key</b> deletes it.</li>
         </ol>
-        <h3>Getting a GitHub token (build scenarios only)</h3>
+        <h3>Connecting GitHub (build scenarios on the hosted server)</h3>
+        <p>In the Workspace app, <b>Connect GitHub</b> shows a short code; enter it at github.com/login/device and approve. From then on the Files app edits your fork directly: every Save is a commit. <b>Disconnect</b> revokes it here (and you can revoke the app under GitHub → Settings → Applications). This replaces pasting a token for the repo scenarios; the classroom's own token can never write to your repo.</p>
+        <h3>Getting a GitHub token (read-only alternative)</h3>
         <ol>
           <li>Open <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>. GitHub's own walkthrough is at <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noopener">Managing your personal access tokens</a>.</li>
           <li>Create a token. <b>No scopes or permissions are needed</b>: the simulator only reads public repos, the token just raises your API rate limit. A 90-day expiry is fine.</li>

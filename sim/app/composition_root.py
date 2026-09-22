@@ -356,5 +356,26 @@ def build_app(config: Config | None = None):
         auth=build_auth(config, manager),
         public_base_url=config.public_base_url,
         hosted=config.hosted,
-        repo_files=GitHubWorkspaceFiles(api=github.api),
+        repo_files=GitHubWorkspaceFiles(api=github.api, can_write=_github_can_write(manager.users)),
+        github_oauth=_build_github_oauth(config),
     )
+
+
+def _github_can_write(users):
+    """True when the current request's user connected GitHub with a scope that
+    allows commits (public_repo or repo). Pasted read-only tokens never write."""
+    def can_write() -> bool:
+        from sim.adapters.llm.request_context import current_uid
+        uid = current_uid.get()
+        if not uid or users is None:
+            return False
+        rec = users.get(uid)
+        scope = (getattr(rec, "github_scope", "") or "") if rec else ""
+        return bool(getattr(rec, "github_token_enc", "")) and any(
+            s in ("public_repo", "repo") for s in scope.replace(",", " ").split())
+    return can_write
+
+
+def _build_github_oauth(config: Config):
+    from sim.adapters.auth.github_oauth import GitHubDeviceFlow
+    return GitHubDeviceFlow(config.github_oauth_client_id)

@@ -161,6 +161,13 @@ in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
 sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
 `grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
+**GitHub connect** (`ports/oauth.py`, `adapters/auth/github_oauth.py` device flow behind
+`GITHUB_OAUTH_CLIENT_ID`): `/api/me/github/connect` POST/GET/DELETE stores the OAuth token in the
+same encrypted field as a pasted token plus `UserRecord.github_scope`. `GitHubWorkspaceFiles.write_file`
+commits through the contents API only when its injected `can_write()` (composition root: current
+user has a write scope) says so; the classroom token never writes. `_workflow_payload` flips
+`editable` for the `repo` workflow per request.
+
 **Live view, audit, archive:** `adapters/web/live.py::SessionBus` carries wake-ups (no data) from
 the chat loop, submit and grade routes to `/ws/watch/{sid}` watchers, which re-read the
 transcript; the replay's Live chip uses it. Every non-GET `/api/admin/*` request is appended to

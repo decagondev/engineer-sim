@@ -105,7 +105,7 @@ SimApps.register({
       parts.forEach(seg => { acc = join(acc, seg); html += ` <span class="sep">/</span> <a data-p="${esc(acc)}">${esc(seg)}</a>`; });
       html += `<span class="sp"></span>` +
         (revision ? `<span class="rev">@ ${esc(revision)}</span>` : "") +
-        `<span class="mode ${wf.editable ? "" : "ro"}">${wf.editable ? "editable" : "read-only · push to update"}</span>` +
+        `<span class="mode ${wf.editable ? "" : "ro"}">${wf.editable ? (wf.writes_to_repo ? "editable · saves commit to your fork" : "editable") : "read-only · push to update"}</span>` +
         `<button class="changes" title="Everything changed since the starter">What changed</button>` +
         `<button class="refresh" title="Re-read the workspace">Refresh</button>`;
       bar.innerHTML = html;
@@ -217,7 +217,7 @@ SimApps.register({
           body: JSON.stringify({ path: p, text: t.text }) })).json();
         if (r.error) { say(r.error, "bad"); return; }
         t.saved = t.text; t.dirty = false; revision = r.revision || revision;
-        say(`Saved ${p.split("/").pop()}`, "ok"); renderTabs(); renderBar();
+        say(wf.writes_to_repo ? `Committed ${p.split("/").pop()} to your fork` : `Saved ${p.split("/").pop()}`, "ok"); renderTabs(); renderBar();
       } catch (e) { say("Save failed — check your connection.", "bad"); }
     }
     async function saveAllDirty() {

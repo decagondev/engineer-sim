@@ -124,6 +124,7 @@ class AuthServices:
                     last_login=_now(), name=rec.name,
                     groq_key_enc=rec.groq_key_enc,
                     github_token_enc=rec.github_token_enc,
+                    github_scope=rec.github_scope,
                 ))
         if rec.disabled:
             raise IdentityError("account disabled", status=403)

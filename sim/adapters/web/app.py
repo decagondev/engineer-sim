@@ -19,7 +19,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                    instructor_password: str = "", github_observer=None,
                    auth=None,
                    public_base_url: str = "", hosted: bool = False,
-                   repo_files=None) -> FastAPI:
+                   repo_files=None, github_oauth=None) -> FastAPI:
     """Web adapter. Resolves each session to a per-scenario bundle via the manager;
     grader / build observer / file reader / settings are app-global.
     """
@@ -39,6 +39,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.archive = getattr(manager, "archive", None)
     from sim.adapters.web.live import SessionBus
     app.state.bus = SessionBus()
+    app.state.github_oauth = github_oauth
+    app.state.github_pending = {}          # uid -> {device_code, interval, started}
+    app.state.github_can_write = getattr(getattr(repo_files, "_can_write", None), "__call__", None)
     app.state.github_observer = github_observer
     if auth is None:
         from sim.adapters.auth.services import AuthServices
@@ -86,6 +89,22 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     def _workflow(session_id):
         return resolve_workflow(b(session_id).scenario.track, app.state.hosted)
+
+    def _repo_writable() -> bool:
+        """May the current request commit to a linked repo? (Connected GitHub
+        with a write scope; decided by the files adapter's can_write.)"""
+        fn = app.state.github_can_write
+        try:
+            return bool(fn()) if fn else False
+        except Exception:
+            return False
+
+    def _workflow_payload(session_id) -> dict:
+        wf = _workflow(session_id).as_dict()
+        if wf["kind"] == "repo" and _repo_writable():
+            wf["editable"] = True
+            wf["writes_to_repo"] = True
+        return wf
 
     def _session_level(session_id: str) -> str:
         from sim.core.levels import DEFAULT_LEVEL
@@ -259,6 +278,13 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"scenarios": out, "default": manager.default_scenario_key(),
                 "hosted": app.state.hosted}
 
+    def _workflow_payload_for(sc) -> dict:
+        wf = resolve_workflow(sc.track, app.state.hosted).as_dict()
+        if wf["kind"] == "repo" and _repo_writable():
+            wf["editable"] = True
+            wf["writes_to_repo"] = True
+        return wf
+
     def _scenario_info(sc):
         starter_url = (app.state.settings.get_scenario_starter_url(sc.key)
                        if app.state.settings else None)
@@ -267,7 +293,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 "starter_url": starter_url,
                 "timebox_minutes": getattr(sc, "timebox_minutes", 0),
                 "hosted": app.state.hosted,
-                "workflow": resolve_workflow(sc.track, app.state.hosted).as_dict(),
+                "workflow": _workflow_payload_for(sc),
                 "personas": [{"key": p.key, "name": p.name, "role": p.role,
                               "lane": getattr(p, "lane", "")}
                              for p in sc.personas]}
@@ -823,8 +849,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             entries = svc.list_dir(root, session_id, path)
         except (_NoWorkspace, ValueError, NotADirectoryError, FileNotFoundError) as e:
             return _ws_error(e)
-        wf = _workflow(session_id)
-        return {"path": path, "editable": wf.editable, "entries": [
+        wf = _workflow_payload(session_id)
+        return {"path": path, "editable": wf["editable"], "entries": [
             {"name": e.name, "is_dir": e.is_dir, "size": e.size} for e in entries]}
 
     @app.get("/api/session/{session_id}/files/read")
@@ -839,10 +865,11 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     @app.put("/api/session/{session_id}/files/write")
     def files_write(session_id: str, payload: dict):
         from sim.core.ports.workspace import ReadOnlyWorkspace
-        wf = _workflow(session_id)
-        if not wf.editable:
-            return JSONResponse({"error": "this workspace is read-only: push to your "
-                                          "repo and press Refresh"}, status_code=405)
+        wf = _workflow_payload(session_id)
+        if not wf["editable"]:
+            return JSONResponse({"error": "this workspace is read-only: connect GitHub in the "
+                                          "Workspace app to edit here, or push and press Refresh"},
+                                status_code=405)
         path = (payload or {}).get("path", "")
         text = (payload or {}).get("text")
         if not isinstance(text, str):
@@ -1053,7 +1080,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         return {"uid": p.uid, "email": p.email, "role": p.role, "disabled": False,
                 "name": rec.name if rec else "",
                 "has_groq_key": bool(rec.groq_key_enc) if rec else False,
-                "has_github_token": bool(rec.github_token_enc) if rec else False}
+                "has_github_token": bool(rec.github_token_enc) if rec else False,
+                "github_connected": bool(rec and rec.github_token_enc and rec.github_scope),
+                "github_oauth": bool(getattr(app.state.github_oauth, "configured", False))}
 
     @app.patch("/api/me")
     def patch_me(request: Request, payload: dict):
@@ -1098,14 +1127,87 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 return JSONResponse({"error": str(e)}, status_code=400)
             from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
             gh = encrypt_secret(secret_from_config(manager._config), raw)
+        scope = rec.github_scope if gh == rec.github_token_enc else ""   # a pasted token is read-only
         rec = auth.users.upsert(UserRecord(
             uid=rec.uid, email=rec.email, role=rec.role, disabled=rec.disabled,
             created_at=rec.created_at, last_login=rec.last_login,
-            name=name, groq_key_enc=enc, github_token_enc=gh,
+            name=name, groq_key_enc=enc, github_token_enc=gh, github_scope=scope,
         ))
         return {"ok": True, "name": rec.name,
                 "has_groq_key": bool(rec.groq_key_enc),
-                "has_github_token": bool(rec.github_token_enc)}
+                "has_github_token": bool(rec.github_token_enc),
+                "github_connected": bool(rec.github_token_enc and rec.github_scope)}
+
+    # ---- GitHub connect (device flow) -------------------------------------
+    def _me_record(request: Request):
+        auth = app.state.auth
+        p = getattr(request.state, "principal", None) if auth.gated else None
+        if p is None or auth.users is None:
+            return None, JSONResponse({"error": "sign-in required"}, status_code=400)
+        rec = auth.users.get(p.uid)
+        if rec is None:
+            return None, JSONResponse({"error": "not found"}, status_code=404)
+        return rec, None
+
+    @app.post("/api/me/github/connect")
+    def github_connect_start(request: Request):
+        """Begin the device flow: the user types the code at GitHub, then the
+        page polls GET until the token arrives."""
+        import time
+        from sim.core.ports.oauth import OAuthError
+        broker = app.state.github_oauth
+        if broker is None or not getattr(broker, "configured", False):
+            return JSONResponse({"error": "GitHub sign-in is not configured on this server "
+                                          "(GITHUB_OAUTH_CLIENT_ID)"}, status_code=501)
+        rec, err = _me_record(request)
+        if err:
+            return err
+        try:
+            code = broker.start("public_repo")
+        except OAuthError as e:
+            return JSONResponse({"error": str(e)}, status_code=502)
+        app.state.github_pending[rec.uid] = {"device_code": code.device_code, "interval": code.interval,
+                                             "started": time.monotonic(), "expires_in": code.expires_in}
+        return {"user_code": code.user_code, "verification_uri": code.verification_uri,
+                "interval": code.interval, "expires_in": code.expires_in}
+
+    @app.get("/api/me/github/connect")
+    def github_connect_poll(request: Request):
+        import dataclasses
+        import time
+        from sim.core.ports.oauth import OAuthError
+        from sim.adapters.auth.secretbox import encrypt_secret, secret_from_config
+        rec, err = _me_record(request)
+        if err:
+            return err
+        pending = app.state.github_pending.get(rec.uid)
+        if not pending:
+            return {"status": "idle", "connected": bool(rec.github_token_enc and rec.github_scope)}
+        if time.monotonic() - pending["started"] > pending.get("expires_in", 900):
+            app.state.github_pending.pop(rec.uid, None)
+            return {"status": "expired"}
+        try:
+            token = app.state.github_oauth.poll(pending["device_code"])
+        except OAuthError as e:
+            app.state.github_pending.pop(rec.uid, None)
+            return {"status": "failed", "error": str(e)}
+        if token is None:
+            return {"status": "pending", "interval": pending["interval"]}
+        app.state.github_pending.pop(rec.uid, None)
+        enc = encrypt_secret(secret_from_config(manager._config), token.access_token)
+        app.state.auth.users.upsert(dataclasses.replace(rec, github_token_enc=enc,
+                                                        github_scope=token.scope or "public_repo"))
+        return {"status": "connected", "scope": token.scope or "public_repo"}
+
+    @app.delete("/api/me/github/connect")
+    def github_disconnect(request: Request):
+        import dataclasses
+        rec, err = _me_record(request)
+        if err:
+            return err
+        app.state.github_pending.pop(rec.uid, None)
+        app.state.auth.users.upsert(dataclasses.replace(rec, github_token_enc="", github_scope=""))
+        return {"ok": True}
 
     @app.get("/api/me/sessions")
     def my_sessions(request: Request):
@@ -2210,7 +2312,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         rec = auth.users.upsert(UserRecord(
             uid=rec.uid, email=email, role=role, disabled=disabled,
             created_at=rec.created_at, last_login=rec.last_login, name=name,
-            groq_key_enc=rec.groq_key_enc, github_token_enc=rec.github_token_enc))
+            groq_key_enc=rec.groq_key_enc, github_token_enc=rec.github_token_enc,
+            github_scope=rec.github_scope))
         if "cohort_ids" in body:
             cids = _sync_user_cohorts(rec.uid, body.get("cohort_ids"))
         else:

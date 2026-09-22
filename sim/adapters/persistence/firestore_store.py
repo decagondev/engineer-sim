@@ -628,7 +628,8 @@ class FirestoreUserDirectory:
             disabled=user.disabled, created_at=created, last_login=last,
             name=user.name,
             groq_key_enc=user.groq_key_enc,
-            github_token_enc=user.github_token_enc)
+            github_token_enc=user.github_token_enc,
+            github_scope=user.github_scope)
         self._db.collection("users").document(rec.uid).set({
             "uid": rec.uid, "email": rec.email,
             "email_lower": (rec.email or "").lower(),
@@ -637,6 +638,7 @@ class FirestoreUserDirectory:
             "name": rec.name,
             "groq_key_enc": rec.groq_key_enc,
             "github_token_enc": rec.github_token_enc,
+            "github_scope": rec.github_scope,
         })
         return rec
 
@@ -667,6 +669,7 @@ class FirestoreUserDirectory:
             name=d.get("name") or "",
             groq_key_enc=d.get("groq_key_enc") or "",
             github_token_enc=d.get("github_token_enc") or "",
+            github_scope=d.get("github_scope") or "",
         )
 
 
