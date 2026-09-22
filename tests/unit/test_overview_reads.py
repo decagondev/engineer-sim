@@ -161,11 +161,12 @@ def test_scoped_listings_use_firestore_filters(tmp_path, monkeypatch):
             c.post("/api/instructor/sessions", json={"scenario": "iv_parking",
                                                      "assignee_email": "c@t.local" if i == 0 else ""}, headers=h)
 
-    where_calls.clear(); counts["stream"] = 0
+    c.get("/api/instructor/sessions", headers=insts[0])      # first listing backfills the index
+    where_calls.clear(); counts["stream"] = counts["get"] = 0
     rows = c.get("/api/instructor/sessions", headers=insts[0]).json()["sessions"]
     assert len(rows) == 3 and all(r["owner"] == "i0@t.local" for r in rows)
     assert any(f == "owner_uid" for f, _ in where_calls), "instructor listing must be scoped in the query"
-    assert counts["stream"] <= 3, counts
+    assert counts["stream"] <= 3 and counts["get"] <= 6, counts
 
     where_calls.clear()
     mine = c.get("/api/me/sessions", headers=chal).json()["sessions"]
