@@ -29,7 +29,12 @@ class FakeGitHub:
     def __call__(self, path):
         self.calls.append(path)
         if path == "/repos/o/r":
-            return {"default_branch": "main", "fork": False}
+            return {"default_branch": "main", "fork": True,
+                    "parent": {"owner": {"login": "teacher"}, "default_branch": "main",
+                               "full_name": "teacher/starter"}}
+        if path.startswith("/repos/o/r/compare/"):
+            return {"files": [{"filename": "src/app.py", "status": "modified", "additions": 1,
+                               "deletions": 0, "patch": "@@ -1 +1,2 @@\n print(1)\n+print(2)"}]}
         if path == "/repos/o/r/branches/main":
             return {"commit": {"sha": self.sha}}
         if path.startswith("/repos/o/r/commits"):

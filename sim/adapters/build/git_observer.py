@@ -3,6 +3,18 @@ from __future__ import annotations
 import subprocess
 
 
+def git_net_diff(repo_path: str, max_chars: int = 0) -> str:
+    """Unified diff of HEAD (plus the working tree) against the first commit,
+    i.e. everything the engineer changed since the starter. '' when the folder
+    is not a git repo or nothing changed."""
+    first = GitBuildObserver._git(repo_path, ["rev-list", "--max-parents=0", "HEAD"])
+    first = first.splitlines()[0] if first else ""
+    if not first:
+        return ""
+    out = GitBuildObserver._git(repo_path, ["diff", first])   # index + working tree vs baseline
+    return out[:max_chars] if max_chars else out
+
+
 class GitBuildObserver:
     """BuildRecordSource backed by a local git repo. Reads the commit timeline
     and the net diff so the grader can see HOW the engineer built, not just the

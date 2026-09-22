@@ -77,6 +77,11 @@ class LocalWorkspaceReader:
     def refresh(self, workdir: str) -> str:
         return self._git(workdir, "rev-parse", "--short", "HEAD") or "working copy"
 
+    def diff(self, workdir: str) -> str:
+        """What changed since the starter, as a unified diff."""
+        from sim.adapters.build.git_observer import git_net_diff
+        return git_net_diff(workdir)
+
     def snapshot(self, workdir: str, message: str = "submission") -> str:
         """Commit everything in the working tree; returns the new short sha or ''."""
         self._git(workdir, "add", "-A")

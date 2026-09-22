@@ -39,6 +39,14 @@ SimApps.register({
   .files .edwrap.split .gutter{display:block}
   .files .edwrap .gutter:hover,.files .edwrap .gutter.drag{background:var(--me)}
   .files .status .wc{font-variant-numeric:tabular-nums}
+  .files .diffview{display:none;flex:1;min-width:0;overflow:auto;padding:14px 18px;background:var(--ink)}
+  .files .edwrap.diffing .diffview{display:block}
+  .files .edwrap.diffing .sim-ed,.files .edwrap.diffing .preview,.files .edwrap.diffing .gutter{display:none!important}
+  .files .diffview .dfile{margin:0 0 14px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .files .diffview .dfile summary{cursor:pointer;padding:8px 12px;font:12.5px var(--mono);color:var(--text);background:var(--panel)}
+  .files .diffview .dfile pre{margin:0;padding:10px 12px;font:12px/1.55 var(--mono);white-space:pre;overflow-x:auto}
+  .files .diffview .dfile .add{color:#c3e88d}.files .diffview .dfile .del{color:#f07178}.files .diffview .dfile .hunk{color:#89ddff}
+  .files .tab.special{color:var(--sig)}
   .files .preview .md{max-width:72ch}
   .files .preview .pvlab{font:10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 12px}
   @media (max-width:900px){.files .edwrap.split{flex-direction:column}.files .preview{border-left:0;border-top:1px solid var(--line)}}
@@ -57,7 +65,7 @@ SimApps.register({
         <div class="listing"></div>
         <div class="pane">
           <div class="tabs"></div>
-          <div class="edwrap"><div class="note">Select a file to open it.</div><div class="gutter" title="Drag to resize"></div><div class="preview"><p class="pvlab">Preview</p><div class="md pvbody"></div></div></div>
+          <div class="edwrap"><div class="note">Select a file to open it.</div><div class="gutter" title="Drag to resize"></div><div class="preview"><p class="pvlab">Preview</p><div class="md pvbody"></div></div><div class="diffview"></div></div>
           <div class="status"><span class="msg"></span><span class="sp"></span><span class="wc"></span>
             <button class="ins" hidden title="Insert a mermaid diagram template at the cursor">Insert diagram</button>
             <button class="pv" hidden>Preview</button><button class="primary save" hidden>Save</button></div>
@@ -98,10 +106,12 @@ SimApps.register({
       html += `<span class="sp"></span>` +
         (revision ? `<span class="rev">@ ${esc(revision)}</span>` : "") +
         `<span class="mode ${wf.editable ? "" : "ro"}">${wf.editable ? "editable" : "read-only · push to update"}</span>` +
+        `<button class="changes" title="Everything changed since the starter">What changed</button>` +
         `<button class="refresh" title="Re-read the workspace">Refresh</button>`;
       bar.innerHTML = html;
       bar.querySelectorAll("a").forEach(a => a.onclick = () => nav(a.dataset.p));
       bar.querySelector(".refresh").onclick = refresh;
+      bar.querySelector(".changes").onclick = showDiff;
     }
     function renderList() {
       listing.innerHTML = "";
@@ -140,6 +150,7 @@ SimApps.register({
 
     // ---- tabs + editor ----------------------------------------------------
     async function openFile(path) {
+      if (diffing) hideDiff();
       if (!tabs.has(path)) {
         const c = await (await api(`/files/read?path=${encodeURIComponent(path)}`)).json();
         if (c.error) { say(c.error, "bad"); return; }
@@ -212,6 +223,29 @@ SimApps.register({
     async function saveAllDirty() {
       for (const [p, t] of tabs) if (t.dirty) await save(p);
     }
+    // "What changed": a read-only unified diff against the starter, one collapsible block per file
+    let diffing = false;
+    async function showDiff() {
+      const view = q(".diffview");
+      diffing = true; edwrap.classList.add("diffing");
+      view.innerHTML = `<div class="note">Comparing with the starter…</div>`;
+      let d;
+      try { d = await (await api(`/files/diff`)).json(); } catch (e) { view.innerHTML = `<div class="note">Could not load the diff.</div>`; return; }
+      if (d.error) { view.innerHTML = `<div class="note">${esc(d.error)}</div>`; return; }
+      if (!d.diff) { view.innerHTML = `<div class="note">${esc(d.note || "No changes yet.")}</div><div class="note"><a href="#" class="back">Back to the editor</a></div>`; view.querySelector(".back").onclick = e => { e.preventDefault(); hideDiff(); }; return; }
+      const files = d.diff.split(/^(?=diff --git )/m).filter(Boolean);
+      view.innerHTML = `<div class="note" style="padding:0 0 10px">${files.length} file${files.length===1?"":"s"} changed since the starter. <a href="#" class="back">Back to the editor</a></div>` +
+        files.map((f, i) => {
+          const name = (f.match(/^diff --git a\/(.*?) b\//) || [])[1] || `file ${i+1}`;
+          const body = f.split("\n").slice(1).map(l => {
+            const c = l.startsWith("+++") || l.startsWith("---") ? "meta" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : l.startsWith("@@") ? "hunk" : "";
+            return `<span class="${c}">${esc(l)}</span>`;
+          }).join("\n");
+          return `<details class="dfile" ${i < 6 ? "open" : ""}><summary>${esc(name)}</summary><pre>${body}</pre></details>`;
+        }).join("");
+      view.querySelector(".back").onclick = e => { e.preventDefault(); hideDiff(); };
+    }
+    function hideDiff() { diffing = false; edwrap.classList.remove("diffing"); if (editor && editor.refresh) editor.refresh(); }
     function updateWordCount() {
       const isMd = !!(active && /\.(md|markdown)$/i.test(active));
       wcEl.textContent = (isMd && editor && editor.wordCount) ? `${editor.wordCount()} words` : "";

@@ -161,6 +161,13 @@ in `tests/unit/test_overview_reads.py` counts reads against the fake Firestore.
 sign-ins in `AuthServices._sync_directory` and hides the button on `/login`),
 `grader_calibrated` (None = env var) and `announcement`; edited on `/admin` → Settings.
 
+**Cohort results** (`sim/core/reporting/cohort.py`, pure): per-criterion distribution and
+per-member totals from enriched rows plus merged grade bodies fetched with
+`GradeStore.list_many` (one query / one `get_all`). Route `/api/instructor/cohorts/{cid}/results`
+(+ `.csv`), cached under `cohort:{cid}:{scenario}`. **Diff view:** `WorkspaceFiles.diff` (local:
+`git_net_diff` against the first commit, shared with the build observer; GitHub: compare API on
+a fork) behind `/files/diff`, drawn by the Files app's "What changed".
+
 **Interview timebox and defense stats:** `Scenario.timebox_minutes` (YAML, generated as 20 for
 `iv_*`) is emitted as a `[timebox:N]` signal at start; `interview.timebox_overrun` and
 `assessment_stats` are pure helpers, surfaced by `SessionService.assessment_summary` into the

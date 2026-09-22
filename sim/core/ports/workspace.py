@@ -38,6 +38,10 @@ class WorkspaceFiles(Protocol):
         """Re-read the source and return a short revision label."""
         ...
 
+    def diff(self, root: str) -> str:
+        """Unified diff of the workspace against its starter ('' when unknown)."""
+        ...
+
 
 # Older name, kept for adapters and tests that only read.
 WorkspaceReader = WorkspaceFiles

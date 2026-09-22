@@ -97,6 +97,28 @@ class GitHubWorkspaceFiles:
     def write_file(self, root: str, relpath: str, text: str) -> None:
         raise ReadOnlyWorkspace("this workspace mirrors your GitHub repo: push, then Refresh")
 
+    def diff(self, root: str) -> str:
+        """Net changes against the fork parent via the compare API (only a
+        fork has a starter to compare with)."""
+        owner, repo = self._key(root)
+        info = self._api.repo(owner, repo)
+        parent = info.get("parent") if info.get("fork") else None
+        if not parent:
+            return ""
+        base = f"{parent['owner']['login']}:{parent.get('default_branch', 'main')}"
+        head = f"{owner}:{info.get('default_branch', 'main')}"
+        try:
+            cmp = self._api.compare(owner, repo, base, head)
+        except GitHubReadError:
+            return ""
+        parts = []
+        for f in cmp.get("files", []):
+            name = f.get("filename", "")
+            parts.append(f"diff --git a/{name} b/{name}")
+            parts.append(f"--- a/{name}\n+++ b/{name}")
+            parts.append(f.get("patch") or f"(binary or too large: {f.get('status', '?')})")
+        return "\n".join(parts)
+
     def refresh(self, root: str) -> str:
         snap = self._snapshot(root, force=True)
         return snap.sha[:7] if snap.sha else "(empty repo)"

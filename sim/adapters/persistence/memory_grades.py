@@ -16,5 +16,8 @@ class InMemoryGradeStore:
     def get(self, session_id: str) -> Optional[StoredGrade]:
         return self._rows.get(session_id)
 
+    def list_many(self, session_ids) -> dict:
+        return {s: self._rows[s] for s in session_ids if s in self._rows}
+
     def delete_for_session(self, session_id: str) -> None:
         self._rows.pop(session_id, None)

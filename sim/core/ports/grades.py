@@ -24,4 +24,9 @@ class GradeStore(Protocol):
 
     def get(self, session_id: str) -> Optional[StoredGrade]: ...
 
+    def list_many(self, session_ids) -> dict:
+        """{session_id: StoredGrade} for the ids that have one, in one round trip
+        where the store allows it."""
+        ...
+
     def delete_for_session(self, session_id: str) -> None: ...

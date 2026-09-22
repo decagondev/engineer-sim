@@ -380,6 +380,7 @@ async function renderCohort(){
       <div class="field"><label><input type="checkbox" id="co-skip" checked/> Skip challengers who already have this scenario</label></div>
       <div id="co-members" class="muted">Loading members…</div>
       <button class="primary" id="co-create">Create sessions</button>
+      <button id="co-results" type="button">Results for this scenario</button>
       <div id="co-result"></div>
     </div>`;
   const coSel = el("co-sel"), scSel = el("co-sc"), lvSel = el("co-lv"), skip = el("co-skip");
@@ -412,6 +413,25 @@ async function renderCohort(){
   }
   coSel.onchange = loadMembers; scSel.onchange = loadMembers; skip.onchange = renderMembers;
   await loadMembers();
+  el("co-results").onclick = async () => {
+    el("co-result").innerHTML = suspense("Collecting grades…");
+    let d;
+    try { d = await (await fetch(`/api/instructor/cohorts/${encodeURIComponent(coSel.value)}/results?scenario=${encodeURIComponent(scSel.value)}&fresh=1`,{headers:hdr()})).json(); }
+    catch(e){ el("co-result").innerHTML = `<div class="match bad">Could not load results.</div>`; return; }
+    if (d.error) { el("co-result").innerHTML = `<div class="match bad">${esc(d.error)}</div>`; return; }
+    const r = d.report, pct = x => x==null ? "—" : Math.round(x*100)+"%";
+    const strip = c => c.n ? `<svg viewBox="0 0 100 10" preserveAspectRatio="none" style="width:100%;height:10px;display:block">${c.values.map(v=>`<rect x="${(v*100).toFixed(1)}" y="0" width="1.2" height="10" fill="#3987e5" opacity=".7"/>`).join("")}<rect x="${(c.q1*100).toFixed(1)}" y="3" width="${((c.q3-c.q1)*100).toFixed(1)}" height="4" fill="none" stroke="#8a93a4" stroke-width=".8"/></svg>` : "";
+    el("co-result").innerHTML = `
+      <div class="match ok" style="margin-top:16px"><b>${esc(d.title)}</b> · ${r.members.length} members · ${r.submitted} submitted · ${r.graded} graded · mean ${pct(r.total_mean)} · median ${pct(r.total_median)}</div>
+      <div class="linkbox"><a href="/api/instructor/cohorts/${encodeURIComponent(coSel.value)}/results.csv?scenario=${encodeURIComponent(scSel.value)}" target="_blank" rel="noopener"><button>Download CSV</button></a></div>
+      <div class="co-head" style="margin-top:12px"><b>Per criterion</b> <span class="muted">· mean, median, and each member's score (box = middle half)</span></div>
+      <table class="rtable"><thead><tr><th>Criterion</th><th>n</th><th>Mean</th><th>Median</th><th>Low</th><th>High</th><th style="min-width:160px">Distribution</th></tr></thead><tbody>${
+        r.criteria.map(c=>`<tr><td>${esc(c.key)}</td><td>${c.n}</td><td>${pct(c.mean)}</td><td>${pct(c.median)}</td><td>${pct(c.lowest)}</td><td>${pct(c.highest)}</td><td>${strip(c)}</td></tr>`).join("")}</tbody></table>
+      <div class="co-head" style="margin-top:14px"><b>Members</b>${r.not_submitted.length ? ` <span class="muted">· ${r.not_submitted.length} not submitted</span>` : ""}</div>
+      <table class="rtable"><thead><tr><th>Name</th><th>State</th><th>Model</th><th>Reviewed</th>${r.criteria.map(c=>`<th>${esc(c.key)}</th>`).join("")}<th></th></tr></thead><tbody>${
+        r.members.map(m=>`<tr><td>${esc(m.name||m.email)}<div class="muted">${esc(m.email)}</div></td><td>${m.state==="no_session" ? `<span class="muted">no session</span>` : stateChip(m.state)}</td><td>${pct(m.model_total)}</td><td>${pct(m.review_total)}</td>${r.criteria.map(c=>`<td>${m.scores[c.key]==null?"—":pct(m.scores[c.key])}</td>`).join("")}<td>${m.session_id ? `<button data-replay="${esc(m.session_id)}">Replay</button>` : ""}</td></tr>`).join("")}</tbody></table>`;
+    el("co-result").querySelectorAll("[data-replay]").forEach(b=> b.onclick = ()=> openReplay(b.dataset.replay));
+  };
   el("co-create").onclick = async ()=>{
     const btn = el("co-create");
     btn.disabled = true;

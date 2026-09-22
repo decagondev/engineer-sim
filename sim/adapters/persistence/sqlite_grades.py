@@ -53,6 +53,20 @@ class SqliteGradeStore:
                            include_tickets=bool(r["include_tickets"]), calibrated=bool(r["calibrated"]),
                            body=body)
 
+    def list_many(self, session_ids) -> dict:
+        ids = [s for s in session_ids if s]
+        if not ids:
+            return {}
+        out = {}
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            for r in self._conn.execute(f"SELECT session_id FROM grades WHERE session_id IN ({marks})", chunk):
+                g = self.get(r["session_id"])
+                if g:
+                    out[g.session_id] = g
+        return out
+
     def delete_for_session(self, session_id: str) -> None:
         self._conn.execute("DELETE FROM grades WHERE session_id=?", (session_id,))
         self._conn.commit()

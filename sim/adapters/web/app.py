@@ -849,6 +849,24 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         except Exception as e:
             return f"(refresh failed: {e})"
 
+    @app.get("/api/session/{session_id}/files/diff")
+    def files_diff(session_id: str):
+        """What changed since the starter: a unified diff, read-only."""
+        try:
+            svc, root = _ws(session_id)
+        except _NoWorkspace as e:
+            return _ws_error(e)
+        fn = getattr(svc.files, "diff", None)
+        if fn is None:
+            return {"diff": "", "note": "this workspace cannot be compared with its starter"}
+        try:
+            text = fn(root) or ""
+        except Exception as e:
+            return {"diff": "", "note": f"could not compute the diff: {e}"}
+        if len(text) > 400_000:
+            text = text[:400_000] + "\n... (truncated)"
+        return {"diff": text, "note": "" if text else "no changes against the starter yet"}
+
     @app.post("/api/session/{session_id}/files/refresh")
     def files_refresh(session_id: str):
         try:
@@ -1228,6 +1246,54 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             members.append({**m, "blocked": _assignable(m), "sessions": held})
         return {"id": rec.id, "name": rec.name, "notes": rec.notes,
                 "members": members}
+
+    def _cohort_report(cid: str, scenario: str):
+        from sim.core.reporting.cohort import cohort_results
+        store = _cohorts()
+        rec = store.get(cid) if store else None
+        if rec is None:
+            return None, JSONResponse({"error": "not found"}, status_code=404)
+        if scenario not in manager.registry:
+            return None, JSONResponse({"error": "no such scenario"}, status_code=400)
+        members = [m for m in _cohort_members(store, cid) if not _assignable(m)]
+        uids = {m["uid"] for m in members}
+        rows = [r for r in _enrich_sessions(_merge_known_sessions(all_registered=True))
+                if r.get("scenario") == scenario and r.get("assignee_uid") in uids]
+        grades = {}
+        if app.state.grades is not None and rows:
+            stored = app.state.grades.list_many([r["session_id"] for r in rows])
+            grades = {sid: _grade_payload(g) for sid, g in stored.items()}
+        report = cohort_results(scenario, members, rows, grades, manager.registry[scenario].rubric)
+        return report, None
+
+    @app.get("/api/instructor/cohorts/{cid}/results")
+    def instructor_cohort_results(cid: str, scenario: str = "", fresh: bool = False,
+                                  x_instructor_token: str = Header(default="")):
+        """How the cohort did on one scenario: per-criterion distribution, who
+        has not submitted, and every member's totals."""
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        def build():
+            report, err = _cohort_report(cid, scenario)
+            return {"error": err} if err is not None else {"report": report.as_dict(),
+                                                            "title": manager.registry[scenario].title}
+        data = _cached(f"cohort:{cid}:{scenario}", build, fresh)
+        if data.get("error") is not None:
+            return data["error"]
+        return data
+
+    @app.get("/api/instructor/cohorts/{cid}/results.csv")
+    def instructor_cohort_results_csv(cid: str, scenario: str = "",
+                                      x_instructor_token: str = Header(default="")):
+        from fastapi.responses import Response
+        from sim.core.reporting.cohort import results_csv
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        report, err = _cohort_report(cid, scenario)
+        if err is not None:
+            return err
+        return Response(content=results_csv(report), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{cid}-{scenario}-results.csv"'})
 
     @app.post("/api/instructor/cohorts/{cid}/sessions")
     def instructor_cohort_sessions(cid: str, payload: dict, request: Request,

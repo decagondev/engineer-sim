@@ -415,6 +415,25 @@ class FirestoreGradeStore:
                            include_tickets=bool(d.get("include_tickets")),
                            calibrated=bool(d.get("calibrated")), body=d.get("body") or {})
 
+    def list_many(self, session_ids) -> dict:
+        """One get_all round trip when the client offers it, else per doc."""
+        ids = [s for s in session_ids if s]
+        if not ids:
+            return {}
+        refs = [self._doc(s) for s in ids]
+        get_all = getattr(self._db, "get_all", None)
+        snaps = list(get_all(refs)) if get_all else [r.get() for r in refs]
+        out = {}
+        for sid, snap in zip(ids, snaps):
+            d = _data(snap)
+            if d:
+                out[sid] = StoredGrade(session_id=sid, total=float(d.get("total") or 0),
+                                       level=d.get("level") or "", ts=d.get("ts") or "",
+                                       graded_by=d.get("graded_by") or "",
+                                       include_tickets=bool(d.get("include_tickets")),
+                                       calibrated=bool(d.get("calibrated")), body=d.get("body") or {})
+        return out
+
     def delete_for_session(self, session_id: str) -> None:
         self._doc(session_id).delete()
         session_doc(self._db, session_id).set(
