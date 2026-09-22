@@ -8,7 +8,8 @@ the architecture vocabulary (ports, composition root, bundle, tracks, transcript
 
 The chain **submit → assessor → grade** works for the paste path and is broken for the repo
 path. Checked against `sim/core/session/session_service.py`, the `/submit`, `/submit-repo`
-and `/grade` routes in `sim/adapters/web/app.py`, and `tests/regression/test_interview.py`.
+and `/grade` routes (now in `sim/adapters/web/routes/session.py`), and
+`tests/regression/test_interview.py`.
 
 | Step | Paste path (`POST /submit`) | Repo path (`POST /submit-repo`) |
 |---|---|---|
@@ -204,9 +205,10 @@ SimEditor.mount(el, { path, text, readOnly, onSave })  // returns { getValue, se
 
 Backed by **CodeMirror 5** vendored under `static/vendor/codemirror/` (core `lib/codemirror.js`
 + `codemirror.css`, modes: markdown, python, javascript, yaml, css, htmlmixed, sql, shell;
-addons: active-line, search, matchbrackets). It is plain script files, MIT, ~350 KB, needs no
-build step, and works offline on a classroom LAN (this repo deliberately has no CDN
-dependencies; see the header of `md.js`). Theme: a small `sim-dark.css` that maps CodeMirror
+addons: active-line, search, matchbrackets). It is plain script files, MIT, ~350 KB, and works
+offline on a classroom LAN (this repo deliberately has no CDN dependencies; see the header of
+`md.js`). The pages load the parts as one committed file, `bundle.min.js`, rebuilt with
+`python tools/bundle_vendor.py` and checked by the smoke suite; there is still no bundler. Theme: a small `sim-dark.css` that maps CodeMirror
 token classes to the shell's existing `--ink`, `--panel`, `--me`, `--sig` tokens so it looks
 like the rest of the workstation. If the vendor files fail to load, `SimEditor` falls back to
 a `<textarea>` with the same API, so the app never dead-ends.
@@ -323,7 +325,9 @@ var), `DEPLOYMENT-PLAN.md` (record `WORK_MODE`). Delete the stray
 - **`GitHubApi`** (`adapters/build/github_api.py`) is the shared client; both the build
   observer and the files adapter take an injectable `fetch`, and the tests use recorded JSON.
 - **Autosave.** The Files app saves dirty tabs every 20 s and on unmount, in addition to
-  Ctrl/Cmd+S, because a lost design doc is the worst failure this feature can have.
+  Ctrl/Cmd+S, because a lost design doc is the worst failure this feature can have. On a
+  connected repo every save is a commit, so the timer is off there and the button reads
+  **Save & commit**; only the unmount save remains.
 - **Hosted product scenarios refuse `/submit` and `/starter.zip`** (405 / 404), while design
   tracks still accept a pasted design when hosted, as a manual fallback.
 

@@ -16,7 +16,9 @@ Local/LAN stays `AUTH_MODE=password` and `PERSISTENCE=sqlite` unless you opt in.
 | Build record | local git | GitHub or GitLab commits + `DESIGN.md`/`README.md` text (challenger's own token wins) | `ports/build_record.py`, `ports/repo_host.py`, `GITHUB_TOKEN`, `GITLAB_URL`/`GITLAB_TOKEN` |
 | Browser edits | sandbox folder | `session_files` overlay in Firestore, replayed onto a fresh folder after a redeploy | `ports/session_files.py` |
 | Grades | sqlite `grades` | `sessions/{sid}/grades/latest` | `ports/grades.py` |
-| Dashboards | direct reads | session index on the session doc + 60 s stale-while-revalidate cache | `_enrich_sessions`, `_cached` in `adapters/web/app.py` |
+| Dashboards | direct reads | session index on the session doc + 60 s stale-while-revalidate cache | `_enrich_sessions`, `_cached` in `adapters/web/routes/dashboards.py` |
+| Directory reads | one per call | the caller's record is read once per request and shared by the key resolvers and write checks | `adapters/llm/request_context.py` |
+| Repo-host reads | anonymous limit | GitHub ETags (304s cost no rate limit), 200-repo tree cache, GitLab project metadata reused for 5 s | `adapters/build/github_api.py`, `gitlab_api.py` |
 | Transport | one uvicorn | one Railway replica, HTTPS + `wss://`, static served `no-cache` | `adapters/web` |
 
 `sim/core/` imports none of these (`test_smk02`).

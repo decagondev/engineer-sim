@@ -47,8 +47,8 @@ for ~$0. See `PLANNING.md` for the full epic/feature/story/wave breakdown.
 | 7 Workflows | one workflow per track (**doc / sandbox / repo**), **in-browser editor** with live markdown + mermaid preview, durable browser edits, repo browsing and **Connect GitHub / GitLab** so Files commits to the learner's fork | ✅ |
 | 8 Dashboards | Overview pages with stats and charts, **stored grades**, session states, cohort progress, role onboarding guides at `/onboarding` | ✅ |
 
-**195 gating tests green (3 fail on Windows for platform reasons only); 3
-real-model evals are non-gating (skipped unless a real provider is set).**
+**257 gating tests green on Linux, macOS and Windows; 3 real-model evals are
+non-gating (skipped unless a real provider is set).**
 Build-for-real runs on Docker — see `docs/ENVIRONMENT.md`; the hosted variant
 is in `DEPLOYMENT-PLAN.md`.
 
@@ -88,9 +88,12 @@ Inside Team Chat it's a multi-pane workroom, not a single thread:
 - A **people** rail — you start talking to the client; other stakeholders
   appear in the rail when they show up (the uninvited VP *joins* mid-session,
   with an unread badge on his conversation).
-- **Typing indicators** while a persona composes a reply, real timestamps,
-  and the simulator's own signals (reveals, joins, session state) styled as a
-  distinct class from human messages.
+- **Replies stream in** as the model writes them (Groq streams; other
+  providers deliver the whole reply), with a typing indicator until the first
+  words land, real timestamps, and the simulator's own signals (reveals,
+  joins, session state) styled as a distinct class from human messages.
+- **Reconnects on its own** after a dropped connection or a redeploy, and
+  replays what it missed.
 - **Reload-safe:** the session id lives in the URL; refreshing replays the
   whole conversation from the transcript instead of starting over.
 

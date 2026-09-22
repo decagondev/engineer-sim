@@ -75,10 +75,13 @@ under `sim.adapters`. Put I/O behind a port in `sim/core/ports/` and implement i
 - `ENV_PROVIDER` = local_folder | docker (per-session sandbox seeded from the scenario's
   `starter/` dir under `SANDBOX_ROOT`, default `.sandboxes/`).
 - `BYOK_SECRET`: Fernet key for per-user secrets. `adapters/llm/scoped_client.py` wraps any
-  LLM client so calls resolve the current user's Groq key (set via `request_context.py`)
-  before falling back to the server key; `adapters/build/github_api.py::user_token_resolver`
-  does the same for GitHub tokens (`UserRecord.github_token_enc`, edited in `/challenger`
-  Settings) so repo browsing spreads rate limits across the class.
+  LLM client so calls resolve the current user's Groq key before falling back to the server
+  key; `adapters/build/github_api.py::user_token_resolver` and
+  `adapters/auth/gitlab_tokens.py` do the same for repo-host tokens so browsing spreads rate
+  limits across the class. All of them read the caller's record through
+  `request_context.current_user(users)`: one directory read per request (the auth gate
+  primes it; the chat socket forgets it before each turn). Never call `users.get(uid)`
+  from a resolver.
 - `SIM_SCENARIO` points the registry at a single scenario file instead of auto-discovery;
   `GITHUB_TOKEN` raises the GitHub API rate limit for repo submissions and browsing;
   `PUBLIC_BASE_URL` pins the `/login` link in set-password emails (otherwise derived from
@@ -86,11 +89,18 @@ under `sim.adapters`. Put I/O behind a port in `sim/core/ports/` and implement i
 - `WORK_MODE` = auto | local | hosted. `Config.hosted` (auto: true when `AUTH_MODE=firebase`
   or `PERSISTENCE=firestore`) picks the workflow for product scenarios (see below).
 
-**Per-turn flow:** WebSocket `/ws/{session_id}` in `sim/adapters/web/app.py` →
+**Per-turn flow:** WebSocket `/ws/{session_id}` in `sim/adapters/web/routes/live.py` →
 `SessionService.post_tester_message` → `PersonaResponder` (prompt built only from unlocked
 reveal-ladder rungs, so the model cannot leak what it was never given) → `UnlockEvaluator`
 (judge LLM decides if a rung unlocks) → `Director` runs triggers (`turn_count`, `submission`,
 `session_start`, each gated by `min_level`) which emit chat messages, emails, or tickets.
+Replies stream: `ports/llm.py` has the optional `StreamingLLMClient` and the pure
+`complete_with_deltas` helper (uses `stream` when the client has it, else one delta with the
+whole completion); Groq streams over SSE, the fake client emits three chunks, the failover
+and per-user-key wrappers refuse to fail over once a fragment has gone out. `_streamed_turn`
+in `live.py` forwards cumulative `{"kind": "delta"}` frames from the threadpool and then the
+stored message frames as before; `chat.js` draws the growing bubble and reconnects with
+backoff after a dropped socket.
 
 **The transcript is the state machine.** `Director` and `SessionService` derive what has
 happened by scanning stored messages with `kind == "event"` for marker strings such as
@@ -183,7 +193,10 @@ and `files.js`.
 speaks GitLab v4 (URL-encoded project path, `forked_from_project`, `compare?from_project_id=`,
 `repository/files` POST/PUT; tree listings carry no size, so `TreeNode.size == -1`).
 `adapters/build/host_router.py::HostRouter` picks the host by URL (`owns`) and holds one
-`can_write` per host; `GitHostBuildObserver(host=router)` and
+`can_write` per host. GitHub GETs go through a bounded ETag cache (`github_api.ETagCache`;
+304s are free of rate limit), the repo tree cache is an LRU of 200 repos, and GitLab reuses
+project metadata for `PROJECT_TTL` seconds (branch tips are always live).
+`GitHostBuildObserver(host=router)` and
 `adapters/workspace/github_files.py::RepoWorkspaceFiles(host=router, can_write=router.can_write)`
 never know which forge answered (`GitHubWorkspaceFiles` is the GitHub-only shim the older tests
 use). `_build_repo_hosts` in the composition root adds the GitLab host only when `GITLAB_URL` is

@@ -44,13 +44,15 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
 
 - `static/md.js` (`SimMD`): safe markdown + syntax highlighting for chat and previews.
 - `static/diagram.js` (`SimDiagram`): draws ```mermaid fences and the design
-  diagram with the vendored mermaid build; retries a failed parse after the
-  same label repair the server applies (`repair_mermaid`).
+  diagram with the vendored mermaid build, which it fetches on the first draw
+  (no page ships the 3 MB script); retries a failed parse after the same
+  label repair the server applies (`repair_mermaid`).
 - `static/viz.js` (`SimViz`): inline-SVG stat tiles, bars, daily columns and
   meters for the dashboards (no library; palette validated for the dark surface).
 - `static/editor.js` (`SimEditor`): one code editor for every app, backed by the
   vendored CodeMirror 5 under `static/vendor/codemirror/` (no CDN, so it works on a
-  classroom LAN) with a `<textarea>` fallback:
+  classroom LAN), loaded as one `bundle.min.js` (rebuild with
+  `python tools/bundle_vendor.py`), with a `<textarea>` fallback:
 
   ```js
   const ed = SimEditor.mount(el, { path, text, readOnly, onSave, onChange });
@@ -73,8 +75,11 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
 
 ## What ships today
 - **Team Chat** — full: personas, reveal ladder, the uninvited stakeholder,
-  grade. The grade and the drawn design diagram sit in a collapsible strip
-  above the conversation (folded on open, unfolded after Grade run).
+  grade. Replies stream in as the model writes them (`delta` frames on the
+  socket, then the stored message), the socket reconnects with backoff and
+  replays what it missed, and the grade and the drawn design diagram sit in a
+  collapsible strip above the conversation (folded on open, unfolded after
+  Grade run).
 - **Workspace** — real, per workflow: `sandbox` provisions the per-session dev box;
   `repo` links the learner's public repo on GitHub or the configured GitLab
   instance and offers **Connect GitHub / Connect GitLab** so Files can commit;
