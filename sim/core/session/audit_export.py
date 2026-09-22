@@ -82,9 +82,10 @@ def build_audit_markdown(
         parts.append("| --- | --- | --- |")
         for s in grade.get("scores", []):
             ev = str(s.get("evidence", "")).replace("|", "\\|").replace("\n", " ")
-            parts.append(
-                f"| {s.get('key')} | {round(float(s.get('score', 0)) * 100)}% | {ev} |"
-            )
+            score = f"{round(float(s.get('score', 0)) * 100)}%"
+            if s.get("source") == "human":
+                score += f" (instructor; model {round(float(s.get('model_score') or 0) * 100)}%)"
+            parts.append(f"| {s.get('key')} | {score} | {ev} |")
         extra = grade.get("tickets_extra")
         if extra:
             ev = str(extra.get("evidence", "")).replace("|", "\\|").replace("\n", " ")
@@ -97,6 +98,18 @@ def build_audit_markdown(
             parts.append("### Grader summary")
             parts.append("")
             parts.append(grade["summary"].strip())
+            parts.append("")
+        review = grade.get("review")
+        if review:
+            parts.append("### Instructor review")
+            parts.append("")
+            who = review.get("reviewer") or "instructor"
+            parts.append(f"Reviewed by {who}" + (f" on {review.get('ts')}" if review.get("ts") else "") + ".")
+            if grade.get("total_model") is not None:
+                parts.append(f"Model total before review: {round(float(grade.get('total_model') or 0) * 100)}%.")
+            if review.get("comment"):
+                parts.append("")
+                parts.append(review["comment"].strip())
             parts.append("")
         if grade.get("caveat"):
             parts.append(f"> {grade['caveat']}")

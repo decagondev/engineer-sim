@@ -121,6 +121,13 @@
   .grade .crit .barx i{display:block;height:100%;background:var(--me)}
   .grade .crit .evd{font-size:12px;color:var(--muted)}
   .grade .caveat{margin-top:12px;font:12px/1.5 var(--mono);color:var(--sig);background:rgba(202,162,74,.1);border:1px solid rgba(202,162,74,.28);border-radius:8px;padding:8px 10px}
+  .grade .crit .k .rv{display:flex;align-items:center;gap:6px;font-weight:400;color:var(--muted)}
+  .grade .crit .k .rv input{width:56px;padding:3px 6px;font-size:12px;text-align:right}
+  .grade .crit .k .rv .src{font:10.5px var(--mono);color:#9085e9}
+  .grade .review{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+  .grade .review textarea{width:100%;min-height:64px;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 10px;font:inherit;font-size:13px;resize:vertical}
+  .grade .review .row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .grade .review .st{font-size:12px;color:var(--muted)}
   .muted{color:var(--muted);font-size:13px}
 
   /* overlays */
@@ -251,9 +258,9 @@ function enterDashboard(){
   switchView("overview");
 }
 // ---- shared dashboard bits (state chips, relative time) ----
-const STATE_LABEL = {graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
-const STATE_COLOR = {graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
-function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = (k==="graded" && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
+const STATE_LABEL = {reviewed:"✓ reviewed", graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {reviewed:"#9085e9", graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = ((k==="graded"||k==="reviewed") && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
 function keyChips(u){
   const g = u.has_groq_key, gh = u.has_github_token;
   return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
@@ -268,7 +275,7 @@ function ago(ts){
 }
 function scenarioBars(stats){
   return SimViz.hbars(stats.by_scenario.map(b=>({label:b.title, sub:b.key, value:b.total, parts:[
-    {value:b.graded||0, color:STATE_COLOR.graded, label:"graded"},
+    {value:(b.graded||0)+(b.reviewed||0), color:STATE_COLOR.graded, label:"graded"},
     {value:b.submitted, color:STATE_COLOR.submitted, label:"submitted"},
     {value:b.active, color:STATE_COLOR.active, label:"in progress"},
     {value:b.not_started, color:STATE_COLOR.not_started, label:"not started"}]})), {empty:"No sessions yet."})
@@ -477,7 +484,7 @@ async function renderOverview(){
     ${SimViz.tiles([
       {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
       {label:"Submitted", value:t.submitted, sub:"awaiting your review", tone: t.submitted ? "good" : ""},
-      {label:"Graded", value:t.graded||0, sub:"grade saved; regrade any time"},
+      {label:"Graded", value:(t.graded||0)+(t.reviewed||0), sub:`${t.reviewed||0} reviewed by you`},
       {label:"In progress", value:t.active, sub:"started, nothing submitted yet"},
       {label:"Not started", value:t.not_started, sub:"link sent, no messages yet", tone: t.not_started && t.sessions ? "warn" : ""},
     ])}
@@ -494,7 +501,7 @@ async function renderOverview(){
     </div>
     ${SimViz.card("Recent sessions", "Most recently active first",
       `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
-        (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${levelLabel(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state, r.grade_total)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
+        (d.recent||[]).map(r=>`<tr class="click" data-sid="${esc(r.session_id)}"><td class="id">${esc(r.session_id)}</td><td>${esc(r.title)}<div class="muted">${levelLabel(r.level)}</div></td><td>${esc(r.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(r.state, r.review_total ?? r.grade_total)}</td><td>${r.count||0}</td><td>${ago(r.last_ts)}</td></tr>`).join("") ||
         `<tr><td colspan="6" class="muted">No sessions yet. Create one under New session or Cohort.</td></tr>`}</tbody></table>`)}`;
   el("content").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => openReplay(tr.dataset.sid));
   el("ov-refresh").onclick = () => { ovFresh = true; renderOverview(); };
@@ -507,7 +514,7 @@ async function renderSessions(){
   el("content").innerHTML = `<h1>Sessions</h1><p class="sub">Every session you own. Click a row to replay it.</p>
     <div class="filters">
       <input id="s-q" placeholder="Search id, challenger, scenario…" style="min-width:240px"/>
-      <select id="s-state"><option value="">Any state</option><option value="submitted">Submitted, awaiting review</option><option value="graded">Graded</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
+      <select id="s-state"><option value="">Any state</option><option value="submitted">Submitted, awaiting review</option><option value="graded">Graded</option><option value="reviewed">Reviewed</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
       <select id="s-sc"><option value="">Any scenario</option></select>
       <span class="muted" id="s-count"></span>
     </div>
@@ -524,7 +531,7 @@ async function renderSessions(){
     const box = el("slist");
     if(!rows.length){ box.innerHTML = `<div class="muted">${sessCache.length ? "No sessions match." : "No sessions recorded yet."}</div>`; return; }
     box.innerHTML = `<table class="rtable"><thead><tr><th>Session</th><th>Scenario</th><th>Challenger</th><th>State</th><th>Events</th><th>Last activity</th></tr></thead><tbody>${
-      rows.map(s=>`<tr class="click" data-sid="${esc(s.session_id)}"><td class="id">${esc(s.session_id)}</td><td>${esc(s.title||s.scenario||"—")}<div class="muted">${levelLabel(s.level)}</div></td><td>${esc(s.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(s.state, s.grade_total)}</td><td>${s.count||0}</td><td title="${esc(s.last_ts||"")}">${ago(s.last_ts)}</td></tr>`).join("")}</tbody></table>`;
+      rows.map(s=>`<tr class="click" data-sid="${esc(s.session_id)}"><td class="id">${esc(s.session_id)}</td><td>${esc(s.title||s.scenario||"—")}<div class="muted">${levelLabel(s.level)}</div></td><td>${esc(s.assignee)||"<span class='muted'>unassigned</span>"}</td><td>${stateChip(s.state, s.review_total ?? s.grade_total)}</td><td>${s.count||0}</td><td title="${esc(s.last_ts||"")}">${ago(s.last_ts)}</td></tr>`).join("")}</tbody></table>`;
     box.querySelectorAll("tr.click").forEach(tr => tr.onclick = ()=> openReplay(tr.dataset.sid));
   };
   el("s-q").oninput = draw; el("s-state").onchange = draw; el("s-sc").onchange = draw;
@@ -620,15 +627,46 @@ function wireReplay(){
 }
 function stopPlay(){ clearInterval(playTimer); playTimer=null; const p=el("play"); if(p) p.textContent="▶ Play"; }
 function renderGrade(g){
-  const scores = (g.scores||[]).slice();
-  if (g.tickets_extra) scores.push({key:"tickets (extra credit)", score:g.tickets_extra.score, evidence:g.tickets_extra.evidence});
-  const crits = scores.map(s=>`<div class="crit"><div class="k"><span>${s.key}</span><span>${(s.score*100|0)}%</span></div><div class="barx"><i style="width:${(s.score*100|0)}%"></i></div><div class="evd">${esc(s.evidence)}</div></div>`).join("");
+  const scores = (g.scores||[]).map(s=>({...s}));
+  if (g.tickets_extra) scores.push({key:"tickets", label:"tickets (extra credit)", score:g.tickets_extra.score, evidence:g.tickets_extra.evidence, source:g.tickets_extra.source||"model", model_score:g.tickets_extra.model_score});
+  const rv = g.review || null;
+  const crits = scores.map(s=>{
+    const pct = Math.round((s.score||0)*100);
+    const human = s.source==="human";
+    return `<div class="crit"><div class="k"><span>${esc(s.label||s.key)}</span>
+      <span class="rv">${human ? `<span class="src">instructor · model ${Math.round((s.model_score||0)*100)}%</span>` : ""}
+        <input type="number" min="0" max="100" step="1" data-rv="${esc(s.key)}" value="${pct}" title="Your score for ${esc(s.key)} (percent)"/>%</span></div>
+      <div class="barx"><i style="width:${pct}%${human?";background:#9085e9":""}"></i></div><div class="evd">${esc(s.evidence)}</div></div>`;
+  }).join("");
   const caveat = g.calibrated ? "" : `<div class="caveat">${esc(g.caveat||"grader not calibrated")}</div>`;
   const extraNote = g.include_tickets ? ` · base ${(g.total_base*100|0)}% + tickets extra credit` : "";
-  const when = g.graded_at ? `<div class="muted" style="margin-top:4px">Saved ${ago(g.graded_at)}${g.graded_by ? " by " + esc(g.graded_by) : ""}. Press Regrade to replace it.</div>` : "";
-  el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%</div><div class="muted">graded at ${levelLabel(g.level)} expectations${extraNote}</div>${when}${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}</div>`;
+  const when = g.graded_at ? `<div class="muted" style="margin-top:4px">Model grade saved ${ago(g.graded_at)}${g.graded_by ? " by " + esc(g.graded_by) : ""}. Press Regrade to replace it.</div>` : "";
+  const reviewed = rv ? `<div class="muted" style="margin-top:2px">Reviewed ${ago(rv.ts)}${rv.reviewer ? " by " + esc(rv.reviewer) : ""}${g.total_model!=null ? ` · model total ${Math.round(g.total_model*100)}%` : ""}</div>` : "";
+  el("gradebody").innerHTML = `<div class="grade"><div class="total">${(g.total*100|0)}%${rv?` <span class="muted" style="font-size:13px;font-weight:400">reviewed</span>`:""}</div><div class="muted">graded at ${levelLabel(g.level)} expectations${extraNote}</div>${when}${reviewed}${crits}<div style="margin-top:12px">${esc(g.summary)}</div>${caveat}
+    <div class="review"><b style="font-size:13px">Your review</b><div class="muted" style="font-size:12px;margin:2px 0 8px">Change any score above, add a comment, and save. The model grade stays on record; challengers and the export see your verdict.</div>
+      <textarea id="rv-comment" placeholder="What they did well, what to work on…">${esc(rv ? rv.comment : "")}</textarea>
+      <div class="row"><button class="primary" id="rv-save" type="button">Save review</button>${rv ? `<button id="rv-clear" type="button">Clear review</button>` : ""}<span class="st" id="rv-status"></span></div></div></div>`;
   el("gradeBtn").textContent = "Regrade";
   if (el("includeTickets")) el("includeTickets").checked = !!g.include_tickets;
+  el("rv-save").onclick = async () => {
+    const overrides = {};
+    scores.forEach(s => {
+      const inp = el("gradebody").querySelector(`[data-rv="${CSS.escape(s.key)}"]`);
+      const v = parseInt(inp.value, 10);
+      const orig = Math.round(((s.source==="human" ? s.model_score : s.score)||0)*100);
+      if (!isNaN(v) && (v !== orig || s.source==="human")) overrides[s.key] = v / 100;
+    });
+    el("rv-status").textContent = "Saving…";
+    const r = await fetch(`/api/instructor/session/${curSid}/review`,{method:"PUT",headers:{"Content-Type":"application/json",...hdr()},body:JSON.stringify({scores:overrides, comment:el("rv-comment").value})});
+    const d = await r.json().catch(()=>({}));
+    if(!r.ok){ el("rv-status").textContent = d.error || "Could not save."; return; }
+    if (d.grade) renderGrade(d.grade); else el("rv-status").textContent = "Saved. Grade the run to see it merged.";
+  };
+  const clr = el("rv-clear");
+  if (clr) clr.onclick = async () => {
+    await fetch(`/api/instructor/session/${curSid}/review`,{method:"DELETE",headers:hdr()});
+    loadStoredGrade();
+  };
 }
 async function loadStoredGrade(){
   try {

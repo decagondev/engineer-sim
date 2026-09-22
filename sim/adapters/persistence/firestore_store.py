@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 from sim.adapters.persistence.firestore_client import session_doc
 from sim.core.ports.cohorts import CohortRecord
 from sim.core.ports.grades import StoredGrade
+from sim.core.grading.review import HumanReview
 from sim.core.ports.mail import MailThread
 from sim.core.ports.repository import StoredMessage
 from sim.core.ports.session_registry import SessionRecord
@@ -82,6 +83,7 @@ class FirestoreMessageRepository:
     # listing is one collection stream instead of five reads per session.
     INDEX_FIELDS = ("scenario_key", "level", "submitted_ts", "submission_count",
                     "graded_ts", "grade_total", "graded_by",
+                    "reviewed_ts", "review_total",
                     "owner_uid", "assignee_uid", "status", "created_at")
 
     def list_sessions(self, include_empty: bool = False) -> list[dict]:
@@ -410,6 +412,36 @@ class FirestoreGradeStore:
         self._doc(session_id).delete()
         session_doc(self._db, session_id).set(
             {"graded_ts": "", "grade_total": None, "graded_by": ""}, merge=True)
+
+
+class FirestoreReviewStore:
+    """sessions/{sid}/reviews/latest: the instructor's verdict; independent of grades."""
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    def _doc(self, session_id: str):
+        return session_doc(self._db, session_id).collection("reviews").document("latest")
+
+    def save(self, review: HumanReview) -> HumanReview:
+        self._doc(review.session_id).set({
+            "session_id": review.session_id, "scores": dict(review.scores),
+            "comment": review.comment, "reviewer": review.reviewer, "ts": review.ts,
+        })
+        session_doc(self._db, review.session_id).set({"reviewed_ts": review.ts}, merge=True)
+        return review
+
+    def get(self, session_id: str) -> Optional[HumanReview]:
+        d = _data(self._doc(session_id).get())
+        if not d:
+            return None
+        return HumanReview(session_id=session_id, scores=dict(d.get("scores") or {}),
+                           comment=d.get("comment") or "", reviewer=d.get("reviewer") or "",
+                           ts=d.get("ts") or "")
+
+    def delete_for_session(self, session_id: str) -> None:
+        self._doc(session_id).delete()
+        session_doc(self._db, session_id).set({"reviewed_ts": "", "review_total": None}, merge=True)
 
 
 class FirestoreSubmissionStore:

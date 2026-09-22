@@ -274,10 +274,13 @@ SimApps.register({
         const r = await fetch(`/api/session/${sid}/grade`);
         if (!r.ok) return;
         const g = await r.json();
-        const rows = (g.scores || []).map(s => `  ${s.key.padEnd(14)} ${String((s.score * 100 | 0) + "%").padStart(4)}   ${s.evidence}`).join("\n");
+        const rows = (g.scores || []).map(s => `  ${s.key.padEnd(14)} ${String((s.score * 100 | 0) + "%").padStart(4)}${s.source === "human" ? " *" : "  "} ${s.evidence}`).join("\n");
         const when = g.graded_at ? new Date(g.graded_at).toLocaleString() : "";
-        gradeOut.textContent = `LAST GRADE ${(g.total * 100 | 0)}%${when ? "  (" + when + ")" : ""}\n${rows}\n\n${g.summary || ""}`;
-        showPanel(`Last grade <b>${(g.total * 100 | 0)}%</b>${when ? " · " + when : ""}`, false);
+        const rv = g.review;
+        const head = rv ? `REVIEWED BY YOUR INSTRUCTOR ${(g.total * 100 | 0)}%  (model grade ${Math.round((g.total_model ?? g.total) * 100)}%)` : `LAST GRADE ${(g.total * 100 | 0)}%${when ? "  (" + when + ")" : ""}`;
+        const note = rv ? `\n\nInstructor's note:\n${rv.comment || "(no comment)"}\n\n* = score set by your instructor` : "";
+        gradeOut.textContent = `${head}\n${rows}\n\n${g.summary || ""}${note}`;
+        showPanel(rv ? `Reviewed <b>${(g.total * 100 | 0)}%</b> by your instructor` : `Last grade <b>${(g.total * 100 | 0)}%</b>${when ? " · " + when : ""}`, !!rv);
       } catch (e) {}
     })();
 

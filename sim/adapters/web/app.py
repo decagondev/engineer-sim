@@ -34,6 +34,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
     app.state.repo = manager.repo
     app.state.submissions = manager.submissions
     app.state.grades = getattr(manager, "grades", None)
+    app.state.reviews = getattr(manager, "reviews", None)
     app.state.github_observer = github_observer
     if auth is None:
         from sim.adapters.auth.services import AuthServices
@@ -352,6 +353,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         else:
             body["include_tickets"] = False
         body["level"] = prof.key
+        body["weights"] = {c.key: round(c.weight, 4) for c in adj}
         body["calibrated"] = _calibrated()
         if not body["calibrated"]:
             body["caveat"] = ("Grader is not yet calibrated against human scores — "
@@ -400,12 +402,23 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         # doc (and sandbox without a submission): the workspace's own git history
         return _sandbox_record(session_id)
 
-    def _grade_payload(g) -> dict:
+    def _review_for(session_id: str):
+        store = app.state.reviews
+        try:
+            return store.get(session_id) if store is not None else None
+        except Exception:
+            return None
+
+    def _grade_payload(g, review=None) -> dict:
+        """The stored model grade with the instructor's review merged over it."""
+        from sim.core.grading.review import merge_review
         body = dict(g.body or {})
         body.update({"graded_at": g.ts, "graded_by": g.graded_by, "stored": True,
                      "total": g.total, "level": g.level,
                      "include_tickets": g.include_tickets, "calibrated": g.calibrated})
-        return body
+        if review is None:
+            review = _review_for(g.session_id)
+        return merge_review(body, review, b(g.session_id).scenario.rubric)
 
     def _store_grade(session_id: str, body: dict, request: Request | None) -> dict:
         """Persist the grade so dashboards and exports show it without
@@ -441,12 +454,73 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
 
     @app.get("/api/session/{session_id}/grade")
     def stored_grade(session_id: str):
-        """The last stored grade for this session, or 404 when never graded."""
+        """The last stored grade for this session, with the instructor's review
+        merged over it, or 404 when never graded."""
         store = app.state.grades
         g = store.get(session_id) if store is not None else None
         if g is None:
             return JSONResponse({"error": "not graded yet"}, status_code=404)
         return JSONResponse(_grade_payload(g))
+
+    def _may_review(request: Request, session_id: str) -> bool:
+        auth = app.state.auth
+        if not auth.gated:
+            return True
+        return auth.allow_session(_actor(request), session_id, grade=True)
+
+    @app.put("/api/instructor/session/{session_id}/review")
+    def instructor_review(session_id: str, payload: dict, request: Request,
+                          x_instructor_token: str = Header(default="")):
+        """Save the instructor's per-criterion overrides and comment. The model
+        grade is untouched; readers see the merge."""
+        from datetime import datetime, timezone
+        from sim.core.grading.review import HumanReview, ReviewError, validate_review
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not _may_review(request, session_id):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if app.state.reviews is None:
+            return JSONResponse({"error": "reviews not configured"}, status_code=501)
+        rubric = b(session_id).scenario.rubric
+        try:
+            scores = validate_review((payload or {}).get("scores") or {}, rubric)
+        except ReviewError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        comment = str((payload or {}).get("comment") or "").strip()[:4000]
+        if not scores and not comment:
+            return JSONResponse({"error": "nothing to save: adjust a score or write a comment"},
+                                status_code=400)
+        actor = _actor(request)
+        review = HumanReview(session_id=session_id, scores=scores, comment=comment,
+                             reviewer=actor.email or actor.uid,
+                             ts=datetime.now(timezone.utc).isoformat())
+        app.state.reviews.save(review)
+        g = app.state.grades.get(session_id) if app.state.grades is not None else None
+        if g is not None:
+            merged = _grade_payload(g, review)
+            _index_review_total(session_id, merged.get("total"))
+            return {"ok": True, "grade": merged}
+        return {"ok": True, "grade": None, "review": {
+            "scores": scores, "comment": comment, "reviewer": review.reviewer, "ts": review.ts}}
+
+    @app.delete("/api/instructor/session/{session_id}/review")
+    def instructor_clear_review(session_id: str, request: Request,
+                                x_instructor_token: str = Header(default="")):
+        if not _instr_ok(x_instructor_token):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        if not _may_review(request, session_id):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if app.state.reviews is not None:
+            app.state.reviews.delete_for_session(session_id)
+        return {"ok": True}
+
+    def _index_review_total(session_id: str, total) -> None:
+        indexer = getattr(app.state.repo, "index_session", None)
+        if indexer is not None:
+            try:
+                indexer(session_id, review_total=total)
+            except Exception:
+                pass
 
     @app.get("/api/session/{session_id}/diagram")
     def get_diagram(session_id: str):
@@ -1341,6 +1415,12 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                 s["graded_by"] = g.graded_by if g else ""
                 patch.update({"graded_ts": s["graded_ts"], "grade_total": s["grade_total"],
                               "graded_by": s["graded_by"]})
+            if "reviewed_ts" not in s:
+                r = _review_for(sid)
+                s["reviewed_ts"] = r.ts if r else ""
+                patch["reviewed_ts"] = s["reviewed_ts"]
+                if r and "review_total" not in s:
+                    s["review_total"] = None
             if patch and indexer is not None:
                 try:
                     indexer(sid, **patch)
@@ -1348,11 +1428,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
                     pass
             s["submitted"] = bool(s.get("submitted_ts"))
             s["graded"] = bool(s.get("graded_ts"))
+            s["reviewed"] = bool(s.get("reviewed_ts"))
             s.setdefault("grade_total", None)
+            s.setdefault("review_total", None)
             s.setdefault("graded_by", "")
             # a submission newer than the grade needs another look
             current = s["graded"] and (not s["submitted"] or s["graded_ts"] >= s["submitted_ts"])
-            s["state"] = ("graded" if current else
+            s["state"] = ("reviewed" if current and s["reviewed"] else
+                          "graded" if current else
                           "submitted" if s["submitted"] else
                           "active" if (s.get("count") or 0) > 0 else "not_started")
         _parallel(fill, rows)
@@ -1426,14 +1509,14 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         by_sc: dict = {}
         by_level = {lvl: 0 for lvl in LEVEL_ORDER}
         by_track = {"interview": 0, "systems": 0, "product": 0}
-        states = {"not_started": 0, "active": 0, "submitted": 0, "graded": 0}
+        states = {"not_started": 0, "active": 0, "submitted": 0, "graded": 0, "reviewed": 0}
         active_24h = 0
         for s in rows:
             key = s.get("scenario") or ""
             b = by_sc.setdefault(key, {"key": key, "title": s.get("title") or key,
                                        "track": s.get("track") or "product",
                                        "total": 0, "active": 0, "submitted": 0,
-                                       "not_started": 0, "graded": 0})
+                                       "not_started": 0, "graded": 0, "reviewed": 0})
             b["total"] += 1
             b[s.get("state") or "not_started"] += 1
             states[s.get("state") or "not_started"] += 1
@@ -1562,7 +1645,7 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
         auth = app.state.auth
         for store in (app.state.repo, manager.unlock, manager.mailstore,
                       manager.ticketstore, manager.submissions, app.state.settings,
-                      getattr(manager, "grades", None)):
+                      getattr(manager, "grades", None), getattr(manager, "reviews", None)):
             if store is None:
                 continue
             fn = getattr(store, "delete_for_session", None) or getattr(

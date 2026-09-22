@@ -127,6 +127,13 @@ files, and replays them onto a re-provisioned folder (`hydrate`), so hosted rede
 nothing. Writes go to the store first. `/files/write` and `/files/refresh` are the routes;
 `static/editor.js` (`SimEditor`, vendored CodeMirror 5 under `static/vendor/`) is the editor.
 
+**Instructor reviews** (`sim/core/grading/review.py`, `ports/reviews.py`): per-criterion
+overrides plus a comment, stored apart from the model grade (`reviews` table /
+`sessions/{sid}/reviews/latest`) and merged over it by `merge_review` whenever a grade is read
+(`GET /grade`, export). The grade body stores the `weights` the total was computed with so the
+merge recomputes totals faithfully. `PUT/DELETE /api/instructor/session/{sid}/review`; session
+state `reviewed` follows `graded`.
+
 **Grades are stored** (`ports/grades.py`; sqlite `grades`, Firestore `sessions/{sid}/grades/latest`,
 memory): `POST /grade` saves the body with time and actor, `GET /grade` returns it, a regrade
 replaces it, and the export uses it. Session rows get a `state` (`not_started` → `active` →

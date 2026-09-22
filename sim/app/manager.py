@@ -50,6 +50,7 @@ class SessionManager:
         self.cohorts = stores.cohorts
         self.session_files = stores.session_files
         self.grades = stores.grades
+        self.reviews = stores.reviews
         from sim.adapters.llm.scoped_client import wrap_user_scoped_llm
         self.llm = wrap_user_scoped_llm(llm, users=self.users, config=config)
         self._responder = PersonaResponder(self.llm)

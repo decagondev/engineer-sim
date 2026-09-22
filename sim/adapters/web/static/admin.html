@@ -120,9 +120,9 @@ const titles = {
 };
 const esc = s => String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 // ---- shared dashboard bits (state chips, relative time) ----
-const STATE_LABEL = {graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
-const STATE_COLOR = {graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
-function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = (k==="graded" && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
+const STATE_LABEL = {reviewed:"✓ reviewed", graded:"graded", submitted:"submitted", active:"in progress", not_started:"not started"};
+const STATE_COLOR = {reviewed:"#9085e9", graded:"#9085e9", submitted:"#199e70", active:"#3987e5", not_started:"#c98500"};
+function stateChip(st, total){ const k = STATE_LABEL[st] ? st : "not_started"; const pct = ((k==="graded"||k==="reviewed") && typeof total==="number") ? ` · ${Math.round(total*100)}%` : ""; return `<span class="st" style="color:${STATE_COLOR[k]};border-color:${STATE_COLOR[k]}">${STATE_LABEL[k]}${pct}</span>`; }
 function keyChips(u){
   const g = u.has_groq_key, gh = u.has_github_token;
   return `<span class="kc ${g?"on":""}" title="${g?"Personal Groq key saved":"No personal Groq key"}">Groq</span><span class="kc ${gh?"on":""}" title="${gh?"Personal GitHub token saved":"No personal GitHub token"}">GitHub</span>`;
@@ -137,7 +137,7 @@ function ago(ts){
 }
 function scenarioBars(stats){
   return SimViz.hbars(stats.by_scenario.map(b=>({label:b.title, sub:b.key, value:b.total, parts:[
-    {value:b.graded||0, color:STATE_COLOR.graded, label:"graded"},
+    {value:(b.graded||0)+(b.reviewed||0), color:STATE_COLOR.graded, label:"graded"},
     {value:b.submitted, color:STATE_COLOR.submitted, label:"submitted"},
     {value:b.active, color:STATE_COLOR.active, label:"in progress"},
     {value:b.not_started, color:STATE_COLOR.not_started, label:"not started"}]})), {empty:"No sessions yet."})
@@ -268,7 +268,7 @@ async function show(v){
         {label:"Cohorts", value:d.cohorts.count, sub:`${d.cohorts.members} memberships`},
         {label:"Sessions", value:t.sessions, sub:`${t.active_24h} active in the last 24 h`},
         {label:"Submitted", value:t.submitted, sub:"awaiting review", tone: t.submitted ? "good" : ""},
-        {label:"Graded", value:t.graded||0, sub:`${t.active} in progress · ${t.not_started} not started`},
+        {label:"Graded", value:(t.graded||0)+(t.reviewed||0), sub:`${t.reviewed||0} reviewed · ${t.active} in progress · ${t.not_started} not started`},
       ])}
       <div class="viz-grid">
         ${SimViz.card("Personal keys", "Challengers who added their own key in Settings (their sessions skip the classroom limit)",
@@ -582,7 +582,7 @@ async function show(v){
       <p class="muted">${all.length ? "Every session on this server, newest activity first." : "No sessions yet."}</p>
       <div class="filters">
         <input id="as-q" placeholder="Search id, person, scenario…" style="min-width:240px" value="${esc(state.sQ||"")}"/>
-        <select id="as-state"><option value="">Any state</option><option value="graded">Graded</option><option value="submitted">Submitted</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
+        <select id="as-state"><option value="">Any state</option><option value="graded">Graded</option><option value="reviewed">Reviewed</option><option value="submitted">Submitted</option><option value="active">In progress</option><option value="not_started">Not started</option></select>
         <select id="as-sc"><option value="">Any scenario</option>${scs.map(k=>`<option value="${esc(k)}">${esc((all.find(s=>s.scenario===k)||{}).title||k)}</option>`).join("")}</select>
         <span class="muted" id="as-count"></span>
         <span class="spacer"></span>
