@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Optional, Sequence
 
 from sim.core.persona.persona import Persona, RevealRung
-from sim.core.ports.llm import LLMClient, LLMMessage
+from sim.core.ports.llm import DeltaSink, LLMClient, LLMMessage, complete_with_deltas
 from sim.core.ports.repository import StoredMessage
 from sim.core.world.world_state import WorldState
 
@@ -25,6 +25,7 @@ class PersonaResponder:
         style: str = "chat",
         posture: str = "",
         extra_context: str = "",
+        on_delta: Optional[DeltaSink] = None,
     ) -> str:
         system = persona.system_prompt(
             world, unlocked, style=style, posture=posture,
@@ -37,4 +38,4 @@ class PersonaResponder:
             for m in history
             if m.kind != "event"
         ]
-        return self._llm.complete(system=system, messages=messages)
+        return complete_with_deltas(self._llm, system=system, messages=messages, on_delta=on_delta)

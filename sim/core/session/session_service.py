@@ -106,7 +106,10 @@ class SessionService:
     # -- main turn ---------------------------------------------------------
     def post_tester_message(
         self, session_id: str, content: str, target: str | None = None,
+        on_delta: Optional[Callable[[str], None]] = None,
     ) -> list[StoredMessage]:
+        """`on_delta`, when given, receives the persona's reply as it is
+        generated; the stored message is still the whole reply."""
         persona = self.cast[target or self.primary_key]
         channel = _dm_channel(persona.key)
 
@@ -134,7 +137,8 @@ class SessionService:
         extra = self._assessor_context(session_id) if persona.lane == "assessor" else ""
         reply_text = self.responder.respond(
             persona, self.world, history, unlocked,
-            posture=self._posture(level, persona), extra_context=extra)
+            posture=self._posture(level, persona), extra_context=extra,
+            on_delta=on_delta)
         appended = [self._msg(session_id, persona.key, channel, reply_text)]
         appended.extend(self._run_director(session_id, level))
         appended.extend(self._maybe_ready(session_id, content, channel))

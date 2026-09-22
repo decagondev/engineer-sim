@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Callable, Sequence
 
 from sim.core.ports.llm import LLMMessage
 
@@ -21,6 +21,15 @@ class FakeLLMClient:
         self._responses = list(responses or [])
         self._default = default
         self.calls: list[dict] = []
+
+    def stream(self, *, system: str, messages: Sequence[LLMMessage],
+               on_delta: Callable[[str], None]) -> str:
+        """The scripted reply in three pieces, so the streaming path is exercised."""
+        text = self.complete(system=system, messages=messages)
+        n = max(1, len(text) // 3)
+        for i in range(0, len(text), n):
+            on_delta(text[i:i + n])
+        return text
 
     def complete(self, *, system: str, messages: Sequence[LLMMessage]) -> str:
         self.calls.append({"system": system, "messages": list(messages)})

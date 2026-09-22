@@ -464,3 +464,22 @@ def test_smk20_mermaid_is_lazy_and_commit_message_shape():
     assert (static / "vendor" / "mermaid" / "mermaid.min.js").exists()
     from sim.adapters.workspace.github_files import commit_message
     assert commit_message("docs/DESIGN.md").startswith("Update docs/DESIGN.md")
+
+
+def test_smk21_ws_streams_deltas_before_the_message(tmp_path):
+    """B9: the persona's reply arrives as growing delta frames, then the
+    stored message with the same text; old clients that ignore deltas see
+    exactly what they saw before."""
+    app = _app_with(tmp_path, reply="Hi, I'm Priya and this is a longer reply.")
+    with TestClient(app).websocket_connect("/ws/s-stream") as ws:
+        ws.send_json({"content": "hello", "target": "priya"})
+        frames = [ws.receive_json()]
+        while frames[-1].get("kind") == "delta":
+            frames.append(ws.receive_json())
+    deltas = [f for f in frames if f.get("kind") == "delta"]
+    final = frames[-1]
+    assert deltas, "no delta frame arrived"
+    assert all(d["sender"] == "priya" and d["channel"] == "dm:priya" for d in deltas)
+    assert deltas[-1]["content"] == final["content"] == "Hi, I'm Priya and this is a longer reply."
+    assert final["sender"] == "priya" and final["kind"] == "message"
+    assert all(deltas[i]["content"].startswith(deltas[i - 1]["content"]) for i in range(1, len(deltas)))

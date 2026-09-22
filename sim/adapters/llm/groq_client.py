@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
-from typing import Sequence
+from typing import Callable, Optional, Sequence
 
 import httpx
 
@@ -21,11 +22,48 @@ class GroqClient:
 
     def __init__(self, model: str = "openai/gpt-oss-120b",
                  max_tokens: int = 1024, timeout: float = 60.0,
-                 api_key: str | None = None) -> None:
+                 api_key: str | None = None,
+                 transport: Optional[httpx.BaseTransport] = None) -> None:
         self._model = model
         self._max_tokens = max_tokens
         self._timeout = timeout
         self._api_key = api_key
+        self._transport = transport          # tests inject httpx.MockTransport
+
+    def _payload(self, system: str, messages: Sequence[LLMMessage]) -> dict:
+        return {
+            "model": self._model,
+            "max_tokens": self._max_tokens,
+            "messages": [{"role": "system", "content": system}]
+            + [{"role": m.role, "content": m.content} for m in messages],
+        }
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self._key()}", "Content-Type": "application/json"}
+
+    def stream(self, *, system: str, messages: Sequence[LLMMessage],
+               on_delta: Callable[[str], None]) -> str:
+        """Same reply as `complete`, delivered fragment by fragment over Groq's
+        server-sent events; the full text is returned at the end."""
+        payload = dict(self._payload(system, messages), stream=True)
+        parts: list[str] = []
+        try:
+            with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
+                with client.stream("POST", _GROQ_CHAT_URL, headers=self._headers(),
+                                   json=payload) as resp:
+                    if resp.status_code != 200:
+                        resp.read()
+                        raise RuntimeError(_groq_http_error(resp, self._model, byok=bool(self._api_key)))
+                    for line in resp.iter_lines():
+                        piece = _sse_delta(line)
+                        if piece is None:
+                            continue
+                        if piece:
+                            parts.append(piece)
+                            on_delta(piece)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Groq request failed: {exc}") from exc
+        return "".join(parts)
 
     def _key(self) -> str:
         key = self._api_key if self._api_key is not None else os.environ.get("GROQ_API_KEY", "")
@@ -37,22 +75,10 @@ class GroqClient:
         return str(key)
 
     def complete(self, *, system: str, messages: Sequence[LLMMessage]) -> str:
-        payload = {
-            "model": self._model,
-            "max_tokens": self._max_tokens,
-            "messages": [{"role": "system", "content": system}]
-            + [{"role": m.role, "content": m.content} for m in messages],
-        }
+        payload = self._payload(system, messages)
         try:
-            resp = httpx.post(
-                _GROQ_CHAT_URL,
-                headers={
-                    "Authorization": f"Bearer {self._key()}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=self._timeout,
-            )
+            with httpx.Client(timeout=self._timeout, transport=self._transport) as client:
+                resp = client.post(_GROQ_CHAT_URL, headers=self._headers(), json=payload)
         except httpx.HTTPError as exc:
             raise RuntimeError(f"Groq request failed: {exc}") from exc
         if resp.status_code != 200:
@@ -60,6 +86,23 @@ class GroqClient:
         body = resp.json()
         choices = body.get("choices") or [{}]
         return (choices[0].get("message") or {}).get("content") or ""
+
+
+def _sse_delta(line: str) -> Optional[str]:
+    """The text fragment in one SSE line of an OpenAI-style chat stream, ''
+    for a frame without content, None for anything that is not a data frame."""
+    if not line or not line.startswith("data:"):
+        return None
+    raw = line[5:].strip()
+    if not raw or raw == "[DONE]":
+        return None
+    try:
+        frame = json.loads(raw)
+    except ValueError:
+        return None
+    choices = frame.get("choices") or [{}]
+    delta = (choices[0].get("delta") or {})
+    return delta.get("content") or ""
 
 
 def validate_groq_key(api_key: str) -> None:

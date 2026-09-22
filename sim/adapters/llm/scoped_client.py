@@ -1,9 +1,9 @@
 """LLMClient that prefers the signed-in user's Groq key when one is stored."""
 from __future__ import annotations
 
-from typing import Callable, Sequence
+from typing import Callable, Optional, Sequence
 
-from sim.core.ports.llm import LLMClient, LLMMessage
+from sim.core.ports.llm import DeltaSink, LLMClient, LLMMessage, complete_with_deltas
 
 
 class ScopedLLMClient:
@@ -19,19 +19,34 @@ class ScopedLLMClient:
         self._groq_model = groq_model
 
     def complete(self, *, system: str, messages: Sequence[LLMMessage]) -> str:
+        return self._run(system, messages, None)
+
+    def stream(self, *, system: str, messages: Sequence[LLMMessage], on_delta: DeltaSink) -> str:
+        return self._run(system, messages, on_delta)
+
+    def _run(self, system: str, messages: Sequence[LLMMessage], on_delta: Optional[DeltaSink]) -> str:
         key = (self._resolve_key() or "").strip()
         if key:
             from sim.adapters.llm.failover import is_transient
             from sim.adapters.llm.groq_client import GroqClient
+            emitted = 0
+
+            def sink(chunk: str) -> None:
+                nonlocal emitted
+                emitted += 1
+                on_delta(chunk)
+
             try:
-                return GroqClient(model=self._groq_model, api_key=key).complete(
-                    system=system, messages=messages)
+                return complete_with_deltas(GroqClient(model=self._groq_model, api_key=key),
+                                            system=system, messages=messages,
+                                            on_delta=sink if on_delta is not None else None)
             except Exception as exc:
                 # the learner's own key is rate-limited or Groq is down: use the
-                # classroom chain rather than fail their turn
-                if not is_transient(exc):
+                # classroom chain rather than fail their turn (unless part of the
+                # reply already went out)
+                if emitted or not is_transient(exc):
                     raise
-        return self._fallback.complete(system=system, messages=messages)
+        return complete_with_deltas(self._fallback, system=system, messages=messages, on_delta=on_delta)
 
 
 def user_key_resolver(users, secret: str):

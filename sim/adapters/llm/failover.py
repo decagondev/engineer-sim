@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Callable, Optional, Sequence
 
-from sim.core.ports.llm import LLMClient, LLMMessage
+from sim.core.ports.llm import DeltaSink, LLMClient, LLMMessage, complete_with_deltas
 
 _TRANSIENT = ("429", "rate limit", "rate_limit", "quota", "overloaded", "503", "502", "504",
               "timed out", "timeout", "temporarily", "capacity", "try again")
@@ -36,17 +36,36 @@ class FailoverLLMClient:
         return {"chain": self.chain, "failovers": self.failovers, "last": self.last_failover}
 
     def complete(self, *, system: str, messages: Sequence[LLMMessage]) -> str:
+        return self._run(system, messages, None)
+
+    def stream(self, *, system: str, messages: Sequence[LLMMessage], on_delta: DeltaSink) -> str:
+        return self._run(system, messages, on_delta)
+
+    def _run(self, system: str, messages: Sequence[LLMMessage], on_delta: Optional[DeltaSink]) -> str:
+        """Fail over only before anything reached the reader: once a fragment
+        has been emitted the partial reply is the reply, and a retry would
+        splice two models' sentences together."""
+        emitted = 0
+
+        def sink(chunk: str) -> None:
+            nonlocal emitted
+            emitted += 1
+            on_delta(chunk)
+
+        guarded = sink if on_delta is not None else None
         try:
-            return self._primary.complete(system=system, messages=messages)
+            return complete_with_deltas(self._primary, system=system, messages=messages, on_delta=guarded)
         except Exception as exc:
-            if not self._fallbacks or not self._transient(exc):
+            if emitted or not self._fallbacks or not self._transient(exc):
                 raise
             last_exc = exc
             came_from = self._primary_name
         for name, client in self._fallbacks:
             try:
-                out = client.complete(system=system, messages=messages)
+                out = complete_with_deltas(client, system=system, messages=messages, on_delta=guarded)
             except Exception as exc:
+                if emitted:
+                    raise
                 last_exc = exc
                 if not self._transient(exc):
                     raise

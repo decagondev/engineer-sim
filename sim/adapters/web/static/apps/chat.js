@@ -57,6 +57,8 @@ SimApps.register({
   .chat-app .me .bubble.md th{background:rgba(255,255,255,.12)}
   .chat-app .signal{align-self:center;max-width:82%;text-align:center;margin:10px 0;font:12px/1.5 var(--mono);color:var(--sig);background:var(--sig-bg);border:1px solid var(--sig-line);border-radius:8px;padding:5px 12px}
   .chat-app .empty{margin:auto;color:var(--muted);text-align:center;font-size:14px}
+  .chat-app .row.partial .bubble{opacity:.85}
+  .chat-app .row.partial .bubble::after{content:"▍";color:var(--muted);animation:cx-blink 1s infinite}
   .chat-app .typing{align-self:flex-start;display:flex;gap:4px;padding:11px 14px;background:var(--them);border:1px solid var(--line);border-radius:15px;border-bottom-left-radius:5px;margin-top:8px}
   .chat-app .typing span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:cx-blink 1.2s infinite}
   .chat-app .typing span:nth-child(2){animation-delay:.2s}
@@ -125,6 +127,8 @@ SimApps.register({
     if (interview) q(".ticketsToggle").hidden = false;
     let meta = {}, primaryKey = null, active = null, awaiting = null, watchdog = null, ws = null, closed = false, seen = new Set(), pollTimer = null;
     let retries = 0, retryTimer = null;      // reconnect backoff state
+    let partial = null;                      // {key, sender, content}: a reply still being written
+    const sentHere = [];                     // our own messages, so the transcript poll does not echo them
     const channels = {};
     const HUES = [210, 28, 150, 280, 340, 95];
     const hueFor = k => { let h = 0; for (const c of k) h = (h * 31 + c.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
@@ -159,7 +163,10 @@ SimApps.register({
         log.appendChild(e); return;
       }
       for (const msg of ch.messages) log.appendChild(renderMsg(msg));
-      if (awaiting === active) log.appendChild(typingEl());
+      if (partial && partial.key === active) {
+        const row = renderMsg({ sender: partial.sender, content: partial.content, ts: "", kind: "message" });
+        row.classList.add("partial"); log.appendChild(row);
+      } else if (awaiting === active) log.appendChild(typingEl());
       log.scrollTop = log.scrollHeight;
     }
     function renderMsg(msg) {
@@ -194,10 +201,16 @@ SimApps.register({
       if ((keyId && seen.has(keyId)) || seen.has(keyTxt)) return;
       if (keyId) seen.add(keyId);
       seen.add(keyTxt);
+      if (m.sender === "tester") {
+        // the bubble was drawn when it was sent; the stored copy carries the server's timestamp
+        const i = sentHere.findIndex(t => t.channel === m.channel && t.content === m.content);
+        if (i >= 0) { sentHere.splice(i, 1); return; }
+      }
       if (m.kind === "event" && m.content.startsWith("[fired:")) return;
       if (m.channel === "general") { if (primaryKey) signal(primaryKey, m.content.replace(/\.$/, "")); return; }
       const key = m.channel.startsWith("dm:") ? m.channel.slice(3) : m.channel;
       if (m.kind === "event") { ensureChannel(key, o); signal(key, m.content.replace(/^\[reveal\]\s*/, "")); return; }
+      if (partial && partial.sender === m.sender) partial = null;
       ensureChannel(key, o); push(key, m);
       if (!o.replay && m.sender !== "tester" && m.kind !== "event") speak(m.sender, m.content);
       if (!o.replay && m.sender === awaiting) clearAwaiting();
@@ -225,7 +238,7 @@ SimApps.register({
       synth.speak(u);
     }
     function setActive(key) { active = key; if (channels[key]) channels[key].unread = 0; renderRoster(); renderPeer(); renderLog(); input.focus(); }
-    function clearAwaiting() { awaiting = null; clearTimeout(watchdog); sendBtn.disabled = false; input.disabled = false; input.focus(); if (active) renderLog(); }
+    function clearAwaiting() { awaiting = null; partial = null; clearTimeout(watchdog); sendBtn.disabled = false; input.disabled = false; input.focus(); if (active) renderLog(); }
 
     function connect() {
       if (closed) return;
@@ -246,8 +259,16 @@ SimApps.register({
         const m = JSON.parse(e.data);
         if (m.error || m.kind === "error") {
           const key = active || primaryKey;
+          partial = null;
           if (key) signal(key, m.error || "the model failed to reply");
           clearAwaiting();
+          return;
+        }
+        if (m.kind === "delta") {
+          // the reply as written so far; the final message frame replaces it
+          const key = (m.channel || "").startsWith("dm:") ? m.channel.slice(3) : m.channel;
+          partial = { key, sender: m.sender, content: m.content || "" };
+          if (key === active) renderLog();
           return;
         }
         incoming(m);
@@ -292,6 +313,8 @@ SimApps.register({
       const text = input.value.trim();
       if (!text || !ws || ws.readyState !== 1) return;
       push(active, { sender: "tester", content: text, channel: "dm:" + active, ts: new Date().toISOString(), kind: "message" });
+      sentHere.push({ channel: "dm:" + active, content: text });
+      if (sentHere.length > 50) sentHere.shift();
       ws.send(JSON.stringify({ content: text, target: active }));
       input.value = ""; awaiting = active; sendBtn.disabled = true; input.disabled = true; renderLog();
       clearTimeout(watchdog);
