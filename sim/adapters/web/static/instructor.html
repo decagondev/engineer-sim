@@ -120,6 +120,9 @@
   .grade .crit .barx{height:6px;background:var(--panel-2);border-radius:4px;margin:5px 0;overflow:hidden}
   .grade .crit .barx i{display:block;height:100%;background:var(--me)}
   .grade .crit .evd{font-size:12px;color:var(--muted)}
+  .grade .crit .evd a.evlink{color:var(--muted);text-decoration:underline dotted;text-underline-offset:3px}
+  .grade .crit .evd a.evlink:hover{color:var(--text)}
+  .ev.flash{background:rgba(59,110,245,.14);border-radius:8px;transition:background .3s}
   .grade .caveat{margin-top:12px;font:12px/1.5 var(--mono);color:var(--sig);background:rgba(202,162,74,.1);border:1px solid rgba(202,162,74,.28);border-radius:8px;padding:8px 10px}
   .grade .crit .k .rv{display:flex;align-items:center;gap:6px;font-weight:400;color:var(--muted)}
   .grade .crit .k .rv input{width:56px;padding:3px 6px;font-size:12px;text-align:right}
@@ -587,6 +590,18 @@ async function loadDiagram(){
   if(window.SimDiagram){ box.innerHTML = ""; const h = document.createElement("div"); box.appendChild(h); await SimDiagram.render(h, d.mermaid, "Drawn from the submitted DESIGN.md"); }
   else box.innerHTML = window.SimMD ? SimMD.render("```mermaid\n"+d.mermaid+"\n```") : `<pre>${esc(d.mermaid)}</pre>`;
 }
+function jumpToMessage(id){
+  // make sure the message is on the timeline (chat filter on, scrubbed far enough), then flash it
+  if (!filters.chat) { filters.chat = true; const c = document.querySelector('.chip[data-f="chat"]'); if (c) c.classList.add("on"); applyFilter(); }
+  const pos = filtered.findIndex(m => m.id === id);
+  if (pos < 0) return;
+  if (idx <= pos) { idx = pos + 1; syncScrub(); }
+  renderTimeline();
+  const row = el("timeline").querySelector(`.ev[data-id="${id}"]`);
+  if (!row) return;
+  row.scrollIntoView({block: "center", behavior: "smooth"});
+  row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1800);
+}
 function surfaceOf(m){ return m.kind==="email"?"mail":m.kind==="ticket"?"ticket":m.kind==="event"?"sig":"chat"; }
 function applyFilter(){ filtered = rows.filter(m=> filters[surfaceOf(m)]); }
 function nameOf(k){ const p=meta.personas.find(x=>x.key===k); return p?p.name:(k==="tester"?"You":k); }
@@ -597,6 +612,7 @@ function renderTimeline(){
 }
 function renderEv(m){
   const s = surfaceOf(m), d = document.createElement("div"); d.className="ev "+s;
+  if (m.id != null) d.dataset.id = m.id;
   const label = {chat:"CHAT",mail:"MAIL",ticket:"TICKET",sig:"SIGNAL"}[s];
   let who="", subj="";
   if(s==="chat") who=nameOf(m.sender);
@@ -636,7 +652,7 @@ function renderGrade(g){
     return `<div class="crit"><div class="k"><span>${esc(s.label||s.key)}</span>
       <span class="rv">${human ? `<span class="src">instructor · model ${Math.round((s.model_score||0)*100)}%</span>` : ""}
         <input type="number" min="0" max="100" step="1" data-rv="${esc(s.key)}" value="${pct}" title="Your score for ${esc(s.key)} (percent)"/>%</span></div>
-      <div class="barx"><i style="width:${pct}%${human?";background:#9085e9":""}"></i></div><div class="evd">${esc(s.evidence)}</div></div>`;
+      <div class="barx"><i style="width:${pct}%${human?";background:#9085e9":""}"></i></div><div class="evd">${s.evidence_ref != null ? `<a href="#" class="evlink" data-ref="${s.evidence_ref}" title="Show this in the transcript">${esc(s.evidence)}</a>` : esc(s.evidence)}</div></div>`;
   }).join("");
   const caveat = g.calibrated ? "" : `<div class="caveat">${esc(g.caveat||"grader not calibrated")}</div>`;
   const extraNote = g.include_tickets ? ` · base ${(g.total_base*100|0)}% + tickets extra credit` : "";
@@ -648,6 +664,7 @@ function renderGrade(g){
       <div class="row"><button class="primary" id="rv-save" type="button">Save review</button>${rv ? `<button id="rv-clear" type="button">Clear review</button>` : ""}<span class="st" id="rv-status"></span></div></div></div>`;
   el("gradeBtn").textContent = "Regrade";
   if (el("includeTickets")) el("includeTickets").checked = !!g.include_tickets;
+  el("gradebody").querySelectorAll(".evlink").forEach(a => a.onclick = e => { e.preventDefault(); jumpToMessage(+a.dataset.ref); });
   el("rv-save").onclick = async () => {
     const overrides = {};
     scores.forEach(s => {

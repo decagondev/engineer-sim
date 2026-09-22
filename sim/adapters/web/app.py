@@ -354,6 +354,9 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             body["include_tickets"] = False
         body["level"] = prof.key
         body["weights"] = {c.key: round(c.weight, 4) for c in adj}
+        # each evidence string points back at the transcript message it quotes
+        from sim.core.grading.evidence import annotate
+        body = annotate(body, app.state.repo.list_for_session(session_id))
         body["calibrated"] = _calibrated()
         if not body["calibrated"]:
             body["caveat"] = ("Grader is not yet calibrated against human scores — "
