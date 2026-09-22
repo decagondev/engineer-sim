@@ -243,6 +243,56 @@ function toggleSort(which, key){
   }
 })();
 
+let calTimer = null;
+async function renderCalibration(){
+  const box = el("cal-panel"); if (!box) return;
+  let d;
+  try { d = await (await fetch("/api/admin/calibration",{headers:h()})).json(); } catch (e) { box.innerHTML = `<div class="muted">Could not load calibration.</div>`; return; }
+  const run = d.latest, th = d.thresholds || {};
+  const pct = x => (x==null ? "—" : Math.round(x*100) + "%");
+  let last = `<div class="muted">Never run.</div>`;
+  if (run) {
+    const groups = Object.entries(run.reports||{});
+    const summary = run.status === "running"
+      ? `<div class="prog"><div class="lab"><span>Grading reviewed sessions…</span><b>${run.done} / ${run.total}</b></div><div class="bar busy"><i style="width:${run.total?Math.round(run.done/run.total*100):0}%"></i></div></div>`
+      : run.status === "failed" ? `<div class="status err">Last run failed: ${esc(run.error)}</div>`
+      : `<div><b style="color:${run.passed?"#37d67a":"#e0655c"}">${run.passed?"PASS":"FAIL"}</b> <span class="muted">· ${run.total} fixture${run.total===1?"":"s"} · ${esc(run.provider)}${run.model?" · "+esc(run.model):""} · ${ago(run.finished||run.started)}${run.started_by?" · by "+esc(run.started_by):""}</span></div>`;
+    const tables = groups.map(([label, r]) => `
+      <div style="margin-top:10px"><div class="muted" style="font-size:12px">${esc(label)} — ${r.n} fixture${r.n===1?"":"s"} · ${r.passed?"pass":"fail"}</div>
+      <table class="rtable" style="margin-top:4px"><tbody>
+        <tr><td>Total error (MAE)</td><td>${pct(r.total_mae)} <span class="muted">≤ ${pct(th.max_total_mae)}</span></td></tr>
+        <tr><td>Bias (model − human)</td><td>${r.total_bias>0?"+":""}${pct(r.total_bias)}</td></tr>
+        <tr><td>Within ±${pct(th.tolerance)}</td><td>${pct(r.within_tolerance_rate)} <span class="muted">≥ ${pct(th.min_within_tolerance)}</span></td></tr>
+        <tr><td>Rank correlation</td><td>${r.rank_correlation==null?"n/a":r.rank_correlation.toFixed(2)} <span class="muted">≥ ${th.min_rank_correlation}</span></td></tr>
+      </tbody></table>
+      ${SimViz.hbars((r.per_criterion||[]).map(c=>({label:c.key, value:Math.round(c.mae*100), sub:`bias ${c.bias>0?"+":""}${Math.round(c.bias*100)}`})), {empty:""})}
+      ${(r.notes||[]).map(n=>`<div class="muted" style="font-size:12px;margin-top:4px">! ${esc(n)}</div>`).join("")}</div>`).join("");
+    last = summary + tables;
+  }
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="font-size:13px">Calibration</b><span class="muted">${d.fixtures_available} reviewed session${d.fixtures_available===1?"":"s"} available as fixtures</span></div>
+    <div style="margin-top:8px">${last}</div>
+    <div class="row" style="margin-top:10px">
+      <button id="cal-run" ${(!d.can_run || d.running || !d.fixtures_available) ? "disabled" : ""}><span class="spin"></span>Run calibration</button>
+      <button class="primary" id="cal-apply" ${(run && run.status==="done" && run.passed && !d.calibrated) ? "" : "disabled"}>Mark grader calibrated</button>
+      <a href="/api/admin/calibration/fixtures.json" target="_blank" rel="noopener" class="muted" style="font-size:12px">fixtures.json</a>
+      <span class="status" id="cal-status"></span></div>
+    ${!d.can_run ? `<div class="muted" style="font-size:12px">This server runs the fake model; calibration needs a real provider.</div>` : ""}`;
+  el("cal-run").onclick = async () => {
+    const r = await fetch("/api/admin/calibration/run",{method:"POST",headers:h()});
+    const dd = await r.json().catch(()=>({}));
+    if (!r.ok) { el("cal-status").className = "status err"; el("cal-status").textContent = errText(dd, r); return; }
+    renderCalibration();
+  };
+  el("cal-apply").onclick = async () => {
+    const r = await fetch("/api/admin/calibration/apply",{method:"POST",headers:h()});
+    const dd = await r.json().catch(()=>({}));
+    el("cal-status").className = "status" + (r.ok ? "" : " err");
+    el("cal-status").textContent = r.ok ? "Grader marked calibrated; the caveat is gone." : errText(dd, r);
+    bustAdmin(); if (r.ok) show("settings");
+  };
+  clearTimeout(calTimer);
+  if (d.running) calTimer = setTimeout(renderCalibration, 3000);
+}
 async function show(v){
   const c = el("content");
   const hints = {
@@ -658,7 +708,8 @@ async function show(v){
         <div class="viz-card"><h3>Grading</h3><div class="sub">Whether grades carry the "directional, not calibrated" caveat.</div>
           <label class="fld">Grader calibrated
             <select id="st-gc"><option value="" ${gcSel===""?"selected":""}>Follow GRADER_CALIBRATED env (${s.grader_calibrated_env?"true":"false"})</option><option value="1" ${gcSel==="1"?"selected":""}>Yes — hide the caveat</option><option value="0" ${gcSel==="0"?"selected":""}>No — show the caveat</option></select></label>
-          <p class="muted" style="margin:8px 0 0">Currently <b>${s.grader_calibrated_effective?"calibrated":"not calibrated"}</b>. Only switch to Yes after running the calibration harness against real instructor scores.</p>
+          <p class="muted" style="margin:8px 0 0">Currently <b>${s.grader_calibrated_effective?"calibrated":"not calibrated"}</b>. Run the check below against reviewed sessions before choosing Yes.</p>
+          <div id="cal-panel" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px"><div class="muted">Loading calibration…</div></div>
         </div>
         <div class="viz-card"><h3>Deployment</h3><div class="sub">Read-only; these come from the server's environment variables.</div>
           <table class="rtable"><tbody>
@@ -688,6 +739,7 @@ async function show(v){
       bustAdmin();
     };
     el("cc").onclick = async () => { await fetch("/api/admin/cache/clear",{method:"POST",headers:h()}); bustAdmin(); el("st-status").textContent = "Dashboards will recount on their next load."; };
+    renderCalibration();
   }
   } catch (e) {
     if (!still(gen)) return;

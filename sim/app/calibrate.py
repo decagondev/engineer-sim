@@ -42,15 +42,8 @@ def _repo_from(transcript: Sequence[dict]) -> InMemoryMessageRepository:
 
 
 def _human_grade(fixture: dict, rubric: Rubric) -> Grade:
-    scores, weighted, total_w = [], 0.0, 0.0
-    human_scores = fixture["human"]["scores"]
-    for c in rubric.criteria:
-        v = float(human_scores.get(c.key, 0.0))
-        scores.append(CriterionScore(c.key, v, "human score"))
-        weighted += v * c.weight
-        total_w += c.weight
-    total = weighted / total_w if total_w else 0.0
-    return Grade(tuple(scores), total, fixture["human"].get("summary", ""))
+    from sim.core.grading.fixtures import human_grade
+    return human_grade(fixture, rubric)
 
 
 def run_calibration(fixtures_dir, rubric: Rubric, grader: Grader):

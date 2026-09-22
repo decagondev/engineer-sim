@@ -53,31 +53,9 @@ def validate_scores(scores: dict[str, float], rubric: Rubric) -> None:
             raise ValueError(f"score {k}={v} out of range 0.0-1.0")
 
 
-def weighted_total(scores: dict[str, float], rubric: Rubric) -> float:
-    tw = sum(c.weight for c in rubric.criteria)
-    return sum(scores[c.key] * c.weight for c in rubric.criteria) / tw if tw else 0.0
-
-
-def rows_to_transcript(rows: Sequence[StoredMessage],
-                       include_events: bool = True) -> list[dict]:
-    return [
-        {"sender": m.sender, "channel": m.channel,
-         "content": m.content, "kind": m.kind}
-        for m in rows
-        if include_events or m.kind == "message"
-    ]
-
-
-def build_fixture(fixture_id: str, rows: Sequence[StoredMessage],
-                  scores: dict[str, float], summary: str,
-                  build_record: str = "",
-                  include_events: bool = True) -> dict:
-    return {
-        "id": fixture_id,
-        "build_record": build_record,
-        "transcript": rows_to_transcript(rows, include_events),
-        "human": {"summary": summary, "scores": scores},
-    }
+from sim.core.grading.fixtures import (  # noqa: E402  (shared with the dashboard)
+    build_fixture, rows_to_transcript, weighted_total,
+)
 
 
 def next_filename(out_dir: Path, fixture_id: str) -> Path:

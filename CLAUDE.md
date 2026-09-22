@@ -134,6 +134,14 @@ overrides plus a comment, stored apart from the model grade (`reviews` table /
 merge recomputes totals faithfully. `PUT/DELETE /api/instructor/session/{sid}/review`; session
 state `reviewed` follows `graded`.
 
+**Calibration from the dashboard**: `sim/core/grading/fixtures.py` turns a reviewed session
+into a fixture (human scores = the merged verdict); `sim/app/calibration_runner.py` grades the
+fixtures on a thread, grouped by rubric, and records a `CalibrationRun` (`ports/calibration.py`;
+sqlite `calibration_runs`, Firestore `meta/calibration_latest`, memory). Routes under
+`/api/admin/calibration`; `apply` flips `grader_calibrated` only after a passing run. Tests
+inject `app.state.calibration_grader` and pass `?sync=1`. The grade body stores the
+`build_record` and `expectation` the grader saw so a fixture replays the same input.
+
 **Grades are stored** (`ports/grades.py`; sqlite `grades`, Firestore `sessions/{sid}/grades/latest`,
 memory): `POST /grade` saves the body with time and actor, `GET /grade` returns it, a regrade
 replaces it, and the export uses it. Session rows get a `state` (`not_started` → `active` →

@@ -18,6 +18,7 @@ class Stores:
     session_files: object = None
     grades: object = None
     reviews: object = None
+    calibration_runs: object = None
 
 
 def build_stores(config) -> Stores:
@@ -30,6 +31,7 @@ def build_stores(config) -> Stores:
             FirestoreSubmissionStore, FirestoreTicketStore,
             FirestoreCohortDirectory, FirestoreUnlockStore, FirestoreUserDirectory,
             FirestoreSessionFileStore, FirestoreGradeStore, FirestoreReviewStore,
+            FirestoreCalibrationRunStore,
         )
         db = make_firestore_client(config)
         return Stores(
@@ -45,6 +47,7 @@ def build_stores(config) -> Stores:
             session_files=FirestoreSessionFileStore(db),
             grades=FirestoreGradeStore(db),
             reviews=FirestoreReviewStore(db),
+            calibration_runs=FirestoreCalibrationRunStore(db),
         )
     if mode != "sqlite":
         raise ValueError(f"unknown PERSISTENCE: {mode!r}")
@@ -60,6 +63,7 @@ def build_stores(config) -> Stores:
     from sim.adapters.persistence.sqlite_session_files import SqliteSessionFileStore
     from sim.adapters.persistence.sqlite_grades import SqliteGradeStore
     from sim.adapters.persistence.sqlite_reviews import SqliteReviewStore
+    from sim.adapters.persistence.sqlite_calibration import SqliteCalibrationRunStore
     path = config.db_path
     return Stores(
         repo=SqliteMessageRepository(path),
@@ -74,4 +78,5 @@ def build_stores(config) -> Stores:
         session_files=SqliteSessionFileStore(path),
         grades=SqliteGradeStore(path),
         reviews=SqliteReviewStore(path),
+        calibration_runs=SqliteCalibrationRunStore(path),
     )

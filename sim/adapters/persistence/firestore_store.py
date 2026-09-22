@@ -9,6 +9,7 @@ from sim.adapters.persistence.firestore_client import session_doc
 from sim.core.ports.cohorts import CohortRecord
 from sim.core.ports.grades import StoredGrade
 from sim.core.grading.review import HumanReview
+from sim.core.ports.calibration import CalibrationRun
 from sim.core.ports.mail import MailThread
 from sim.core.ports.repository import StoredMessage
 from sim.core.ports.session_registry import SessionRecord
@@ -442,6 +443,26 @@ class FirestoreReviewStore:
     def delete_for_session(self, session_id: str) -> None:
         self._doc(session_id).delete()
         session_doc(self._db, session_id).set({"reviewed_ts": "", "review_total": None}, merge=True)
+
+
+class FirestoreCalibrationRunStore:
+    """meta/calibration_latest holds the newest run whole (it is small)."""
+
+    def __init__(self, db) -> None:
+        self._db = db
+
+    def save(self, run: CalibrationRun) -> CalibrationRun:
+        self._db.collection("meta").document("calibration_latest").set(run.as_dict())
+        return run
+
+    def latest(self) -> Optional[CalibrationRun]:
+        d = _data(self._db.collection("meta").document("calibration_latest").get())
+        if not d:
+            return None
+        try:
+            return CalibrationRun(**d)
+        except TypeError:
+            return None
 
 
 class FirestoreSubmissionStore:

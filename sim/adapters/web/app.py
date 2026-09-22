@@ -354,6 +354,8 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             body["include_tickets"] = False
         body["level"] = prof.key
         body["weights"] = {c.key: round(c.weight, 4) for c in adj}
+        body["expectation"] = expectation
+        body["build_record"] = build_record[:60_000]
         # each evidence string points back at the transcript message it quotes
         from sim.core.grading.evidence import annotate
         body = annotate(body, app.state.repo.list_for_session(session_id))
@@ -2278,6 +2280,130 @@ def create_web_app(manager, grader, grader_calibrated: bool = False,
             changes["announcement"] = str(payload.get("announcement") or "").strip()[:280]
         app.state.settings.set_instructor(dataclasses.replace(cur, **changes))
         return {"ok": True, **_settings_payload()}
+
+    # ---- calibration from reviewed sessions -----------------------------
+    def _rubric_for(scenario_key: str):
+        sc = manager.registry.get(scenario_key or "")
+        return sc.rubric if sc else None
+
+    def _reviewed_fixtures() -> list:
+        """Every session that has both a stored grade and an instructor review
+        becomes a calibration fixture; the human scores are the merged verdict."""
+        from sim.core.grading.fixtures import fixture_from_review
+        out = []
+        rows = _enrich_sessions(_merge_known_sessions(all_registered=True))
+        for s in rows:
+            if not (s.get("reviewed") and s.get("graded")):
+                continue
+            sid = s["session_id"]
+            g = app.state.grades.get(sid) if app.state.grades is not None else None
+            if g is None:
+                continue
+            merged = _grade_payload(g)
+            rubric = _rubric_for(s.get("scenario") or "")
+            if rubric is None:
+                continue
+            body = g.body or {}
+            fx = fixture_from_review(
+                sid, app.state.repo.list_for_session(sid), merged, rubric,
+                scenario_key=s.get("scenario") or "", level=g.level,
+                build_record=body.get("build_record") or _build_record_for(sid),
+                expectation=body.get("expectation") or "")
+            if fx:
+                out.append(fx)
+        return out
+
+    def _calibration_runner():
+        from sim.app.calibration_runner import CalibrationRunner
+        from sim.adapters.persistence.memory_repo import InMemoryMessageRepository
+        from sim.core.ports.repository import StoredMessage
+        runner = getattr(app.state, "calibration_runner", None)
+        if runner is not None:
+            return runner
+        store = getattr(manager, "calibration_runs", None)
+        if store is None:
+            return None
+
+        def reader_from(transcript):
+            repo = InMemoryMessageRepository()
+            for i, m in enumerate(transcript):
+                repo.append(StoredMessage(session_id="fx", sender=m["sender"],
+                                          channel=m.get("channel", "general"),
+                                          content=m["content"], ts=f"t{i:03d}",
+                                          kind=m.get("kind", "message")))
+            return repo
+
+        def grader():
+            override = getattr(app.state, "calibration_grader", None)
+            if override is not None:
+                return override
+            if manager._config.llm_provider == "fake":
+                raise ValueError("calibration needs a real model provider (LLM_PROVIDER is fake)")
+            return app.state.grader
+
+        cfg = manager._config
+        model = {"groq": cfg.groq_model, "anthropic": cfg.anthropic_model,
+                 "ollama": cfg.ollama_model}.get(cfg.llm_provider, "")
+        runner = CalibrationRunner(store, fixtures=_reviewed_fixtures, grader=grader,
+                                   rubric_for=_rubric_for, reader_from=reader_from,
+                                   provider=cfg.llm_provider, model=model)
+        app.state.calibration_runner = runner
+        return runner
+
+    def _calibration_payload() -> dict:
+        runner = _calibration_runner()
+        latest = runner.latest() if runner else None
+        cfg = manager._config
+        return {
+            "latest": latest.as_dict() if latest else None,
+            "running": bool(runner and runner.running()),
+            "fixtures_available": sum(1 for s in _enrich_sessions(_merge_known_sessions(all_registered=True))
+                                      if s.get("reviewed") and s.get("graded")),
+            "provider": cfg.llm_provider,
+            "can_run": cfg.llm_provider != "fake" or getattr(app.state, "calibration_grader", None) is not None,
+            "calibrated": _calibrated(),
+            "thresholds": {"max_total_mae": 0.15, "min_within_tolerance": 0.8,
+                           "min_rank_correlation": 0.7, "tolerance": 0.15},
+        }
+
+    @app.get("/api/admin/calibration")
+    def admin_calibration():
+        return _calibration_payload()
+
+    @app.get("/api/admin/calibration/fixtures.json")
+    def admin_calibration_fixtures():
+        """The reviewed sessions as fixtures, for the CLI harness or safekeeping."""
+        return {"fixtures": _reviewed_fixtures()}
+
+    @app.post("/api/admin/calibration/run")
+    def admin_calibration_run(request: Request, sync: bool = False):
+        from sim.app.calibration_runner import CalibrationBusy
+        runner = _calibration_runner()
+        if runner is None:
+            return JSONResponse({"error": "calibration store not configured"}, status_code=501)
+        payload = _calibration_payload()
+        if not payload["can_run"]:
+            return JSONResponse({"error": "calibration needs a real model provider; this server "
+                                          "runs LLM_PROVIDER=fake"}, status_code=400)
+        if payload["fixtures_available"] == 0:
+            return JSONResponse({"error": "no reviewed sessions yet: review at least one graded "
+                                          "session in the instructor replay first"}, status_code=400)
+        try:
+            run = runner.start(started_by=_actor(request).email or _actor(request).uid, sync=sync)
+        except CalibrationBusy as e:
+            return JSONResponse({"error": str(e)}, status_code=409)
+        return {"ok": True, "run": run.as_dict()}
+
+    @app.post("/api/admin/calibration/apply")
+    def admin_calibration_apply():
+        """Flip grader_calibrated only on the strength of a passing run."""
+        import dataclasses
+        runner = _calibration_runner()
+        latest = runner.latest() if runner else None
+        if latest is None or latest.status != "done" or not latest.passed:
+            return JSONResponse({"error": "the latest calibration run did not pass"}, status_code=409)
+        app.state.settings.set_instructor(dataclasses.replace(_site(), grader_calibrated=True))
+        return {"ok": True, "calibrated": _calibrated(), "run": latest.id}
 
     @app.post("/api/admin/cache/clear")
     def admin_clear_cache():
