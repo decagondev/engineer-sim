@@ -606,7 +606,7 @@ Added a `GroqClient` LLM adapter (OpenAI-compatible chat completions, lazy SDK i
 
 Built the real-git-workflow submission path (trust-based, public repos). `GitHostBuildObserver` reads a public repo's commits/diff via the GitHub API (behind `BuildRecordSource`; optional `GITHUB_TOKEN` raises the rate limit; if the repo is a fork it also reads the net diff vs the starter). Instructors set a per-scenario **starter repo URL** in the dashboard (stored in `SettingsStore`); learners see that link in **Submit** to fork, then submit their own public repo URL, which is validated (`/submit-repo`) and stored as a `kind=repo` submission. Grading prefers: explicit build_record > repo submission (read via the observer) > patch submission > server sandbox. Patch flow stays as the offline/no-account fallback. Tests GH-01..03, SMK-19. Full suite: 96 passed.
 
-Instructors publish starters by hand via `docs/PUBLISH-SCENARIOS.md` (no scripts, no app write-access to GitHub — a deliberate choice).
+Instructors publish starters by hand via `docs/PUBLISH-SCENARIOS.md` (no scripts; at the time, no app write-access to GitHub). Superseded in September 2026: learners can now *connect* their own GitHub or GitLab account and Files commits with their token; the classroom token still never writes (`docs/REPO-HOSTS.md`).
 
 ---
 
@@ -628,3 +628,6 @@ Recorded here so the wave numbering above stays honest; detail lives in the link
   defense stats, editor polish, diff against the starter, live replay, audit log, session
   archiving, GitHub connect (device flow) with commits from the Files app, model failover,
   persona voice, phone layouts, scenario authoring (`docs/ROADMAP.md`, `docs/ROADMAP-PLAN.md`).
+- **Second forge (September 2026)** — a `RepoHost` port with GitHub and GitLab adapters
+  behind a URL router, Connect GitLab with refresh tokens, per-user GitLab tokens, so a
+  self-hosted GitLab (`GITLAB_URL`) works everywhere GitHub does (`docs/REPO-HOSTS.md`).

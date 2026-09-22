@@ -6,7 +6,8 @@ codebase: a pure decision or model in `sim/core/`, I/O behind a port in
 and `manager.py`, routes as closures in `sim/adapters/web/app.py`, and one dock app or
 dashboard tab per feature. Status: built, 2026-09-22, in the sequencing order below;
 deviations from the plan are noted in the commit messages and `CLAUDE.md` is the source of
-truth for what exists.
+truth for what exists. Item 9 was later generalised over a `RepoHost` port so a GitLab
+instance works the same way (`docs/REPO-HOSTS.md`).
 
 ## Rules every item follows
 

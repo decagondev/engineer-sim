@@ -5,7 +5,8 @@
 `git log`). The list stays as the record of what was asked and why; the design
 each item was built to is in `docs/ROADMAP-PLAN.md`, and `CLAUDE.md` documents
 where each piece lives. What comes after this is an open question for the
-next planning pass. Sizes are honest guesses
+next planning pass. Delivered since: a second forge (self-hosted GitLab next to
+GitHub, with Connect GitLab; `docs/REPO-HOSTS.md`). Sizes are honest guesses
 for one person: **S** under a day, **M** two to four days, **L** a week or more.
 Each item names the files it touches so it can be picked up cold. Delivered work is
 summarised at the end of `PLANNING.md`.

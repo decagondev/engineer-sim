@@ -1,9 +1,11 @@
-# Publishing scenario starters to GitHub (for instructors)
+# Publishing scenario starters (for instructors)
 
-Each scenario ships with a starter folder in this repo. To use the GitHub
-submission mode, you turn each one into a **public** GitHub repo once, then paste
-its URL into your instructor dashboard. Learners fork that repo, do the work,
-push, and submit their own repo URL. No scripts, no tokens — just the steps below.
+Each scenario ships with a starter folder in this repo. To use the repo
+submission mode, you turn each one into a **public** repo once, on GitHub or on
+your class's GitLab instance (when the admin has configured one; see
+`docs/REPO-HOSTS.md`), then paste its URL into your instructor dashboard.
+Learners fork that repo, do the work, push, and link their own repo URL. No
+scripts, no tokens — just the steps below.
 
 ## Where the starters live
 
@@ -45,6 +47,12 @@ For example:
 Repeat for each scenario you want to run. GitHub Free covers unlimited public
 repos at no cost.
 
+**On a GitLab instance** the steps are the same: **New project** → blank, public,
+no README; push the starter folder to it; copy the project URL
+(e.g. `https://labs.gauntletai.com/<group>/flightsim-churn-dashboard`). Learners
+use **Fork** on the project page; forks keep their link to the starter, which is
+what gives the grader the "net changes vs starter" section.
+
 ## Tell the simulator about it
 
 1. Open the instructor dashboard (`/instructor`) → **Settings**.
@@ -52,22 +60,29 @@ repos at no cost.
 
 That's it. From then on, when a learner opens a hosted session for that scenario,
 the **Workspace** app shows them the starter link to fork; they paste their own
-public repo URL there once, browse what they pushed in **Files** (read-only, with
-a Refresh button), and press **Submit for grading** in **Submit**.
+public repo URL there once, browse what they pushed in **Files** (with a Refresh
+button), and press **Submit for grading** in **Submit**. If they **Connect
+GitHub** or **Connect GitLab** in Workspace, Files becomes an editor for that
+repo and every Save is a commit; otherwise it stays read-only and they push from
+their machine.
 
 Design scenarios (`sys_*`, `iv_*`) never use a repo: learners write `DESIGN.md`
 in the browser and submit it from the workspace, on every deployment.
 
 ## Notes
 
-- **Public on purpose.** This mode is trust-based (see `SUBMISSION-VIA-GITHUB.md`):
-  learners' repos are public. If reused scenarios' solutions accumulate publicly,
-  refresh the scenario rather than adding gates.
+- **Public on purpose.** This mode is trust-based: learners' repos are public.
+  If reused scenarios' solutions accumulate publicly, refresh the scenario
+  rather than adding gates. (On a GitLab instance the classroom `GITLAB_TOKEN`
+  can also read internal projects, if you would rather keep forks off the
+  public internet.)
 - **No starter URL set?** Hosted learners see "ask your instructor" in the
   Workspace app; only a local server offers the patch fallback (download the
   starter zip, work locally, submit a patch). `WORK_MODE=local|hosted` overrides
   the automatic choice.
-- **Rate limits:** the simulator reads public repos via the GitHub API. For a
+- **Rate limits:** the simulator reads public repos via the host's API. For a
   class, set a `GITHUB_TOKEN` (a classic read-only token) when starting the server
-  to raise the API limit from ~60/hr to ~5000/hr:
-  `GITHUB_TOKEN=ghp_xxx python -m uvicorn sim.app.main:app`.
+  to raise the GitHub limit from ~60/hr to ~5000/hr, and a `read_api`
+  `GITLAB_TOKEN` for the GitLab instance:
+  `GITHUB_TOKEN=ghp_xxx python -m uvicorn sim.app.main:app`. Challengers can
+  also store their own tokens in Settings, which spreads the load.

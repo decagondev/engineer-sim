@@ -72,7 +72,7 @@ Each workflow defines what the three apps do:
 | | `doc` | `sandbox` | `repo` |
 |---|---|---|---|
 | Workspace app | hidden (auto-provisioned) | provision / reset dev box (as today) | "Link your repo": paste URL once, shows linked repo + HEAD |
-| Files app | tree + **editor**, Save, Refresh | tree + **editor**, Save, Refresh | tree + viewer, **read-only**, Refresh re-reads HEAD |
+| Files app | tree + **editor**, Save, Refresh | tree + **editor**, Save, Refresh | tree + viewer, read-only until the learner connects GitHub / GitLab, then Save commits; Refresh re-reads HEAD |
 | Submit app | one button: **Submit DESIGN.md** (reads it from the workspace) | one button: **Submit from workspace** (build record = sandbox git); patch paste kept as a collapsed fallback | one button: **Submit for grading** (snapshots HEAD sha); no zip, no patch |
 | Build record for grader | DESIGN.md + TICKETS.md text + workdir git log | sandbox git log + net diff | GitHub commits + net diff vs fork + text of `DESIGN.md`/`README.md` if present |
 | Assessor / design triggers | on Submit | on Submit | on Submit |
@@ -287,10 +287,12 @@ var), `DEPLOYMENT-PLAN.md` (record `WORK_MODE`). Delete the stray
 
 ## 6. Decisions and open questions
 
-- **Editing a GitHub repo from the browser is v2.** It needs GitHub OAuth (device flow or
-  app installation) and commits through the contents API. The `WorkspaceFiles` port already
-  has `write_file`, so a `GitHubWorkspaceFiles` with a user token slots in without touching
-  the apps. Until then, product-track learners push from their own machine and press Refresh.
+- **Editing a repo from the browser: delivered (roadmap item 9, then GitLab).** Connect
+  GitHub / Connect GitLab (device flow) store a per-user token; `RepoWorkspaceFiles.write_file`
+  commits through the host's file API when that user's scope allows. The `WorkspaceFiles`
+  port did not change. Both forges sit behind `ports/repo_host.py` and a URL router; see
+  `docs/REPO-HOSTS.md`. Learners without a connection still push from their machine and
+  press Refresh.
 - **Ephemeral hosted filesystem.** The overlay store is the source of truth for edited files;
   the workdir is a cache that also gives the grader a git log. Losing the workdir on redeploy
   loses only the commit timeline of a design doc, which the interview rubric does not weight.

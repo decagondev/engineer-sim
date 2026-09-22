@@ -21,10 +21,12 @@ Local/LAN stays `AUTH_MODE=password` and `PERSISTENCE=sqlite` unless you opt in.
 
 `sim/core/` imports none of these (`test_smk02`).
 
+Repo hosts (GitHub, plus one GitLab instance via `GITLAB_URL`) and the Connect
+GitHub / GitLab OAuth apps are described in `docs/REPO-HOSTS.md`.
+
 ## Not on the first Railway deploy
 
 - Server-side Docker / code-server workspaces
-- Editing a GitHub repo from the browser (needs GitHub OAuth; see `docs/ROADMAP.md`)
 - Postgres
 - Firebase Hosting as the API
 - More than one Railway replica (in-process WebSockets)

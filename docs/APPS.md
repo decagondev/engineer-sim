@@ -76,8 +76,9 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
   grade. The grade and the drawn design diagram sit in a collapsible strip
   above the conversation (folded on open, unfolded after Grade run).
 - **Workspace** — real, per workflow: `sandbox` provisions the per-session dev box;
-  `repo` links the learner's public GitHub repo; hidden in `doc` (the folder is
-  created on first use).
+  `repo` links the learner's public repo on GitHub or the configured GitLab
+  instance and offers **Connect GitHub / Connect GitLab** so Files can commit;
+  hidden in `doc` (the folder is created on first use).
 - **Mail** — real: threaded email with the client and stakeholders; the director
   can send inbound email (a scope change), which shows as a dock badge. Emails are
   recorded in the transcript and graded like chat.
@@ -89,7 +90,9 @@ That's it — the tile appears on the desktop, opens in a window, and cleans up 
   autosave), Refresh and a live markdown preview beside the editor (tables,
   code, mermaid drawn; opens by itself for DESIGN.md on a wide window). Writes
   are path-safe and, when hosted, kept in the database so a redeploy does not
-  lose them. Read-only when browsing a linked GitHub repo.
+  lose them. A linked repo is read-only until the learner connects their
+  GitHub or GitLab account; then Save is a commit to their fork, and **What
+  changed** shows the net diff against the starter.
 - **Tickets** — real: a To Do / In Progress / Done board seeded with the client's
   asks; create and move tickets. Scoping actions are recorded in the transcript
   and graded.

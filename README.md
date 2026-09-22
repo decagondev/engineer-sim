@@ -9,7 +9,7 @@ and get graded on how you did it.
 - **Learners:** read **[GET_STARTED_STUDENT.md](GET_STARTED_STUDENT.md)** — a
   from-nothing, 15-minute setup for macOS / Windows / Linux.
 - **Instructors:** read **[GET_STARTED_INSTRUCTOR.md](GET_STARTED_INSTRUCTOR.md)**.
-- **GitHub submission (fork a starter, push, submit your repo URL):** **[docs/SUBMISSION-VIA-GITHUB.md](docs/SUBMISSION-VIA-GITHUB.md)** · instructors: **[docs/PUBLISH-SCENARIOS.md](docs/PUBLISH-SCENARIOS.md)**.
+- **Repo submission (fork a starter on GitHub or your GitLab, push, link your repo):** **[docs/REPO-HOSTS.md](docs/REPO-HOSTS.md)** · instructors publish starters with **[docs/PUBLISH-SCENARIOS.md](docs/PUBLISH-SCENARIOS.md)**.
 - **Classroom / lab server (one server, learners connect + submit):** **[docs/CLASSROOM.md](docs/CLASSROOM.md)** — run `python serve.py`.
 - **Coding tools & prerequisites (Cursor, Claude Code, Codex, OpenCode, git, Docker, Ollama):** **[docs/TOOLS.md](docs/TOOLS.md)**.
 
@@ -43,8 +43,8 @@ for ~$0. See `PLANNING.md` for the full epic/feature/story/wave breakdown.
 | 5 Environment | per-session sandbox from a starter repo; build-for-real; grade auto-reads git build record | ✅ |
 | 5b Docker env | **isolated per-session container** (bind-mount, mem/cpu/pid limits); same `Environment` port | ✅ |
 | 6 Tracks | **systems-design** and **interview** scenarios (interviewer + assessor, reveal ladder, DESIGN.md, tickets extra credit), engineer levels | ✅ |
-| H0–H2 Hosted | Railway + **Firebase Auth** + **Firestore**; admin / instructor / challenger roles, cohorts, bulk import, per-user (BYOK) Groq keys and GitHub tokens | ✅ |
-| 7 Workflows | one workflow per track (**doc / sandbox / repo**), **in-browser editor** with live markdown + mermaid preview, durable browser edits, GitHub repo browsing | ✅ |
+| H0–H2 Hosted | Railway + **Firebase Auth** + **Firestore**; admin / instructor / challenger roles, cohorts, bulk import, per-user (BYOK) Groq keys and GitHub / GitLab tokens | ✅ |
+| 7 Workflows | one workflow per track (**doc / sandbox / repo**), **in-browser editor** with live markdown + mermaid preview, durable browser edits, repo browsing and **Connect GitHub / GitLab** so Files commits to the learner's fork | ✅ |
 | 8 Dashboards | Overview pages with stats and charts, **stored grades**, session states, cohort progress, role onboarding guides at `/onboarding` | ✅ |
 
 **195 gating tests green (3 fail on Windows for platform reasons only); 3
@@ -72,14 +72,14 @@ to actually converse.
 
 You log into a **workstation**: a desktop with a dock of apps. Click **Team
 Chat** to talk to the client and stakeholders, **Workspace** to spin up your
-sandbox or link your GitHub repo, **Mail** for threaded email (a stakeholder may
+sandbox or link your repo (GitHub, or the class's GitLab), **Mail** for threaded email (a stakeholder may
 email you a scope change mid-shift — it shows as a dock badge), **Files** to
 edit your workspace in a real editor (syntax highlighting, autosave, a live
 markdown + mermaid preview), **Tickets** to scope the work on a board, and
 **Submit** to hand the work in with one button. Which apps you see and what
 Submit does follow the scenario's **workflow**: design scenarios are written
 and submitted in the browser, build scenarios use your dev box locally or a
-linked public GitHub repo when hosted (`docs/WORKSPACE-PLAN.md`). Apps are
+linked public repo when hosted (`docs/WORKSPACE-PLAN.md`, `docs/REPO-HOSTS.md`). Apps are
 modular — adding one is a single file + a `register()` call, see `docs/APPS.md`.
 The shell never changes.
 
@@ -221,7 +221,9 @@ No code changes needed — that's the Open/Closed payoff.
 - Grader calibration HARNESS exists and is tested; the actual PASS still
   needs a real model run over real human-scored fixtures, so grades carry a
   "directional" caveat until an admin flips the flag.
-- Hosted build scenarios read the learner's **public** GitHub repo; editing a
-  repo from the browser (GitHub OAuth) is not built yet — see `docs/ROADMAP.md`.
+- Hosted build scenarios read the learner's **public** repo (GitHub, or one
+  configured GitLab instance). Editing it from the browser needs the learner to
+  connect their account first (`docs/REPO-HOSTS.md`); pasted tokens stay read-only.
+- GitLab device-flow sign-in needs GitLab 17.2 or newer on the instance.
 - Firebase's free plan sends 150 set-password emails a day; use Blaze for a
   class.

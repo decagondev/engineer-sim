@@ -38,7 +38,7 @@ After login, `/instructor` is a dashboard:
   progress bar; copy all links or download a CSV.
 - **Sessions** — every session you own with challenger, state and grade;
   search and filter; click to replay.
-- **Settings** — change the default level, set starter repo URLs for hosted
+- **Settings** — change the default level, set starter repo URLs (GitHub or your GitLab) for hosted
   build scenarios, or reset onboarding.
 
 ## What you can do (replay)

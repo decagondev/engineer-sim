@@ -62,7 +62,7 @@
           <li>Create a Firebase user with the same email in the Firebase console (Authentication → Users → Add user), or sign in once through the app's sign-in page after the account exists.</li>
           <li>Sign in at <code>/login</code>. The first sign-in with that email, while no admin exists yet, makes you admin. The menu bar then shows <b>Dashboard</b>, which goes to <code>/admin</code>.</li>
         </ol>
-        <p>The dashboard opens on <b>Overview</b>: people by role, cohorts, sessions with how many are active, submitted, in progress or not started, coverage meters for personal Groq keys and GitHub tokens, a 14-day activity chart, sessions by scenario and level, and the most recent sessions.</p>
+        <p>The dashboard opens on <b>Overview</b>: people by role, cohorts, sessions with how many are active, submitted, in progress or not started, coverage meters for personal Groq keys and repo-host tokens, a 14-day activity chart, sessions by scenario and level, and the most recent sessions.</p>
         <div class="note"><span class="lab">Only the first admin needs this</span>Further admins are created from the Users tab like anyone else, with the role set to <i>admin</i>. Remove the bootstrap variable afterwards if you like; it only acts while no admin exists.</div>
       </div>
     </section>
@@ -79,17 +79,17 @@
           <thead><tr><th>Variable</th><th>What it is for</th><th>Interview season</th></tr></thead>
           <tbody>
             <tr><td>LLM_PROVIDER<br/><span class="w">GROQ_API_KEY</span></td><td>Which language model runs the personas and the grader, and the classroom key for it. Groq is the hosted default: fast and cheap.</td><td>Required. Create the key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> (a paid tier avoids the free rate limit for a whole class).</td></tr>
-            <tr><td>BYOK_SECRET</td><td>Fernet secret that encrypts challengers' own Groq keys and GitHub tokens at rest. Any long random string.</td><td>Required before anyone saves a key. Changing it later invalidates every stored key.</td></tr>
+            <tr><td>BYOK_SECRET</td><td>Fernet secret that encrypts challengers' own Groq keys and GitHub / GitLab tokens at rest. Any long random string.</td><td>Required before anyone saves a key. Changing it later invalidates every stored key.</td></tr>
             <tr><td>AUTH_MODE<br/><span class="w">FIREBASE_PROJECT_ID, FIREBASE_WEB_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_CREDENTIALS_JSON</span></td><td><code>firebase</code> turns on sign-in. The web key verifies tokens; the service-account JSON lets the server create users and send set-password emails.</td><td>Required. Paste the service-account JSON as the variable's value or mount it as a file.</td></tr>
             <tr><td>PERSISTENCE</td><td><code>firestore</code> when hosted. Sessions, transcripts, submissions, browser-edited files and user records all live there.</td><td>Required. SQLite is for local runs only; never add a third database.</td></tr>
             <tr><td>PUBLIC_BASE_URL</td><td>The public origin, so set-password emails link back to the right <code>/login</code>.</td><td>Set it to the class URL.</td></tr>
             <tr><td>WORK_MODE</td><td><code>auto</code> infers hosted mode from the Firebase and Firestore settings. Hosted mode hides the local dev-box path for build scenarios.</td><td>Leave on <code>auto</code>. Interview scenarios behave the same either way.</td></tr>
             <tr><td>GITHUB_TOKEN</td><td>Classroom-wide token for reading learners' public repos in build scenarios. No scopes needed.</td><td>Optional for interviews. Set it anyway; it costs nothing.</td></tr>
             <tr><td>LLM_FALLBACK_PROVIDERS</td><td>Comma-separated providers tried in order when the primary hits a rate limit or outage, e.g. <code>anthropic</code> (needs that provider's key too). The Deployment panel shows failovers as they happen.</td><td>Recommended for a class: one bad minute at Groq should not stall twenty interviews.</td></tr>
-            <tr><td>GITHUB_OAUTH_CLIENT_ID</td><td>A GitHub OAuth app (Settings → Developer settings → OAuth Apps, with <i>Device flow</i> enabled) so challengers can connect their account and edit their fork from the Files app.</td><td>Only for build scenarios. Without it, Files stays read-only for repos.</td></tr>
+            <tr><td>GITHUB_OAUTH_CLIENT_ID</td><td>A GitHub OAuth app (Settings → Developer settings → OAuth Apps, with <i>Device flow</i> enabled) so challengers can connect their account and edit their fork from the Files app. Step 8b below walks through creating it.</td><td>Only for build scenarios. Without it, Files stays read-only for repos.</td></tr>
             <tr><td>GITLAB_URL</td><td>A self-hosted GitLab (e.g. <code>https://labs.gauntletai.com</code>). Once set, repo links on that host are accepted next to GitHub ones, read through its API, and the Files app can browse them.</td><td>Only if your starters live on a GitLab. Public projects need no token at all.</td></tr>
             <tr><td>GITLAB_TOKEN</td><td>Classroom-wide token for that instance (a personal or group access token with <code>read_api</code>). Raises the anonymous rate limit and lets the grader read internal projects.</td><td>Optional. Never needs <code>api</code>: the classroom token must not be able to write.</td></tr>
-            <tr><td>GITLAB_OAUTH_CLIENT_ID</td><td>The Application ID of an OAuth application on that GitLab (Admin Area → Applications, <i>Confidential</i> unticked, scope <code>api</code>) so challengers can <b>Connect GitLab</b> and edit their project from Files. Device flow needs GitLab 17.2 or newer.</td><td>Only for build scenarios on GitLab. Without it, Files stays read-only for those projects.</td></tr>
+            <tr><td>GITLAB_OAUTH_CLIENT_ID</td><td>The Application ID of an OAuth application on that GitLab (Admin Area → Applications, <i>Confidential</i> unticked, scope <code>api</code>) so challengers can <b>Connect GitLab</b> and edit their project from Files. Device flow needs GitLab 17.2 or newer. Step 8b below walks through creating it.</td><td>Only for build scenarios on GitLab. Without it, Files stays read-only for those projects.</td></tr>
             <tr><td>GRADER_CALIBRATED</td><td>Removes the "directional" caveat from grades once the grader has been checked against human scores.</td><td>Leave unset until someone has run the calibration harness with real instructor scores.</td></tr>
           </tbody>
         </table></div>
@@ -110,7 +110,7 @@
           <li><b>Challengers</b> get a dashboard listing the sessions assigned to them and a Settings page for their name and personal keys.</li>
           <li><b>Edit</b> changes name, email, password, role, or cohorts. <b>Delete</b> removes the account from both the directory and Firebase.</li>
         </ul>
-        <p>The <b>Keys</b> column shows, for each challenger, whether they have saved a personal Groq key and GitHub token (green with a tick). The <i>Show</i> filter above the table narrows the list to challengers missing one, which is the list to chase before a class.</p>
+        <p>The <b>Keys</b> column shows, for each challenger, whether they have saved a personal Groq key, a GitHub token and (when a GitLab instance is configured) a GitLab token or connection (green with a tick). The <i>Show</i> filter above the table narrows the list to challengers missing one, which is the list to chase before a class.</p>
         <h3>Bulk import</h3>
         <p><b>Bulk import…</b> takes a pasted list, one person per line: an email, <code>Name &lt;email&gt;</code>, or rows copied straight from a spreadsheet. Existing accounts are reused. Keep <i>Email each new account a set-password link</i> ticked so people can sign in without you handing out passwords.</p>
         <div class="warn"><span class="lab">Firebase's email quota</span>Set-password emails are sent by Firebase, which allows <b>150 per project per day</b> on the free (Spark) plan and 10,000 with a billing instrument attached (Blaze). Test sends, resends and "Forgot password?" all count. Past the limit, rows fail with <i>QUOTA_EXCEEDED : Email quota exceeded</i>; the Firebase account is created but the person is not saved in the simulator's directory, so delete them under Authentication → Users in the Firebase console and import them again once the quota resets or after moving to Blaze. Current usage is under Google Cloud console → IAM &amp; Admin → Quotas, filtered on "Identity Toolkit". For a class of more than a hundred, attach billing before import day.</div>
@@ -145,7 +145,7 @@
         <p>Every scenario folder in the repo appears here with two controls:</p>
         <ul>
           <li><b>enabled</b>: untick to hide a scenario from instructors' New session lists. For interview season, keep the twenty <code>iv_*</code> scenarios on and hide the rest so the list stays short.</li>
-          <li><b>starter URL</b>: the public GitHub repo hosted learners fork for a <i>build</i> scenario. <b>Interview scenarios leave this blank</b>; they are edited and submitted in the browser. The instructor publishing steps are in <code>docs/PUBLISH-SCENARIOS.md</code>.</li>
+          <li><b>starter URL</b>: the public repo hosted learners fork for a <i>build</i> scenario, on GitHub or on the configured GitLab instance. <b>Interview scenarios leave this blank</b>; they are edited and submitted in the browser. The instructor publishing steps are in <code>docs/PUBLISH-SCENARIOS.md</code>.</li>
         </ul>
         <p>Scenarios are data, and you can author them here. <b>Edit YAML</b> on any row opens the scenario in an editor: change a persona's voice, the reveal ladder (what unlocks when), the triggers, or the rubric weights; <b>Validate</b> checks it, <b>Save</b> makes it the version new sessions use, and <b>Revert to file</b> discards your edits. <b>New scenario from a template</b> copies any scenario under a new key and title (borrowing its starter folder) so a whole new interview is a few edits away. Files in the repo are never modified; your versions live in the database and win over the file with the same key.</p>
       </div>
@@ -187,7 +187,7 @@
           <li><b>Classroom defaults.</b> The engineer level a session gets when the instructor sets none (<i>senior</i> is the usual choice), and a one-line <b>announcement</b> shown as a banner on every challenger's dashboard. Blank hides it.</li>
           <li><b>Sign-in.</b> Whether the sign-in page offers <i>Create challenger account</i>. Turn it off once your cohorts are imported: unknown emails are then told to ask their instructor, and only accounts you created can sign in.</li>
           <li><b>Grading.</b> Whether grades carry the "directional, not calibrated" caveat, and the <b>calibration check</b> that earns the right to remove it: every session an instructor has reviewed is a fixture; <b>Run calibration</b> re-grades them with the live model and compares against the instructors' scores (total error, within-tolerance rate, rank correlation, per-criterion error). <b>Mark grader calibrated</b> only unlocks after a passing run. Aim for at least ten reviewed sessions across the quality range first.</li>
-          <li><b>Deployment.</b> Read-only: model and provider, whether the classroom Groq key, GitHub token and key-encryption secret are set, work mode, sandbox, public URL and bootstrap admin. If it shows <i>password</i> or <i>sqlite</i> on the hosted URL, the environment variables from step 2 are not being read.</li>
+          <li><b>Deployment.</b> Read-only: model and fallback providers, the running build, whether the classroom Groq key, GitHub token, GitHub connect app, GitLab instance, GitLab token, GitLab connect app and key-encryption secret are set, work mode, sandbox, public URL and bootstrap admin. If it shows <i>password</i> or <i>sqlite</i> on the hosted URL, the environment variables from step 2 are not being read.</li>
         </ul>
         <p><b>Recount dashboards now</b> clears the overview and session-list caches; they otherwise refresh themselves in the background about once a minute.</p>
       </div>
@@ -210,6 +210,31 @@
           </tbody>
         </table></div>
         <p>For an interview-only season the Groq key is the one that matters: every persona reply, reveal judgment, diagram, and grade is a model call, and a class submitting together is the peak. Ask challengers to add their own key before the day; the challenger guide walks them through it. The Overview's coverage meters and the Users tab's <i>Show</i> filter tell you who still has not.</p>
+      </div>
+    </section>
+
+    <section class="step" id="repohosts" data-short="Repo hosts and Connect">
+      <div class="head">
+        <div class="num">08b</div>
+        <div class="t"><h2>Repo hosts: GitHub, your GitLab, and the Connect apps</h2><span class="where">Where: GitHub or the GitLab Admin Area, then Railway → Variables. Full detail in <code>docs/REPO-HOSTS.md</code></span></div>
+        <label class="check"><input type="checkbox"/> Done</label>
+      </div>
+      <div class="body">
+        <p>Build scenarios on the hosted server use a repo the challenger forks and pushes to. GitHub always works. A self-hosted GitLab (for example <code>labs.gauntletai.com</code>) works the same way once <code>GITLAB_URL</code> is set: links on that host are read through its API and the Workspace app shows its clone commands. Public repos need no token at all; the classroom tokens only raise rate limits and must stay read-only.</p>
+        <p>To let challengers edit their repo from the Files app, the server needs an OAuth application on each host so <b>Connect GitHub</b> / <b>Connect GitLab</b> can sign them in with a short code. No client secret is ever stored.</p>
+        <h3>GitHub OAuth app</h3>
+        <ol>
+          <li>GitHub → your avatar → <b>Settings</b> → <b>Developer settings</b> → <b>OAuth Apps</b> → <b>New OAuth App</b> (an organisation can own it instead).</li>
+          <li>Name, homepage (your server URL) and any callback URL: the device flow never redirects, but the field is required.</li>
+          <li>Tick <b>Enable Device Flow</b>. Register, copy the <b>Client ID</b>, set it as <code>GITHUB_OAUTH_CLIENT_ID</code>.</li>
+        </ol>
+        <h3>GitLab OAuth application (GitLab 17.2 or newer)</h3>
+        <ol>
+          <li>On the instance, as an administrator: <b>Admin Area</b> (wrench) → <b>Applications</b> → <b>New application</b>.</li>
+          <li>Name it; put the server URL as the redirect URI (required, unused); <b>untick Confidential</b>; tick the <b>api</b> scope (the only scope that can commit through the API; <code>read_api</code> would leave Files read-only).</li>
+          <li>Save, copy the <b>Application ID</b> into <code>GITLAB_OAUTH_CLIENT_ID</code>, set <code>GITLAB_URL</code> to the instance root, redeploy.</li>
+        </ol>
+        <p>Check on <b>Settings → Deployment</b>: the GitLab instance row shows the URL and both connect rows show <i>set</i>. GitLab sign-ins expire after two hours; the server keeps the refresh token and renews them quietly. If <b>Connect GitLab</b> answers <i>unsupported grant type</i>, the instance is older than 17.2; browsing and grading still work, only the browser editing needs the upgrade.</p>
       </div>
     </section>
 
@@ -242,6 +267,7 @@ python tools/email_templates.py apply --app-name "Your course name"</div>
           <li>Create one instructor account and sign in as them; create an interview session; open it as the test challenger; ask one question and see a reply.</li>
           <li>Save a personal Groq key on the test account and confirm it is accepted; remove it.</li>
           <li>Hide the scenarios you are not running.</li>
+          <li>Running build scenarios? Set the starter URLs, then open one as the test challenger, link a fork, and press Connect GitHub or Connect GitLab once to prove the OAuth apps work.</li>
           <li>Build the cohorts from the rosters with <i>New cohort from a pasted list</i>.</li>
           <li>Send the <a data-guide-link="instructor" href="../instructor/index.html">instructor guide</a> to instructors and the <a data-guide-link="challenger" href="../challenger/index.html">challenger guide</a> to the class.</li>
         </ol>

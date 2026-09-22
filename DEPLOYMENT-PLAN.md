@@ -57,8 +57,10 @@ domain rewrite.
    `AUTH_MODE=firebase`. The shared instructor password is not a public gate.
 3. **Server is the only Firestore client.** Rules stay `allow read, write: if false`.
    The service account on Railway bypasses rules.
-4. **No server-side learner workspaces on Railway.** Patch / GitHub submit only.
-   Cloud disks are ephemeral; Docker-in-container is out of scope.
+4. **No server-side learner workspaces on Railway.** Repo submit only (GitHub, or
+   a configured GitLab instance); browser edits commit to the learner's own fork
+   through their connected account (`docs/REPO-HOSTS.md`). Cloud disks are
+   ephemeral; Docker-in-container is out of scope.
 5. **Keys are handled properly.** BYOK (H2) is write-only and encrypted at rest.
    Until H2, a single server `GROQ_API_KEY` / `LLM_PROVIDER` is operator-only
    and never shipped to the browser.

@@ -174,9 +174,11 @@ details: **[docs/CLASSROOM.md](docs/CLASSROOM.md)**.
      dev box, then either edit in **Files** or open the folder in your coding
      tool. **Commit as you go.** Press **Submit from workspace** when done.
    - **Build scenarios on a hosted server:** fork the starter repo shown in
-     **Workspace**, work and push from your own machine, paste your public repo
-     URL there once, and press **Refresh** in **Files** to see what you pushed.
-     **Submit for grading** reads your commits.
+     **Workspace** (on GitHub, or your class's GitLab), work and push from your
+     own machine, paste your public repo URL there once, and press **Refresh**
+     in **Files** to see what you pushed. Press **Connect GitHub** / **Connect
+     GitLab** in Workspace and Files becomes an editor for that repo: every
+     Save is a commit. **Submit for grading** reads your commits.
 5. Use **Tickets** to scope the work and **Mail** for the more formal
    stakeholder threads.
 6. When you're done, hit **Grade run** in Team Chat for feedback.

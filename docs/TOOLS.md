@@ -32,6 +32,9 @@ current as of writing — if one has moved, search the tool's name.
 - **GitHub** — host repos (used by the fork-and-submit flow). https://github.com ·
   a read-only token (https://github.com/settings/tokens) as `GITHUB_TOKEN` raises the
   server's GitHub API rate limit for a class.
+- **GitLab (self-hosted)** — the same flow against your own instance when the server
+  has `GITLAB_URL` set; a `read_api` token as `GITLAB_TOKEN` does the same job. Set-up
+  and the Connect apps: `docs/REPO-HOSTS.md`.
 
 ## Running the AI people
 
